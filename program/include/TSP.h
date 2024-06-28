@@ -1,30 +1,30 @@
 #ifndef TSPCONCORDE_H
 #define TSPCONCORDE_H
 
+#include "headers.h"
 #include "VariableManager.h"
 #include "CplexParameterManager.h"
-#include "CallbackManager.h"
-#include "ilcplex/ilocplex.h"
+#include "TSPCallbackManager.h"
 
-class TSPConcorde {
+class TSP {
 public:
-    TSPConcorde(vector<vector<double>>& transCostMat);
+    explicit TSP(std::vector<std::vector<double>>& transCostMat);
 
-    bool Solve();
+    bool solve();
 
-    const vector<double>& getXVarTSP() const {
+    const std::vector<double>& getXVarTSP() const {
         return x_TSP;
     }
 
-    const  vector<int>& getRouteTSP() const {
+    const std::vector<int>& getRouteTSP() const {
         return routeTSP;
     }
 
-    const  vector<int>& getRoutePositionTSP() const {
-        return routeTSP_Poistion;
+    const std::vector<int>& getRoutePositionTSP() const {
+        return routeTSP_Position;
     }
 
-    const vector<vector<int>>& getVisitMatrixTSP() const {
+    const std::vector<std::vector<int>>& getVisitMatrixTSP() const {
         return visitMat;
     }
 
@@ -33,29 +33,29 @@ public:
     }
 
 private:
+    std::vector<std::vector<double>> transCostMat;
     int numNodes;
     int numEdges;
     double THRESHOLD;
     bool save_lpFile;
     bool save_mpsResultFile;
-    vector<double> x_TSP;
-    vector<int> routeTSP;
-    vector<int> routeTSP_Position;
-    vector<vector<int>> visitMat;
+    std::vector<double> x_TSP;
+    std::vector<int> routeTSP;
+    std::vector<int> routeTSP_Position;
+    std::vector<std::vector<int>> visitMat;
     IloNumVarArray x;
     Result result;
 
-    vector<int> index_i;
-    vector<int> index_j;
-    vector<vector<int>> index_e;
+    std::vector<int> index_i;
+    std::vector<int> index_j;
+    std::vector<std::vector<int>> index_e;
 
     void initializeIndices();
-    void DefineVariables (IloEnv& env, IloModel& model);
-    void DefineObjectiveFunction (IloEnv& env, IloModel& model);
-    void DefineConstraints (IloEnv& env, IloModel& model);
-    void RetrieveSolutions (IloCplex& cplex);
-    void DisplayVariables ();
-
+    void DefineVariables(IloEnv& env, IloModel& model);
+    void DefineObjectiveFunction(IloEnv& env, IloModel& model);
+    void DefineConstraints(IloEnv& env, IloModel& model);
+    void RetrieveSolutions(IloCplex& cplex);
+    void DisplayVariables();
 };
 
 #endif // TSPCONCORDE_H
