@@ -1,319 +1,1181 @@
-#include "ILS_SIRP.h"
+#include "ILS.h"
 
-ILS_SIRP::ILS_SIRP(const ParameterSetting &parameters, const Solution &solution, int w, int s)
-	: params(parameters),
-	  sol_FE(solution),
-	  warehouse(w),
-	  scenario(s),
-	  THRESHOLD(1e-2),
-	  save_lpFile(true),
-	  save_mpsResultFile(false)
+ILS_SIRP::ILS_SIRP(const ParameterSetting &parameters, const Solution &solution)
+	: params(parameters), sol_FE(solution)
 {
+	// Initialize random seed
+	srand(static_cast<unsigned int>(time(NULL)));
 	// ----------------------------------------------------------------------------------------------------------
+	cout << "\nILS_SIRP" << endl;
 	RATW = params.getRetailersAssignedToWarehouse();
-	numRetailer_w.resize(params.numWarehouses);
-	for (int w = 0; w < params.numWarehouses; ++w)
+}
+
+bool ILS_SIRP::solve()
+{
+	/*
+		Construct Initial Solution
+	*/
+	cout << "Construct Initial Solution" << endl;
+	ConstructHeuristic consHeuristic(params, sol_FE);
+	bool status = consHeuristic.Construct_InitialSolution();
+	if (!status)
 	{
-		numRetailer_w[w] = RATW[w].size();
+		cerr << "Failed to construct the initial solution" << endl;
+		return false;
 	}
 
-	warehouseInventory.resize(params.numWarehouses, vector<vector<double>>(params.numPeriods, vector<double>(params.numScenarios, 0.0)));
-	warehouseInventory = sol_FE.warehouseInventory;
+	Inv_Retailers = consHeuristic.getInvRetailers();
+	unmetDemand_Retailers = consHeuristic.getUnmetDemandRetailers();
+	deliveryQuantity_Retailers = consHeuristic.getDeliveryQuantityRetailers();
+	routes_WarehouseToRetailer = consHeuristic.getRoutesWarehouseToRetailer();
+	objValue = consHeuristic.getBestObjValue();
 
-	numRoutes_FirstEchelon = sol_FE.deliveryQuantityToWarehouse.size();
-	sumDeliveredToWarehouse.resize(params.numWarehouses, vector<double>(params.numPeriods, 0.0));
-	for (int t = 0; t < params.numPeriods; ++t)
+	for (int s = 0; s < params.numScenarios; ++s)
 	{
 		for (int w = 0; w < params.numWarehouses; ++w)
 		{
-			for (int routeInd = 0; routeInd < numRoutes_FirstEchelon; ++routeInd)
+			for (int t = 0; t < params.numPeriods; ++t)
 			{
-				sumDeliveredToWarehouse[w][t] += sol_FE.deliveryQuantityToWarehouse[routeInd][w][t];
+				for (int k = 0; k < params.numVehicles_Warehouse; ++k)
+				{
+					cout << "route[" << s << "][" << w << "][" << t << "][" << k << "] : [";
+					for (auto it = routes_WarehouseToRetailer[s][w][t][k].begin(); it != routes_WarehouseToRetailer[s][w][t][k].end(); ++it)
+					{
+						if (it != routes_WarehouseToRetailer[s][w][t][k].begin())
+						{
+							cout << " -> ";
+						}
+						cout << *it;
+					}
+					cout << "]" << endl;
+				}
 			}
 		}
 	}
 
-	dualValues_WarehouseInventoryLB.resize(params.numPeriods, 0.0);
-}
+	double objValue_best = calculateObjFuncValue_SecondEchelon(Inv_Retailers, unmetDemand_Retailers, routes_WarehouseToRetailer);
+	cout << "\nBest Objective Function Value (Second-Echelon): " << std::setprecision(1) << std::fixed << objValue_best << endl;
 
-void ILS_SIRP::initializeRetailers(vector<int> &assignedWarehouse)
-{
-	auto RATW = params.getRetailersAssignedToWarehouse();
-	for (int w = 0; w < params.numWarehouses; ++w)
+	if (!checkSolutionFeasiblity())
 	{
-		for (int i : RATW[w])
+		cerr << "Initial solution is not feasible" << endl;
+		return false;
+	}
+
+	double objValue_ILS = 0.0;
+	// vector<vector<double>> ObjValScenarioWarehouse(params.numScenarios, vector<double>(params.numWarehouses, 0.0));
+	for (int s = 0; s < params.numScenarios; ++s)
+	{
+		for (int w = 0; w < params.numWarehouses; ++w)
 		{
-			assignedWarehouse[i] = w;
+			// Local Search
+			// Create scenario warehouse local solution
+			// vector<vector<double>> Inv_Retailers_ScenarioWarehouse(RATW[w].size(), vector<double>(params.numPeriods, 0.0));
+			// vector<vector<double>> unmetDemand_Retailers_ScenarioWarehouse(RATW[w].size(), vector<double>(params.numPeriods, 0.0));
+			// vector<vector<double>> deliveryQuantity_Retailers_ScenarioWarehouse(RATW[w].size(), vector<double>(params.numPeriods, 0.0));
+
+			// for (int t = 0; t < params.numPeriods; ++t)
+			// {
+			// 	for (size_t i = 0; i < RATW[w].size(); ++i)
+			// 	{
+			// 		Inv_Retailers_ScenarioWarehouse[i][t] = Inv_Retailers[RATW[w][i]][t][s];
+			// 		unmetDemand_Retailers_ScenarioWarehouse[i][t] = unmetDemand_Retailers[RATW[w][i]][t][s];
+			// 		deliveryQuantity_Retailers_ScenarioWarehouse[i][t] = deliveryQuantity_Retailers[RATW[w][i]][t][s];
+
+			// 		// cout << "Inv_Ret_temp[" << RATW[w][i] << "][" << t <<  "][" << s << "] = " << Inv_Ret_temp[i][t] << endl;
+			// 		// cout << "unmetDemand_Ret_temp[" << RATW[w][i] << "][" << t <<  "][" << s << "] = " << unmetDemand_Ret_temp[i][t] << endl;
+			// 		// cout << "delQuant_Ret_temp[" << RATW[w][i] << "][" << t <<  "][" << s << "] = " << delQuant_Ret_temp[i][t] << endl;
+			// 	}
+			// }
+			// vector<vector<vector<int>>> routes_WareToRet_ScenarioWarehouse = routes_WarehouseToRetailer[s][w];
+
+			// double objVal_ScenarioWarehouse_temp = calculateObjFuncValue_ScenarioWarehouse(s, w, Inv_Retailers_ScenarioWarehouse, unmetDemand_Retailers_ScenarioWarehouse, routes_WareToRet_ScenarioWarehouse);
+			// cout << "Best Objective Function Value (Scenario Warehouse): " << std::setprecision(1) << std::fixed << objVal_ScenarioWarehouse_temp << endl;
+
+			// double objVal = 0.0;
+			// LocalSearch ls(params, sol_FE);
+			// ls.RVND(s, w,
+			// 		Inv_Retailers_ScenarioWarehouse,
+			// 		unmetDemand_Retailers_ScenarioWarehouse,
+			// 		deliveryQuantity_Retailers_ScenarioWarehouse,
+			// 		routes_WareToRet_ScenarioWarehouse,
+			// 		objVal);
+
+			// for (int t = 0; t < params.numPeriods; ++t)
+			// {
+			// 	for (size_t i = 0; i < RATW[w].size(); ++i)
+			// 	{
+			// 		Inv_Retailers[RATW[w][i]][t][s] = Inv_Retailers_ScenarioWarehouse[i][t];
+			// 		unmetDemand_Retailers[RATW[w][i]][t][s] = unmetDemand_Retailers_ScenarioWarehouse[i][t];
+			// 		deliveryQuantity_Retailers[RATW[w][i]][t][s] = deliveryQuantity_Retailers_ScenarioWarehouse[i][t];
+
+			// 		// cout << "Inv_Ret_temp[" << RATW[w][i] << "][" << t <<  "][" << s << "] = " << Inv_Retailers[RATW[w][i]][t][s] << endl;
+			// 		// cout << "unmetDemand_Ret_temp[" << RATW[w][i] << "][" << t <<  "][" << s << "] = " << unmetDemand_Retailers[RATW[w][i]][t][s] << endl;
+			// 		// cout << "delQuant_Ret_temp[" << RATW[w][i] << "][" << t <<  "][" << s << "] = " << deliveryQuantity_Retailers[RATW[w][i]][t][s] << endl;
+			// 	}
+			// }
+			// routes_WarehouseToRetailer[s][w] = routes_WareToRet_ScenarioWarehouse;
+
+			// ObjValScenarioWarehouse[s][w] = objVal;
+
+			// ---------------------------------------------------------------------------------------------
+			const int maxIterILS = 50;
+			int numIterILS = 0;
+			bool stop = false;
+			double best_ObjValue_ScenarioWarehouse = std::numeric_limits<double>::max();
+			while (!stop && numIterILS < maxIterILS)
+			{
+				cout << "\nIteration (ILS) for Scenario " << s << ", Warehouse " << w << ": " << numIterILS + 1 << endl;
+				vector<vector<double>> Inv_Retailers_ScenarioWarehouse(RATW[w].size(), vector<double>(params.numPeriods, 0.0));
+				vector<vector<double>> unmetDemand_Retailers_ScenarioWarehouse(RATW[w].size(), vector<double>(params.numPeriods, 0.0));
+				vector<vector<double>> deliveryQuantity_Retailers_ScenarioWarehouse(RATW[w].size(), vector<double>(params.numPeriods, 0.0));
+
+				for (int t = 0; t < params.numPeriods; ++t)
+				{
+					for (size_t i = 0; i < RATW[w].size(); ++i)
+					{
+						Inv_Retailers_ScenarioWarehouse[i][t] = Inv_Retailers[RATW[w][i]][t][s];
+						unmetDemand_Retailers_ScenarioWarehouse[i][t] = unmetDemand_Retailers[RATW[w][i]][t][s];
+						deliveryQuantity_Retailers_ScenarioWarehouse[i][t] = deliveryQuantity_Retailers[RATW[w][i]][t][s];
+
+						// cout << "Inv_Ret_temp[" << RATW[w][i] << "][" << t <<  "][" << s << "] = " << Inv_Ret_temp[i][t] << endl;
+						// cout << "unmetDemand_Ret_temp[" << RATW[w][i] << "][" << t <<  "][" << s << "] = " << unmetDemand_Ret_temp[i][t] << endl;
+						// cout << "delQuant_Ret_temp[" << RATW[w][i] << "][" << t <<  "][" << s << "] = " << delQuant_Ret_temp[i][t] << endl;
+					}
+				}
+				vector<vector<vector<int>>> routes_WareToRet_ScenarioWarehouse = routes_WarehouseToRetailer[s][w];
+				double objVal_ScenarioWarehouse_temp = calculateObjFuncValue_ScenarioWarehouse(s, w, Inv_Retailers_ScenarioWarehouse, unmetDemand_Retailers_ScenarioWarehouse, routes_WareToRet_ScenarioWarehouse);
+				cout << "Best Objective Function Value (Scenario Warehouse): " << std::setprecision(1) << std::fixed << objVal_ScenarioWarehouse_temp << endl;
+
+				if (numIterILS > 0)
+				{
+					/*
+						Perturbation
+					*/
+					Perturbation perturb(params, sol_FE);
+					bool perturbSuccess = perturb.run(s, w,
+													  Inv_Retailers_ScenarioWarehouse,
+													  unmetDemand_Retailers_ScenarioWarehouse,
+													  deliveryQuantity_Retailers_ScenarioWarehouse,
+													  routes_WareToRet_ScenarioWarehouse);
+					if (!perturbSuccess)
+					{
+						stop = true;
+					}
+				}
+
+				for (int t = 0; t < params.numPeriods; ++t)
+				{
+					for (int k = 0; k < params.numVehicles_Warehouse; ++k)
+					{
+						cout << "route[" << t << "][" << k << "] : [";
+						for (auto it = routes_WareToRet_ScenarioWarehouse[t][k].begin(); it != routes_WareToRet_ScenarioWarehouse[t][k].end(); ++it)
+						{
+							if (it != routes_WareToRet_ScenarioWarehouse[t][k].begin())
+							{
+								cout << " -> ";
+							}
+							cout << *it;
+						}
+						cout << "]" << endl;
+					}
+				}
+
+				/*
+					Local Search
+				*/
+				double objValue_ScenarioWarehouse = 0.0;
+				double objval = 0.0;
+				LocalSearch ls(params, sol_FE);
+				ls.RVND(s, w,
+						Inv_Retailers_ScenarioWarehouse,
+						unmetDemand_Retailers_ScenarioWarehouse,
+						deliveryQuantity_Retailers_ScenarioWarehouse,
+						routes_WareToRet_ScenarioWarehouse,
+						objval);
+
+				objValue_ScenarioWarehouse = calculateObjFuncValue_ScenarioWarehouse(s, w, Inv_Retailers_ScenarioWarehouse, unmetDemand_Retailers_ScenarioWarehouse, routes_WareToRet_ScenarioWarehouse);
+				// cout << "Best Objective Function Value (Scenario Warehouse): " << std::setprecision(1) << std::fixed << best_ObjValue_ScenarioWarehouse << endl;
+
+				if (objValue_ScenarioWarehouse < best_ObjValue_ScenarioWarehouse)
+				{
+					best_ObjValue_ScenarioWarehouse = objValue_ScenarioWarehouse;
+					for (int t = 0; t < params.numPeriods; ++t)
+					{
+						for (size_t i = 0; i < RATW[w].size(); ++i)
+						{
+							Inv_Retailers[RATW[w][i]][t][s] = Inv_Retailers_ScenarioWarehouse[i][t];
+							unmetDemand_Retailers[RATW[w][i]][t][s] = unmetDemand_Retailers_ScenarioWarehouse[i][t];
+							deliveryQuantity_Retailers[RATW[w][i]][t][s] = deliveryQuantity_Retailers_ScenarioWarehouse[i][t];
+						}
+					}
+					routes_WarehouseToRetailer[s][w] = routes_WareToRet_ScenarioWarehouse;
+					cout << "Best Objective Function Value (Scenario Warehouse): " << std::setprecision(1) << std::fixed << best_ObjValue_ScenarioWarehouse << endl;
+				}
+
+				// objValue_ILS += params.probability[s] * objVal;
+				numIterILS++;
+			}
 		}
 	}
-}
 
-void ILS_SIRP::simulateScenario(int s)
-{
-	calculateInventoryAndUnmetDemand(s);
-	for (int w = 0; w < params.numWarehouses; ++w)
+	for (int s = 0; s < params.numScenarios; ++s)
 	{
-		defineSetOne(s, w);
-		scheduleDeliveries(s, w);
+		for (int w = 0; w < params.numWarehouses; ++w)
+		{
+			for (int t = 0; t < params.numPeriods; ++t)
+			{
+				for (int k = 0; k < params.numVehicles_Warehouse; ++k)
+				{
+					cout << "route[" << s << "][" << w << "][" << t << "][" << k << "] : [";
+					for (auto it = routes_WarehouseToRetailer[s][w][t][k].begin(); it != routes_WarehouseToRetailer[s][w][t][k].end(); ++it)
+					{
+						if (it != routes_WarehouseToRetailer[s][w][t][k].begin())
+						{
+							cout << " -> ";
+						}
+						cout << *it;
+					}
+					cout << "]" << endl;
+				}
+			}
+		}
 	}
+	// cout << "ObjValue_ILS: " << objValue_ILS << endl;
+
+	// int maxIterILS = 50;
+	// bool stop = false;
+
+	// 	double objValue_new = 0.0;
+
+	// 			if (objVal < ObjValScenarioWarehouse[s][w]){
+	// 				ObjValScenarioWarehouse[s][w] = objVal;
+	// 				for (int t = 0; t < params.numPeriods; ++t)
+	// 				{
+	// 					for (size_t i = 0; i < RATW[w].size(); ++i)
+	// 					{
+	// 						Inv_Retailers[RATW[w][i]][t][s] = Inv_Retailers_ScenarioWarehouse[i][t];
+	// 						unmetDemand_Retailers[RATW[w][i]][t][s] = unmetDemand_Retailers_ScenarioWarehouse[i][t];
+	// 						deliveryQuantity_Retailers[RATW[w][i]][t][s] = deliveryQuantity_Retailers_ScenarioWarehouse[i][t];
+	// 					}
+	// 				}
+	// 				routes_WarehouseToRetailer[s][w] = routes_WareToRet_ScenarioWarehouse;
+	// 			}
+
+	// 			objValue_new += params.probability[s] * ObjValScenarioWarehouse[s][w];
+	// 		}
+	// 	}
+
+	// 	cout << "objValue_new: " << objValue_new << endl;
+	// 	cout << "objValue_ILS: " << objValue_ILS << endl;
+	// 	if (objValue_new < objValue_ILS)
+	// 	{
+	// 		objValue_ILS = objValue_new;
+	// 	}
+
+	// }
+	// objValue_ILS = objValue_new;
+	// cout << "objValue_ILS: " << objValue_ILS << endl;
+
+	// ----------------------------------------------------------------------------------------------------------
+	if (!checkSolutionFeasiblity())
+	{
+		cerr << "Initial solution is not feasible" << endl;
+		return false;
+	}
+
+	// for (int s = 0; s < params.numScenarios; ++s)
+	// {
+	// 	for (int t = 0; t < params.numPeriods; ++t)
+	// 	{
+	// 		for (int i = 0; i < params.numRetailers; ++i)
+	// 		{
+	// 			if (Inv_Retailers[i][t][s] != 0)
+	// 			{
+	// 				cout << "Inv_Retailers[" << i << "][" << t << "][" << s << "] = " << Inv_Retailers[i][t][s] << endl;
+	// 			}
+
+	// 			if (unmetDemand_Retailers[i][t][s] != 0)
+	// 			{
+	// 				cout << "unmetDemand_Retailers[" << i << "][" << t << "][" << s << "] = " << unmetDemand_Retailers[i][t][s] << endl;
+	// 			}
+	// 		}
+	// 	}
+	// }
+
+	double objValue_new = calculateObjFuncValue_SecondEchelon(Inv_Retailers, unmetDemand_Retailers, routes_WarehouseToRetailer);
+	cout << "\nObjValue_new: " << objValue_new << endl;
+
+	return true;
 }
 
-void ILS_SIRP::calculateDecisionVariables(int s, vector<vector<double>> &Inv_Customers, vector<vector<double>> &unmetDemand_Customers, vector<vector<double>> &deliveryQuantity_Customers)
+double ILS_SIRP::calculateObjFuncValue_ScenarioWarehouse(int s, int w, const vector<vector<double>> &Inv_Ret_Temp, const vector<vector<double>> &unmetDem_Ret_Temp, const vector<vector<vector<int>>> &route_WTR_Temp)
 {
-	auto initiInv_retailers = params.initialInventory;
-	
+	// cout << "\ncalculating objFuncValue_ScenarioWarehouse" << endl;
+	// for (int t = 0; t < params.numPeriods; ++t)
+	// {
+	// 	for (int i = 0; i < RATW[w].size(); ++i)
+	// 	{
+	// 		if (Inv_Ret_Temp[i][t] > 0.0)
+	// 		{
+	// 			cout << "ret_Inv[" << i << "][" << t << "] = " << Inv_Ret_Temp[i][t] << endl;
+	// 		}
+
+	// 		if (unmetDem_Ret_Temp[i][t] > 0.0)
+	// 		{
+	// 			cout << "ret_unmDem[" << i << "][" << t << "] = " << unmetDem_Ret_Temp[i][t] << endl;
+	// 		}
+	// 	}
+	// }
+
+	double objFuncValue = 0.0;
+
+	double inventoryCost = 0.0;
+	double unmetDemandCost = 0.0;
+	double routeCost_Warehouse = 0.0;
+
+	// Inventory Holding Cost and Unmet Demand Cost
+	for (int t = 0; t < params.numPeriods; ++t)
+	{
+		for (int i = 0; i < RATW[w].size(); ++i)
+		{
+			objFuncValue += params.unitHoldingCost_Retailer[RATW[w][i]] * Inv_Ret_Temp[i][t];
+			objFuncValue += params.unmetDemandPenalty[RATW[w][i]] * unmetDem_Ret_Temp[i][t];
+
+			inventoryCost += params.unitHoldingCost_Retailer[RATW[w][i]] * Inv_Ret_Temp[i][t];
+			// cout << params.unitHoldingCost_Retailer[RATW[w][i]] << " * " << Inv_Ret_Temp[i][t] << " = " << params.unitHoldingCost_Retailer[RATW[w][i]] * Inv_Ret_Temp[i][t] << endl;
+			unmetDemandCost += params.unmetDemandPenalty[RATW[w][i]] * unmetDem_Ret_Temp[i][t];
+		}
+	}
 
 	for (int t = 0; t < params.numPeriods; ++t)
 	{
-		for (int i = 0; i < params.numRetailers; ++i)
+		for (int k = 0; k < params.numVehicles_Warehouse; ++k)
 		{
-			Inv_Customers[i][t] = initiInv_retailers[i];
-			for (int l = 0; l < t; ++l)
+			double routeCost = 0.0;
+
+			int previousNode = w;
+			for (int j = 1; j < route_WTR_Temp[t][k].size(); ++j)
 			{
-				Inv_Customers[i][t] -= params.demand[i][t][s];
-				Inv_Customers[i][t] += deliveryQuantity_Customers[i][l];
+				int currentNode = route_WTR_Temp[t][k][j];
+				objFuncValue += params.transportationCost_SecondEchelon[previousNode][currentNode];
+
+				routeCost += params.transportationCost_SecondEchelon[previousNode][currentNode];
+
+				routeCost_Warehouse += params.transportationCost_SecondEchelon[previousNode][currentNode];
+				previousNode = currentNode;
 			}
 
-			if (Inv_Customers[i][t] < 0)
+			// cout << "Route[" << w << "][" << t << "][" << k << "]: [";
+			// for (int i = 0; i < route_WTR_Temp[t][k].size(); ++i)
+			// {
+			// 	if (i != route_WTR_Temp[t][k].size() - 1)
+			// 	{
+			// 		cout << route_WTR_Temp[t][k][i] << " -> ";
+			// 	}
+			// 	else
+			// 	{
+			// 		cout << route_WTR_Temp[t][k][i];
+			// 	}
+			// }
+			// cout << "]" << endl;
+
+			// cout << "Route Cost(RVND)[" << s << "][" << w << "][" << t << "][" << k << "]: " << routeCost << endl;
+		}
+	}
+
+	// cout << "Inventory Cost (RVND)[" << s << "][" << w << "]: " << inventoryCost << endl;
+	// cout << "Unmet Demand Cost (RVND)[" << s << "][" << w << "]: " << unmetDemandCost << endl;
+	// cout << "Route Cost (RVND)[" << s << "][" << w << "]: " << routeCost_Warehouse << endl;
+
+	// cout << "objFuncValue:" << objFuncValue << endl;
+	return objFuncValue;
+}
+
+bool ILS_SIRP::checkSolutionFeasiblity()
+{
+	// ----------------------------------------------------------------------------------------------------------
+	// Retailers Inventory Capacity of Retailers
+	for (int s = 0; s < params.numScenarios; ++s)
+	{
+		for (int t = 0; t < params.numPeriods; ++t)
+		{
+			for (int i = 0; i < params.numRetailers; ++i)
 			{
-				unmetDemand_Customers[i][t] = -Inv_Customers[i][t];
-				Inv_Customers[i][t] = 0.0;
+				// if (Inv_Retailers[i][t][s] > 0.0){
+				// 	cout << "\nI[" << i + params.numWarehouses << "][" << t << "][" << s << "]: " << Inv_Retailers[i][t][s] << endl;
+				// }
+
+				// if (unmetDemand_Retailers[i][t][s] > 0.0){
+				// 	cout << "b[" << i + params.numWarehouses << "][" << t << "][" << s << "]: " << unmetDemand_Retailers[i][t][s] << endl;
+				// }
+
+				// if (deliveryQuantity_Retailers[i][t][s] > 0.0){
+				// 	cout << "q[" << i + params.numWarehouses << "][" << t << "][" << s << "]: " << deliveryQuantity_Retailers[i][t][s] << endl;
+				// }
+
+				// cout << "demand[" << i + params.numWarehouses << "][" << t << "][" << s << "]: " << params.demand[i][t][s] << endl;
+				// cout << "init_Inv[" << i + params.numWarehouses << "][" << t << "][" << s << "]: " << params.initialInventory_Retailer[i] << endl;
+
+				if (t == 0)
+				{
+					if (Inv_Retailers[i][t][s] != params.initialInventory_Retailer[i] + unmetDemand_Retailers[i][t][s] + deliveryQuantity_Retailers[i][t][s] - params.demand[i][t][s])
+					{
+						cout << "I[" << i << "][" << t << "][" << s << "] != ";
+						cout << "init_Inv[" << i << "][" << t << "][" << s << "] + ";
+						cout << "w[" << i << "][" << t << "][" << s << "] - ";
+						cout << "demand[" << i << "][" << t << "][" << s << "]";
+						cout << "b[" << i << "][" << t << "][" << s << "]" << endl;
+
+						cout << Inv_Retailers[i][t][s] << " != " << params.initialInventory_Retailer[i] << " + " << deliveryQuantity_Retailers[i][t][s] << " - " << params.demand[i][t][s] << " + " << unmetDemand_Retailers[i][t][s] << endl;
+
+						return false;
+					}
+				}
+				else
+				{
+					if (Inv_Retailers[i][t][s] != Inv_Retailers[i][t - 1][s] + unmetDemand_Retailers[i][t][s] + deliveryQuantity_Retailers[i][t][s] - params.demand[i][t][s])
+					{
+						cout << "I[" << i << "][" << t << "][" << s << "] != ";
+						cout << "I" << i << "][" << t - 1 << "][" << s << "] + ";
+						cout << "w[" << i << "][" << t << "][" << s << "] - ";
+						cout << "demand[" << i << "][" << t << "][" << s << "]";
+						cout << "b[" << i << "][" << t << "][" << s << "]" << endl;
+
+						cout << Inv_Retailers[i][t][s] << " != " << Inv_Retailers[i][t - 1][s] << " + " << deliveryQuantity_Retailers[i][t][s] << " - " << params.demand[i][t][s] << " + " << unmetDemand_Retailers[i][t][s] << endl;
+
+						return false;
+					}
+				}
+
+				if (Inv_Retailers[i][t][s] + params.demand[i][t][s] > params.storageCapacity_Retailer[i])
+				{
+					cout << "Inv_Retailers[i][t][s] + demand[i][t][s] > storageCapacity_Retailer" << endl;
+					return false;
+				}
+			}
+		}
+
+		for (int w = 0; w < params.numWarehouses; ++w)
+		{
+			for (int t = 0; t < params.numPeriods; ++t)
+			{
+				// for (int k = 0; k < params.numVehicles_Warehouse; ++k)
+				// {
+				// 	cout << "route[" << s << "][" << w << "][" << t << "][" << k << "] : [";
+				// 	for (auto it = routes_WarehouseToRetailer[s][w][t][k].begin(); it != routes_WarehouseToRetailer[s][w][t][k].end(); ++it)
+				// 	{
+				// 		if (it != routes_WarehouseToRetailer[s][w][t][k].begin())
+				// 		{
+				// 			cout << " -> ";
+				// 		}
+				// 		cout << *it;
+				// 	}
+				// 	cout << "]" << endl;
+				// }
+
+				for (int k = 0; k < params.numVehicles_Warehouse; ++k)
+				{
+					if (!routes_WarehouseToRetailer[s][w][t][k].empty())
+					{
+						double sum = 0.0;
+						for (auto it = routes_WarehouseToRetailer[s][w][t][k].begin() + 1; it != routes_WarehouseToRetailer[s][w][t][k].end() - 1; ++it)
+						{
+							sum += deliveryQuantity_Retailers[*it - params.numWarehouses][t][s];
+						}
+
+						if (sum > params.vehicleCapacity_Warehouse)
+						{
+							for (auto it = routes_WarehouseToRetailer[s][w][t][k].begin() + 1; it != routes_WarehouseToRetailer[s][w][t][k].end() - 1; ++it)
+							{
+								cout << "w[" << *it << "][" << t << "][" << s << "] + ";
+							}
+							cout << " > Q warehouse " << endl;
+							cout << sum << " > " << params.vehicleCapacity_Warehouse << endl;
+
+							return false;
+						}
+					}
+				}
 			}
 		}
 	}
+	return true;
 }
 
-double ILS_SIRP::calculateDeliveryPotentialSetOne(int i, int t, vector<double> &Inv_Customers)
+double ILS_SIRP::calculateObjFuncValue_SecondEchelon(const vector<vector<vector<double>>> &Inv_Retailers, const vector<vector<vector<double>>> &unmetDemand_Retailers, const vector<vector<vector<vector<vector<int>>>>> &routes_WarehouseToRetailers)
 {
-	double potentialDelivery = std::min(params.vehicleCapacity_Warehouse, (params.storageCapacity_Retailers[i] - Inv_Customers[i][t]));
-	return potentialDelivery;
-}
-
-void ILS_SIRP::defineSetOne(int s, int w)
-{
-	auto RATW = params.getRetailersAssignedToWarehouse();
-	for (int t = 0; t < params.numPeriods; ++t)
+	double objFuncValue = 0.0;
+	for (int s = 0; s < params.numScenarios; ++s)
 	{
-		for (int i : RATW[w])
+		// for (int t = 0; t < params.numPeriods; ++t)
+		// {
+		// 	for (int i = 0; i < params.numRetailers; ++i)
+		// 	{
+		// 		if (Inv_Retailers[i][t][s] != 0)
+		// 		{
+		// 			cout << "Inv_Retailers[" << i << "][" << t << "][" << s << "] = " << Inv_Retailers[i][t][s] << endl;
+		// 		}
+
+		// 		if (unmetDemand_Retailers[i][t][s] != 0)
+		// 		{
+		// 			cout << "unmetDemand_Retailers[" << i << "][" << t << "][" << s << "] = " << unmetDemand_Retailers[i][t][s] << endl;
+		// 		}
+		// 	}
+		// }
+
+		double objValue_ScenarioWarehouse = 0.0;
+		double Inv_cost_ScenarioWarehouse = 0.0;
+		double unmetDemand_ScenarioWarehouse = 0.0;
+		double routeCost_ScenarioWarehouse = 0.0;
+
+		for (int t = 0; t < params.numPeriods; ++t)
 		{
-			warehouseInventory[w][t][s] += params.demand[i][t][s];
+			for (int i = 0; i < params.numRetailers; ++i)
+			{
+				objFuncValue += params.probability[s] * params.unitHoldingCost_Retailer[i] * Inv_Retailers[i][t][s];
+				Inv_cost_ScenarioWarehouse += params.unitHoldingCost_Retailer[i] * Inv_Retailers[i][t][s];
+				// cout << params.unitHoldingCost_Retailer[i] << " * " << Inv_Retailers[i][t][s] << " = " << params.unitHoldingCost_Retailer[i] * Inv_Retailers[i][t][s] << endl;
+
+				objFuncValue += params.probability[s] * params.unmetDemandPenalty[i] * unmetDemand_Retailers[i][t][s];
+				unmetDemand_ScenarioWarehouse += params.unmetDemandPenalty[i] * unmetDemand_Retailers[i][t][s];
+
+				objValue_ScenarioWarehouse += params.unitHoldingCost_Retailer[i] * Inv_Retailers[i][t][s];
+				objValue_ScenarioWarehouse += params.unmetDemandPenalty[i] * unmetDemand_Retailers[i][t][s];
+			}
 		}
+
+		for (int w = 0; w < params.numWarehouses; ++w)
+		{
+			for (int t = 0; t < params.numPeriods; ++t)
+			{
+				for (int k = 0; k < params.numVehicles_Warehouse; ++k)
+				{
+					double routeCost = 0.0;
+
+					int previousNode = w;
+					for (int j = 1; j < routes_WarehouseToRetailers[s][w][t][k].size(); ++j)
+					{
+						int currentNode = routes_WarehouseToRetailers[s][w][t][k][j];
+						objFuncValue += params.probability[s] * params.transportationCost_SecondEchelon[previousNode][currentNode];
+
+						routeCost += params.transportationCost_SecondEchelon[previousNode][currentNode];
+
+						objValue_ScenarioWarehouse += params.transportationCost_SecondEchelon[previousNode][currentNode];
+						routeCost_ScenarioWarehouse += params.transportationCost_SecondEchelon[previousNode][currentNode];
+						previousNode = currentNode;
+					}
+
+					// cout << "Route cost (ILS) scenario " << s << " warehouse " << w << " period " << t << " vehicle " << k << " : " << routeCost << endl;
+				}
+			}
+		}
+		// cout << "Inventory cost (ILS) scenario " << s << " : " << Inv_cost_ScenarioWarehouse << endl;
+		// cout << "Unmet demand cost (ILS) scenario " << s << " : " << unmetDemand_ScenarioWarehouse << endl;
+		// cout << "Route cost (ILS) scenario " << s << " : " << routeCost_ScenarioWarehouse << endl;
+		// cout << "Objective value (ILS) scenario " << s << " : " << objValue_ScenarioWarehouse << endl;
 	}
+	return objFuncValue;
 }
 
-void ILS_SIRP::scheduleDeliveries(int s, int w)
+ConstructHeuristic::ConstructHeuristic(const ParameterSetting &parameters, const Solution &solution)
+	: params(parameters),
+	  sol_FE(solution)
 {
-	vector<double> remainingAvailInventoryWarehouse(params.numPeriods, 0.0);
-	vector<double> remainingVehicleCapacity(params.numPeriods, params.numVehicles_Warehouse * params.vehicleCapacity_Warehouse);
+	// ----------------------------------------------------------------------------------------------------------
+	RATW = params.getRetailersAssignedToWarehouse();
+	assignedWarehouseToRetailer = params.getWarehouseAssignedToRetailer();
 
-	for (int t = 0; t < params.numPeriods; ++t)
-	{
-		// Logic for calculating deliveries
-	}
+	// we calculate the Retailers per unit unemt demand penalty cost to approximate per unit demand satisfaction cost ratio
+	// We order Retailers in descending order to have them from highest to lowest penalty cost ratio. (this shows the prioritun in demand satisfaction)
+	sorted_Retailers_byPenaltyCostRatio.resize(params.numWarehouses, vector<int>());
+	orderRetailersByUnmetDemandToDeliveryRatio(sorted_Retailers_byPenaltyCostRatio);
+
+	bestObjValue = 0.0;
+	Inv_Retailers_bestSolution.resize(params.numRetailers, vector<vector<double>>(params.numPeriods, vector<double>(params.numScenarios, 0.0)));
+	unmetDemand_Retailers_bestSolution.resize(params.numRetailers, vector<vector<double>>(params.numPeriods, vector<double>(params.numScenarios, 0.0)));
+	deliveryQuantity_Retailers_bestSolution.resize(params.numRetailers, vector<vector<double>>(params.numPeriods, vector<double>(params.numScenarios, 0.0)));
+	routes_bestSolution.resize(params.numScenarios, vector<vector<vector<vector<int>>>>(params.numWarehouses, vector<vector<vector<int>>>(params.numPeriods, vector<vector<int>>(params.numVehicles_Warehouse, vector<int>()))));
+
+	// for (int s = 0; s < params.numScenarios; ++s)
+	// {
+	// 	for (int t = 0; t < params.numPeriods; ++t)
+	// 	{
+	// 		for (int w = 0; w < params.numWarehouses; ++w)
+	// 		{
+	// 			cout << sol_FE.warehouseInventory[w][t][s] << " ";
+	// 		}
+	// 		cout << "| ";
+	// 	}
+	// 	cout << endl;
+	// }
 }
 
-void ILS_SIRP::orderCustomersByUnmetDemandToDeliveryRatio(int w, auto &RATW, int look_ahead = 0)
+void ConstructHeuristic::orderRetailersByUnmetDemandToDeliveryRatio(vector<vector<int>> &sorted_retailer_costRatio)
 {
 	// calculate the stockout to demand satisfaction cost ratio using: Ratio = penaltyCost[i] / F/C + 2c[0][w] + 2c[w][i] + look_ahead * h[i]
-	vector<std::pair<int, double>> customer_costRatio;
-	for (int i : RATW[w])
+	for (int w = 0; w < params.numWarehouses; ++w)
 	{
-		double costRatio = (params.undemtDemandPenaltyCost[i]) /
-								((params.setupCost / params.productionCapacity) +
-								(2 * params.TransportationCost_FirstEchelon[0][w + 1]) +
-								(2 * transportationCost_SecondEchelon[w][i + params.numWarehouses]) +
-								look_ahead * params.unitHoldingCost[i]);
+		vector<std::pair<int, double>> retailer_costRatio;
+		for (int i : RATW[w])
+		{
+			double costRatio = (params.unmetDemandPenalty[i]) /
+							   ((params.setupCost / params.prodCapacity) +
+								((2 * params.transportationCost_FirstEchelon[0][w + 1]) / params.vehicleCapacity_Plant) +
+								((2 * params.transportationCost_SecondEchelon[w][i + params.numWarehouses]) / params.vehicleCapacity_Warehouse));
 
-		customer_costRatio.emplace_back(i, costRatio);
+			retailer_costRatio.emplace_back(i + params.numWarehouses, costRatio);
+		}
+
+		std::sort(retailer_costRatio.begin(), retailer_costRatio.end(), [](const std::pair<int, double> &a, const std::pair<int, double> &b)
+				  { return a.second > b.second; });
+
+		for (const auto &pair : retailer_costRatio)
+		{
+			sorted_retailer_costRatio[w].push_back(pair.first);
+		}
+
+		// for (const auto &i : sorted_retailer_costRatio[w])
+		// {
+		// 	cout << "Sorted retailer CostRatio[" << w << "] = " << i << endl;
+		// }
 	}
-
-	std::sort(customer_costRatio.begin(), customer_costRatio.end(), [](const std::pair<int, double> &a, const std::pair<int, double> &b)
-		{ return a.second > b.second; });
-
-	vector<int> sorted_customer_costRatio;
-	for (const auto &pair : customer_costRatio)
-	{
-		sorted_customer_costRatio.push_back(pair.first);
-	}
-
-	return sorted_customer_costRatio;
 }
 
-void ILS_SIRP::defineSetOne(int w, int t, auto &setOne, auto &unmetDemand_Customers)
+void ConstructHeuristic::calculateDecisionVariables(int s, int w, vector<vector<double>> &Inv_Retailers, vector<vector<double>> &unmetDemand_Retailers, vector<vector<double>> &deliveryQuantity_Retailers)
 {
-	// sorted_customer_costRatio[0] means the look_ahead = 0
-	auto sorted_customer_costRatio = orderCustomersByUnmetDemandToDeliveryRatio(w, RATW);
-	for (int i : sorted_customer_costRatio)
+	for (int t = 0; t < params.numPeriods; ++t)
 	{
-		if (unmetDemand_Customers[i][t] > 0)
+		for (int i : RATW[w])
 		{
-			setOne[t].push_back(i);
+			Inv_Retailers[i][t] = 0.0;
+			unmetDemand_Retailers[i][t] = 0.0;
+			if (t == 0)
+			{
+				Inv_Retailers[i][t] = params.initialInventory_Retailer[i];
+			}
+			else
+			{
+				Inv_Retailers[i][t] = Inv_Retailers[i][t - 1];
+			}
+			Inv_Retailers[i][t] -= params.demand[i][t][s];
+			Inv_Retailers[i][t] += deliveryQuantity_Retailers[i][t];
+
+			if (Inv_Retailers[i][t] < 0)
+			{
+				unmetDemand_Retailers[i][t] = -Inv_Retailers[i][t];
+				Inv_Retailers[i][t] = 0.0;
+			}
+
+			// cout << "\nInv_Retailers_bestSolScenario[" << i + params.numWarehouses << "][" << t << "]: " << Inv_Retailers[i][t] << endl;
+			// cout << "deliveryQuantity_Retailers_bestSolScenario[" << i + params.numWarehouses << "][" << t << "]: " << deliveryQuantity_Retailers[i][t] << endl;
+			// cout << "unmetDemand_Retailers_bestSolScenario[" << i + params.numWarehouses << "][" << t << "]: " << unmetDemand_Retailers[i][t] << endl;
+			// cout << "demand[" << i + params.numWarehouses << "][" << t << "][" << s << "]: " << params.demand[i][t][s] << endl;
 		}
 	}
 }
 
-void ILS_SIRP::defineSetTwo(int t, int look_ahead, auto &setOne, auto &setTwo, auto &unmetDemand_Customers)
+void ConstructHeuristic::defineSetOne(int s, int w, int t, vector<int> &setOne, vector<vector<double>> &Inv_Retailers, const vector<vector<double>> &unmetDemand_Retailers, vector<double> &tempDeliveryQuantity)
 {
-	auto sorted_customer_costRatio = orderCustomersByUnmetDemandToDeliveryRatio(w, RATW, look_ahead);
-	for (int i : sorted_customer_costRatio)
+	for (int i : sorted_Retailers_byPenaltyCostRatio[w])
 	{
-		if (setOne[t].find(i) == setOne[t].end() && unmetDemand_Customers[i][t + look_ahead] > 0)
+		int retIndex = i - params.numWarehouses;
+
+		if (unmetDemand_Retailers[retIndex][t] > 0)
 		{
-			setTwo[t].push_back(i);
+			setOne.push_back(i);
+
+			if (t == 0)
+			{
+				tempDeliveryQuantity[retIndex] = std::min({unmetDemand_Retailers[retIndex][t], params.vehicleCapacity_Warehouse, (params.storageCapacity_Retailer[retIndex] - params.initialInventory_Retailer[retIndex])});
+			}
+			else if (t == params.numPeriods - 1)
+			{
+				tempDeliveryQuantity[retIndex] = std::min(params.vehicleCapacity_Warehouse, unmetDemand_Retailers[retIndex][t]);
+			}
+			else
+			{
+				tempDeliveryQuantity[retIndex] = std::min({unmetDemand_Retailers[retIndex][t], params.vehicleCapacity_Warehouse, (params.storageCapacity_Retailer[retIndex] - Inv_Retailers[retIndex][t - 1])});
+			}
 		}
 	}
 }
 
-void ILS_SIRP::calculateDeliveryQuantitySetOne(int s, int w, int t, auto &setOne, auto &deliveryQuantity_Customers, auto &Inv_Customers, auto &unmetDemand_Customers)
+void ConstructHeuristic::defineSetTwo(int s, int w, int t, int look_ahead, vector<int> &setOne, vector<int> &setTwo, vector<vector<double>> &Inv_Retailers, const vector<vector<double>> &unmetDemand_Retailers, vector<double> &tempDeliveryQuantity)
 {
-	double remainingAvailInventoryWarehouse = sol_FE.warehouseInventory[w][t][s];
-	double remainingVehicleCapacity = params.numVehicles_Warehouse * params.vehicleCapacity_Warehouse;
-
-	for (int i : setOne[t])
+	for (int i : sorted_Retailers_byPenaltyCostRatio[w])
 	{
-		if (t == 0)
+		int retIndex = i - params.numWarehouses;
+
+		double unetDemandRetailers_lookAhead = 0.0;
+		for (int l = t + 1; l <= std::min(t + look_ahead, params.numPeriods - 1); ++l)
 		{
-			double potentialDelivery = std::min(params.vehicleCapacity_Warehouse, (params.storageCapacity_Retailers[i] - params.initialInventory_Retailers[i]));
-		}
-		else if (t == params.numPeriods - 1)
-		{
-			double potentialDelivery = std::min(params.vehicleCapacity_Warehouse, unmetDemand_Customers[i][t]);
-		}
-		else
-		{
-			double potentialDelivery = std::min(params.vehicleCapacity_Warehouse, (params.storageCapacity_Retailers[i] - Inv_Customers[i][t - 1]));
+			// cout << "look ahead demand [" << i << "] = " << unmetDemand_Retailers[retIndex][l] << endl;
+			unetDemandRetailers_lookAhead += unmetDemand_Retailers[retIndex][l];
 		}
 
-		if (remainingAvailInventoryWarehouse - potentialDelivery >= 0.0 && remainingVehicleCapacity - potentialDelivery >= 0.0)
+		if (unetDemandRetailers_lookAhead > 0)
 		{
-			remainingAvailInventoryWarehouse -= potentialDelivery;
-			remainingVehicleCapacity -= potentialDelivery;
+			// check if retailer i is in setOne
+			auto it = std::find(setOne.begin(), setOne.end(), i);
+			if (it != setOne.end())
+			{
+				if (t == 0)
+				{
+					tempDeliveryQuantity[retIndex] = std::min({unetDemandRetailers_lookAhead, params.vehicleCapacity_Warehouse, (params.storageCapacity_Retailer[retIndex] - params.initialInventory_Retailer[retIndex])});
+				}
+				else
+				{
+					tempDeliveryQuantity[retIndex] = std::min({unetDemandRetailers_lookAhead, params.vehicleCapacity_Warehouse, (params.storageCapacity_Retailer[retIndex] - Inv_Retailers[retIndex][t - 1])});
+				}
+			}
+			else if (it == setOne.end())
+			{
+				setTwo.push_back(i);
 
-			deliveryQuantity_Customers[i][t] += potentialDelivery;
+				if (t == 0)
+				{
+					tempDeliveryQuantity[retIndex] = std::min({unetDemandRetailers_lookAhead, params.vehicleCapacity_Warehouse, (params.storageCapacity_Retailer[retIndex] - params.initialInventory_Retailer[retIndex])});
+				}
+				else
+				{
+					tempDeliveryQuantity[retIndex] = std::min({unetDemandRetailers_lookAhead, params.vehicleCapacity_Warehouse, (params.storageCapacity_Retailer[retIndex] - Inv_Retailers[retIndex][t - 1])});
+				}
+			}
 		}
-		else if (remainingAvailInventoryWarehouse - potentialDelivery >= 0.0 && remainingVehicleCapacity - potentialDelivery < 0.0)
+	}
+}
+
+void ConstructHeuristic::nearestNeighourInsertion(int s, int w, int t, vector<int> &setOne, vector<int> &setTwo, vector<vector<double>> &deliveryQuantity_Retailers, vector<double> &tempDeliveryQuantity, vector<vector<int>> &routesPeriod)
+{
+	int numRoutes = params.numVehicles_Warehouse;
+
+	double remainingAvailInventoryWarehouse;
+	if (t == 0)
+	{
+		remainingAvailInventoryWarehouse = params.initialInventory_Warehouse[w] + sol_FE.deliveryQuantityToWarehouse[w][t];
+	}
+	else
+	{
+		remainingAvailInventoryWarehouse = sol_FE.warehouseInventory[w][t - 1][s] + sol_FE.deliveryQuantityToWarehouse[w][t];
+	}
+
+	vector<double> remainingVehicleCapacityWarehouse(numRoutes, params.vehicleCapacity_Warehouse);
+
+	// We now have a partial route and we wanna add Retailers (from setOne) to it
+	bool AllNodesVisited = false;
+	int r = 0;
+	while (r < numRoutes && !AllNodesVisited)
+	{
+		// cout << "Vehicle " << r << endl;
+		// Find closest retailer to the current node
+		int currentNode = w;
+		if (remainingVehicleCapacityWarehouse[r] <= 0.0 || remainingAvailInventoryWarehouse <= 0.0)
 		{
-			potentialDelivery = remainingVehicleCapacity;
-
-			remainingAvailInventoryWarehouse -= potentialDelivery;
-			remainingVehicleCapacity -= potentialDelivery;
-
-			deliveryQuantity_Customers[i][t] += potentialDelivery;
+			break;
 		}
-		else if (remainingAvailInventoryWarehouse - potentialDelivery < 0.0 && remainingVehicleCapacity - potentialDelivery >= 0.0)
+
+		while (remainingVehicleCapacityWarehouse[r] > 0.0 && remainingAvailInventoryWarehouse > 0.0)
 		{
-			potentialDelivery = remainingAvailInventoryWarehouse;
+			// cout << "Remaining Inventory: " << remainingAvailInventoryWarehouse << ", Remaining Vehicle Capacity: " << remainingVehicleCapacityWarehouse[r] << endl;
+			int nextNodeToVisit = findNextNodeToVisit(currentNode, setOne, tempDeliveryQuantity, remainingVehicleCapacityWarehouse[r], remainingAvailInventoryWarehouse);
+			// cout << "Next Node to Visit: " << nextNodeToVisit << endl;
+			if (nextNodeToVisit != -1)
+			{
+				if (routesPeriod[r].empty())
+				{
+					routesPeriod[r].push_back(w);
+				}
 
-			remainingAvailInventoryWarehouse -= potentialDelivery;
-			remainingVehicleCapacity -= potentialDelivery;
+				currentNode = nextNodeToVisit;
+				int retInd = currentNode - params.numWarehouses;
 
-			deliveryQuantity_Customers[i][t] += potentialDelivery;
-		}
-		else if (remainingAvailInventoryWarehouse - potentialDelivery < 0.0 && remainingVehicleCapacity - potentialDelivery < 0.0)
-		{
-			potentialDelivery = std::min(remainingAvailInventoryWarehouse, remainingVehicleCapacity);
+				routesPeriod[r].push_back(currentNode);
+				deliveryQuantity_Retailers[retInd][t] = tempDeliveryQuantity[retInd];
+				remainingAvailInventoryWarehouse -= deliveryQuantity_Retailers[retInd][t];
+				remainingVehicleCapacityWarehouse[r] -= deliveryQuantity_Retailers[retInd][t];
 
-			remainingAvailInventoryWarehouse -= potentialDelivery;
-			remainingVehicleCapacity -= potentialDelivery;
-
-			deliveryQuantity_Customers[i][t] += potentialDelivery;
+				auto it = std::find(setOne.begin(), setOne.end(), currentNode);
+				if (it != setOne.end())
+				{
+					setOne.erase(it);
+				}
+			}
+			else
+			{
+				// No more suitable nodes to visit in this route
+				r++;
+				if (setOne.empty())
+				{
+					AllNodesVisited = true;
+					// cout << "No More Nodes in Set One to Visit " << endl;
+				}
+				break;
+			}
 		}
 	}
 
-void ILS_SIRP::calculateDeliveryQuantitySetTwo(int s, int w, int t, auto &setOne, auto &setTwo, auto &deliveryQuantity_Customers, auto &Inv_Customers, auto &unmetDemand_Customers)
-	for (int i : setTwo[t])
+	for (int r = 0; r < numRoutes; ++r)
 	{
-		if (t == 0)
+		if (!routesPeriod[r].empty())
 		{
-			double potentialDelivery = std::min(params.vehicleCapacity_Warehouse, (params.storageCapacity_Retailers[i] - params.initialInventory_Retailers[i]));
+			routesPeriod[r].push_back(w);
 		}
-		else
+	}
+
+	auto maxIt = std::max_element(remainingVehicleCapacityWarehouse.begin(), remainingVehicleCapacityWarehouse.end());
+	if (maxIt != remainingVehicleCapacityWarehouse.end() && *maxIt > 0.0)
+	{
+		auto it = setTwo.begin();
+		while (it != setTwo.end())
 		{
-			double potentialDelivery = std::min(params.vehicleCapacity_Warehouse, (params.storageCapacity_Retailers[i] - Inv_Customers[i][t - 1]));
-		}
+			int i = *it;
+			int retInd = i - params.numWarehouses;
 
-		if (remainingAvailInventoryWarehouse - potentialDelivery >= 0.0 && remainingVehicleCapacity - potentialDelivery >= 0.0)
+			// cout << "\nInserting Node (check): " << i << endl;
+
+			int routeToInsert = -1;
+			int posToInsert = -1;
+			double minCostToInsert = std::numeric_limits<double>::max();
+
+			for (int r = 0; r < numRoutes; ++r)
+			{
+				// cout << "Route: " << r << endl;
+				// cout << "Remaining Inventory (if visited): " << remainingAvailInventoryWarehouse - tempDeliveryQuantity[retInd] << ", Remaining Vehicle Capacity: " << remainingVehicleCapacityWarehouse[r] - tempDeliveryQuantity[retInd] << endl;
+				if (remainingVehicleCapacityWarehouse[r] - tempDeliveryQuantity[retInd] >= 0.0 &&
+					remainingAvailInventoryWarehouse - tempDeliveryQuantity[retInd] >= 0.0)
+				{
+					// cout << "size of routesPeriod[r]: " << routesPeriod[r].size() << endl;
+					if (routesPeriod[r].empty())
+					{
+						double costToInsert = 2 * params.transportationCost_SecondEchelon[w][i];
+						if (costToInsert < minCostToInsert)
+						{
+							posToInsert = 1;
+							minCostToInsert = costToInsert;
+							routeToInsert = r;
+							// cout << "Possible Inserting in empty route " << routeToInsert << " at pos " << posToInsert << " with cost " << minCostToInsert << endl;
+						}
+					}
+					else
+					{
+						std::pair<int, double> minInsertionCostResult = minInsertionCost(routesPeriod[r], i);
+
+						double costToInsert = minInsertionCostResult.second;
+
+						if (costToInsert < minCostToInsert)
+						{
+							posToInsert = minInsertionCostResult.first;
+							minCostToInsert = costToInsert;
+							routeToInsert = r;
+							// cout << "Possible Inserting in route " << routeToInsert << " at pos " << posToInsert << " with cost " << minCostToInsert << endl;
+						}
+					}
+				}
+			}
+
+			// cout << "Inserting " << i << " at pos " << posToInsert << " in route " << routeToInsert << endl;
+			if (routeToInsert != -1)
+			{
+				if (routesPeriod[routeToInsert].empty())
+				{
+					routesPeriod[routeToInsert].push_back(w);
+					routesPeriod[routeToInsert].push_back(i);
+					routesPeriod[routeToInsert].push_back(w);
+					deliveryQuantity_Retailers[retInd][t] = tempDeliveryQuantity[retInd];
+					remainingAvailInventoryWarehouse -= tempDeliveryQuantity[retInd];
+					remainingVehicleCapacityWarehouse[routeToInsert] -= tempDeliveryQuantity[retInd];
+					it = setTwo.erase(it);
+				}
+				else
+				{
+					routesPeriod[routeToInsert].insert(routesPeriod[routeToInsert].begin() + posToInsert, i);
+					deliveryQuantity_Retailers[retInd][t] = tempDeliveryQuantity[retInd];
+					remainingAvailInventoryWarehouse -= tempDeliveryQuantity[retInd];
+					remainingVehicleCapacityWarehouse[routeToInsert] -= tempDeliveryQuantity[retInd];
+					it = setTwo.erase(it);
+				}
+			}
+			else
+			{
+				++it;
+			}
+		}
+	}
+
+	for (int r = 0; r < numRoutes; ++r)
+	{
+		if (!routesPeriod[r].empty() && routesPeriod[r].back() != w)
 		{
-			remainingAvailInventoryWarehouse -= potentialDelivery;
-			remainingVehicleCapacity -= potentialDelivery;
-
-			deliveryQuantity_Customers[i][t] += potentialDelivery;
+			routesPeriod[r].push_back(w);
 		}
-		else if (remainingAvailInventoryWarehouse - potentialDelivery >= 0.0 && remainingVehicleCapacity - potentialDelivery < 0.0)
-		{
-			potentialDelivery = remainingVehicleCapacity;
+	}
 
-			remainingAvailInventoryWarehouse -= potentialDelivery;
-			remainingVehicleCapacity -= potentialDelivery;
-
-			deliveryQuantity_Customers[i][t] += potentialDelivery;
-		}
-		else if (remainingAvailInventoryWarehouse - potentialDelivery < 0.0 && remainingVehicleCapacity - potentialDelivery >= 0.0)
-		{
-			potentialDelivery = remainingAvailInventoryWarehouse;
-
-			remainingAvailInventoryWarehouse -= potentialDelivery;
-			remainingVehicleCapacity -= potentialDelivery;
-
-			deliveryQuantity_Customers[i][t] += potentialDelivery;
-		}
-		else if (remainingAvailInventoryWarehouse - potentialDelivery < 0.0 && remainingVehicleCapacity - potentialDelivery < 0.0)
-		{
-			potentialDelivery = std::min(remainingAvailInventoryWarehouse, remainingVehicleCapacity);
-
-			remainingAvailInventoryWarehouse -= potentialDelivery;
-			remainingVehicleCapacity -= potentialDelivery;
-
-			deliveryQuantity_Customers[i][t] += potentialDelivery;
-		}
-	}	
+	// 	for (int k = 0; k < params.numVehicles_Warehouse; ++k)
+	// 	{
+	// 		cout << "routesPeriod: [";
+	// 		for (auto it = routesPeriod[k].begin(); it != routesPeriod[k].end(); ++it)
+	// 		{
+	// 			if (it != routesPeriod[k].begin())
+	// 			{
+	// 				cout << " -> ";
+	// 			}
+	// 			cout << *it;
+	// 		}
+	// 		cout << "]" << endl;
+	// 	}
 }
 
+int ConstructHeuristic::findNextNodeToVisit(int current_node, vector<int> &setOne, vector<double> &tempDeliveryQuantity, double remainingVehicleCapacityWarehouse, double remainingAvailInventoryWarehouse)
+{
+	double minVisitCost = std::numeric_limits<double>::max();
+	int nearestNode = -1;
 
+	// cout << "Current node: " << current_node << endl;
+	// Loop through the first row to find the maximum value
+	for (int i : setOne)
+	{
+		// cout << "next node (check): " << i << endl;
+		int retIndex = i - params.numWarehouses;
+		double visitCost = params.transportationCost_SecondEchelon[current_node][i];
 
+		// cout << "visit cost: " << visitCost << endl;
+		// cout << "Remaining Inventory (if visited): " << remainingAvailInventoryWarehouse - tempDeliveryQuantity[retIndex] << ", Remaining Vehicle Capacity: " << remainingVehicleCapacityWarehouse - tempDeliveryQuantity[retIndex] << endl;
 
+		if (visitCost < minVisitCost && remainingVehicleCapacityWarehouse - tempDeliveryQuantity[retIndex] >= 0.0 && remainingAvailInventoryWarehouse - tempDeliveryQuantity[retIndex] >= 0.0)
+		{
+			minVisitCost = visitCost;
+			nearestNode = i;
+		}
+	}
 
-bool ILS_SIRP::Construct_InitialSolution()
+	return nearestNode;
+}
+
+std::pair<int, double> ConstructHeuristic::minInsertionCost(const vector<int> &routesPeriod, int i)
+{
+	double minInsertionCost = std::numeric_limits<double>::max();
+	int minInsertionPos = -1;
+
+	for (int pos = 1; pos < routesPeriod.size(); ++pos)
+	{
+		double insertionCost = params.transportationCost_SecondEchelon[routesPeriod[pos - 1]][i] +
+							   params.transportationCost_SecondEchelon[i][routesPeriod[pos]] -
+							   params.transportationCost_SecondEchelon[routesPeriod[pos - 1]][routesPeriod[pos]];
+		if (insertionCost < minInsertionCost)
+		{
+			minInsertionCost = insertionCost;
+			minInsertionPos = pos;
+		}
+	}
+
+	return std::make_pair(minInsertionPos, minInsertionCost);
+}
+
+double ConstructHeuristic::calculateObjFuncValue(int s, int w, const vector<vector<double>> &Inv_Retailers, const vector<vector<double>> &unmetDemand_Retailers, const vector<vector<vector<int>>> &routesPeriod)
+{
+	double objFuncValue = 0.0;
+
+	// Inventory Holding Cost and Unmet Demand Cost
+	for (int t = 0; t < params.numPeriods; ++t)
+	{
+		for (int i : RATW[w])
+		{
+			objFuncValue += params.unitHoldingCost_Retailer[i] * Inv_Retailers[i][t];
+			objFuncValue += params.unmetDemandPenalty[i] * unmetDemand_Retailers[i][t];
+		}
+	}
+
+	for (int t = 0; t < params.numPeriods; ++t)
+	{
+		for (int k = 0; k < params.numVehicles_Warehouse; ++k)
+		{
+			int previousNode = w;
+			for (int j = 1; j < routesPeriod[t][k].size(); ++j)
+			{
+				int currentNode = routesPeriod[t][k][j];
+				objFuncValue += params.transportationCost_SecondEchelon[previousNode][currentNode];
+				previousNode = currentNode;
+			}
+		}
+	}
+
+	return objFuncValue;
+}
+
+bool ConstructHeuristic::Construct_InitialSolution()
 {
 	try
 	{
-		vector<int> assignedWarehouse(params.numRetailers, -1);
-		initializeRetailers(assignedWarehouse);
-		auto RATW = params.getRetailersAssignedToWarehouse();
-
 		for (int s = 0; s < params.numScenarios; ++s)
 		{
-			vector<vector<double>> Inv_Customers(params.numRetailers, vector<double>(params.numPeriods, 0.0));
-			vector<vector<double>> unmetDemand_Customers(params.numRetailers, vector<double>(params.numPeriods, 0.0));
-			vector<vector<double>> deliveryQuantity_Customers(params.numRetailers, vector<double>(params.numPeriods, 0.0));
+			vector<vector<double>> Inv_Retailers_bestSolScenario(params.numRetailers, vector<double>(params.numPeriods, 0.0));
+			vector<vector<double>> unmetDemand_Retailers_bestSolScenario(params.numRetailers, vector<double>(params.numPeriods, 0.0));
+			vector<vector<double>> deliveryQuantity_Retailers_bestSolScenario(params.numRetailers, vector<double>(params.numPeriods, 0.0));
+			vector<vector<vector<vector<int>>>> routes_bestSolScenario(params.numWarehouses, vector<vector<vector<int>>>(params.numPeriods, vector<vector<int>>(params.numVehicles_Warehouse, vector<int>())));
 
-
-			int look_ahead = 1;
-			while (look_ahead < std::ceil(params.numPeriods / 2))
+			for (int w = 0; w < params.numWarehouses; ++w)
 			{
-				calculateDecisionVariables(s, Inv_Customers, unmetDemand_Customers, deliveryQuantity_Customers);
+				double bestObjValue_ScenarioWarehouse = std::numeric_limits<double>::max();
+
+				int look_ahead = 1;
+				while (look_ahead <= std::ceil(params.numPeriods / 2.0))
+				{
+					vector<vector<double>> Inv_Retailers(params.numRetailers, vector<double>(params.numPeriods, 0.0));
+					vector<vector<double>> unmetDemand_Retailers(params.numRetailers, vector<double>(params.numPeriods, 0.0));
+					vector<vector<double>> deliveryQuantity_Retailers(params.numRetailers, vector<double>(params.numPeriods, 0.0));
+
+					vector<vector<vector<int>>> routesPeriod(params.numPeriods, vector<vector<int>>(params.numVehicles_Warehouse, vector<int>()));
+
+					calculateDecisionVariables(s, w, Inv_Retailers, unmetDemand_Retailers, deliveryQuantity_Retailers);
+
+					for (int t = 0; t < params.numPeriods; ++t)
+					{
+						// cout << "scenario: " << s << ", warehouse: " << w << ", look_ahead: " << look_ahead << ", period: " << t << endl;
+
+						vector<double> tempDeliveryQuantity(params.numRetailers, 0.0);
+
+						vector<int> setOne;
+						defineSetOne(s, w, t, setOne, Inv_Retailers, unmetDemand_Retailers, tempDeliveryQuantity);
+
+						vector<int> setTwo;
+						if (t < params.numPeriods - 1)
+						{
+							defineSetTwo(s, w, t, look_ahead, setOne, setTwo, Inv_Retailers, unmetDemand_Retailers, tempDeliveryQuantity);
+						}
+
+						// cout << "setOne: [";
+						// for (auto it = setOne.begin(); it != setOne.end(); ++it)
+						// {
+						// 	if (it != setOne.begin())
+						// 	{
+						// 		cout << ", ";
+						// 	}
+						// 	cout << *it << ": " << tempDeliveryQuantity[*it - params.numWarehouses];
+						// }
+						// cout << "]" << endl;
+
+						// cout << "setTwo: [";
+						// for (auto it = setTwo.begin(); it != setTwo.end(); ++it)
+						// {
+						// 	if (it != setTwo.begin())
+						// 	{
+						// 		cout << ", ";
+						// 	}
+						// 	cout << *it << ": " << tempDeliveryQuantity[*it - params.numWarehouses];
+						// }
+						// cout << "]" << endl;
+
+						nearestNeighourInsertion(s, w, t, setOne, setTwo, deliveryQuantity_Retailers, tempDeliveryQuantity, routesPeriod[t]);
+
+						// for (int k = 0; k < params.numVehicles_Warehouse; ++k)
+						// {
+						// 	cout << "routesPeriod: [";
+						// 	for (auto it = routesPeriod[t][k].begin(); it != routesPeriod[t][k].end(); ++it)
+						// 	{
+						// 		if (it != routesPeriod[t][k].begin())
+						// 		{
+						// 			cout << " -> ";
+						// 		}
+						// 		cout << *it;
+						// 	}
+						// 	cout << "]" << endl;
+						// }
+
+						calculateDecisionVariables(s, w, Inv_Retailers, unmetDemand_Retailers, deliveryQuantity_Retailers);
+					}
+
+					// calculate objective cost of the second echelon for the current warehouse and scenario
+					double objFuncValue_temp = calculateObjFuncValue(s, w, Inv_Retailers, unmetDemand_Retailers, routesPeriod);
+					// cout << "objFuncValue_temp: " << objFuncValue_temp << endl;
+					// update feasible solution
+					if (objFuncValue_temp < bestObjValue_ScenarioWarehouse)
+					{
+						// cout << "New best feasible solution found = " << objFuncValue_temp << endl;
+
+						bestObjValue_ScenarioWarehouse = objFuncValue_temp;
+						for (int t = 0; t < params.numPeriods; ++t)
+						{
+							for (int i : RATW[w])
+							{
+								Inv_Retailers_bestSolScenario[i][t] = Inv_Retailers[i][t];
+								unmetDemand_Retailers_bestSolScenario[i][t] = unmetDemand_Retailers[i][t];
+								deliveryQuantity_Retailers_bestSolScenario[i][t] = deliveryQuantity_Retailers[i][t];
+							}
+
+							for (int k = 0; k < params.numVehicles_Warehouse; ++k)
+							{
+								routes_bestSolScenario[w][t][k] = routesPeriod[t][k];
+							}
+						}
+					}
+					++look_ahead;
+				}
+
+				bestObjValue += params.probability[s] * bestObjValue_ScenarioWarehouse;
+
+				// cout << "\nbestObjValue: " << bestObjValue << endl;
+
+				for (int i = 0; i < params.numRetailers; ++i)
+				{
+					for (int t = 0; t < params.numPeriods; ++t)
+					{
+						Inv_Retailers_bestSolution[i][t][s] = Inv_Retailers_bestSolScenario[i][t];
+						unmetDemand_Retailers_bestSolution[i][t][s] = unmetDemand_Retailers_bestSolScenario[i][t];
+						deliveryQuantity_Retailers_bestSolution[i][t][s] = deliveryQuantity_Retailers_bestSolScenario[i][t];
+
+						// cout << "Inv_Retailers_bestSolution[" << i << "][" << t << "][" << s << "] = " << Inv_Retailers_bestSolution[i][t][s] << endl;
+						// cout << "unmetDemand_Retailers_bestSolution[" << i << "][" << t << "][" << s << "] = " << unmetDemand_Retailers_bestSolution[i][t][s] << endl;
+						// cout << "deliveryQuantity_Retailers_bestSolution[" << i << "][" << t << "][" << s << "] = " << deliveryQuantity_Retailers_bestSolution[i][t][s] << endl;
+					}
+				}
 
 				for (int w = 0; w < params.numWarehouses; ++w)
 				{
 					for (int t = 0; t < params.numPeriods; ++t)
 					{
-						std::set<int> setOne;
-						std::set<int> setTwo;
-						
-						defineSetOne(w, t, setOne, unmetDemand_Customers);
-						calculateDeliveryQuantitySetOne(s, w, t, setOne, deliveryQuantity_Customers, Inv_Customers, unmetDemand_Customers);
-
-						defineSetTwo(w, t, setOnd, setTwo, unmetDemand_Customers);
-						calculateDeliveryQuantitySetTwo(s, w, t, setOne, setTwo, deliveryQuantity_Customers, Inv_Customers, unmetDemand_Customers);
-
-						solve routing .. start with set one and then if available set two
-
+						for (int k = 0; k < params.numVehicles_Warehouse; ++k)
+						{
+							routes_bestSolution[s][w][t][k] = routes_bestSolScenario[w][t][k];
+						}
 					}
 				}
-				update feasible solution
-				++look_ahead;
 			}
 		}
+
+		// for (int s = 0; s < params.numScenarios; ++s)
+		// {
+		// 	cout << "Scenario: " << s << endl;
+		// 	for (int t = 0; t < params.numPeriods; ++t)
+		// 	{
+		// 		for (int i = 0; i < params.numRetailers; ++i)
+		// 		{
+		// 			// cout << "Inv_Retailers_bestSolution[" << i << "][" << t << "][" << s << "] = " << Inv_Retailers_bestSolution[i][t][s] << endl;
+		// 			// cout << "unmetDemand_Retailers_bestSolution[" << i << "][" << t << "][" << s << "] = " << unmetDemand_Retailers_bestSolution[i][t][s] << endl;
+		// 			// cout << "deliveryQuantity_Retailers_bestSolution[" << i << "][" << t << "][" << s << "] = " << deliveryQuantity_Retailers_bestSolution[i][t][s] << endl;
+		// 		}
+		// 	}
+
+		// 	// for (int w = 0; w < params.numWarehouses; ++w)
+		// 	// {
+		// 	// 	for (int t = 0; t < params.numPeriods; ++t)
+		// 	// 	{
+		// 	// 		for (int k = 0; k < params.numVehicles_Warehouse; ++k)
+		// 	// 		{
+		// 	// 			cout << "routesPeriod: [" << s << "][" << w << "][" << t << "][" << k << "] = [";
+		// 	// 			for (auto it = routes_bestSolution[s][w][t][k].begin(); it != routes_bestSolution[s][w][t][k].end(); ++it)
+		// 	// 			{
+		// 	// 				if (it != routes_bestSolution[s][w][t][k].begin())
+		// 	// 				{
+		// 	// 					cout << " -> ";
+		// 	// 				}
+		// 	// 				cout << *it;
+		// 	// 			}
+		// 	// 			cout << "]" << endl;
+		// 	// 		}
+		// 	// 	}
+		// 	// }
+		// }
 	}
 	catch (std::exception &e)
 	{
@@ -323,926 +1185,2553 @@ bool ILS_SIRP::Construct_InitialSolution()
 	return true;
 }
 
-bool ILS_SIRP::Construct_InitialSolution()
+vector<vector<vector<double>>> ConstructHeuristic::getInvRetailers()
 {
+	return Inv_Retailers_bestSolution;
+}
 
+vector<vector<vector<double>>> ConstructHeuristic::getUnmetDemandRetailers()
+{
+	return unmetDemand_Retailers_bestSolution;
+}
 
-	for (int s = 0; s < params.numScenarios; ++s)
+vector<vector<vector<double>>> ConstructHeuristic::getDeliveryQuantityRetailers()
+{
+	return deliveryQuantity_Retailers_bestSolution;
+}
+
+vector<vector<vector<vector<vector<int>>>>> ConstructHeuristic::getRoutesWarehouseToRetailer()
+{
+	return routes_bestSolution;
+}
+
+double ConstructHeuristic::getBestObjValue()
+{
+	return bestObjValue;
+}
+
+LocalSearch::LocalSearch(const ParameterSetting &parameters, const Solution &solution)
+	: params(parameters), sol_FE(solution)
+{
+	// ----------------------------------------------------------------------------------------------------------
+	RATW = params.getRetailersAssignedToWarehouse();
+	// ----------------------------------------------------------------------------------------------------------
+}
+
+void LocalSearch::RVND(int s, int w,
+					   vector<vector<double>> &Inv_Ret_ScenWare,
+					   vector<vector<double>> &unmetDemand_Ret_ScenWare,
+					   vector<vector<double>> &delQuant_Ret_ScenWare,
+					   vector<vector<vector<int>>> &routes_WareToRet_ScenWare,
+					   double &objValue_ScenarioWarehouse)
+{
+	cout << "\nLocal Search for scenario " << s << " and warehouse " << w << endl;
+	// --------------------------------------------------------------------------------------------------------------------------
+	LP_ScenarioWarehouse LP(params, sol_FE, s, w, routes_WareToRet_ScenWare);
+	string status = LP.solve();
+	if (status != "Optimal")
 	{
-		for (int w = 0; w < params.numWarehouses; ++w)
+		cerr << "Cannot solve LP for scenario " << s << " and warehouse " << w << endl;
+		exit(1);
+	}
+	Inv_Ret_ScenWare = LP.getInvRetailers();
+	unmetDemand_Ret_ScenWare = LP.getUnmetDemandRetailers();
+	delQuant_Ret_ScenWare = LP.getDeliveryQuantityRetailers();
+
+	objValue_ScenarioWarehouse = calculateObjFuncValue_ScenarioWarehouse(s, w, Inv_Ret_ScenWare, unmetDemand_Ret_ScenWare, routes_WareToRet_ScenWare);
+	cout << "\nCurrent Objective Value for scenario " << s << " and warehouse " << w << ": " << objValue_ScenarioWarehouse << endl;
+
+	// Initialize the operators
+	vector<std::function<bool(int, vector<vector<vector<int>>> &)>> operators = setOperators();
+	int maxIterRVND = 25;
+
+	while (!operators.empty() && maxIterRVND > 0)
+	{
+		vector<vector<vector<int>>> routes_WareToRet_ScenWare_temp = routes_WareToRet_ScenWare;
+		vector<vector<double>> Inv_Ret_ScenWare_temp = Inv_Ret_ScenWare;
+		vector<vector<double>> unmetDemand_Ret_ScenWare_temp = unmetDemand_Ret_ScenWare;
+		vector<vector<double>> delQuant_Ret_ScenWare_temp = delQuant_Ret_ScenWare;
+
+		// double objValue_ScenarioWarehouse_temp = 0.0;
+		// Generate random number between 0 and operators.size()
+		int index = rand() % operators.size();
+
+		for (int t = 0; t < params.numPeriods; ++t)
 		{
-			// initilize best found solution solution (empty vector)
-			// calculate the initial I[i][t]([s]) for all customers and all periods such that: I[i][t]([s]) = I[i][0] - sum (l = 1 to t) d[i][l]([s]) + sum (l = 1 to t) b[i][l]([s])
-			vector<vector<double>> dem_retailers(params.numRetailers, vector<double>(params.numPeriods, 0.0));
-			for (int i = 0; i < params.numRetailers; ++i)
+			for (int k = 0; k < params.numVehicles_Warehouse; ++k)
 			{
-				for (int t = 0; t < params.numPeriods; ++t)
+				cout << "Route[" << s << "][" << w << "][" << t << "][" << k << "]: [";
+				for (int i = 0; i < routes_WareToRet_ScenWare_temp[t][k].size(); ++i)
 				{
-					dem_retailers[i][t] = params.demand[i][t][s];
-				}
-			}
-			auto initiInv_retailers = params.initialInventory;
-
-			// Define decision variables
-			vector<vector<double>> Inv_Customers(params.numRetailers, vector<double>(params.numPeriods, 0.0));
-			vector<vector<double>> unmetDemand_Customers(params.numRetailers, vector<double>(params.numPeriods, 0.0));
-			vector<vector<double>> deliveryQuantity_Customers(params.numRetailers, vector<double>(params.numPeriods, 0.0));
-
-			for (int t = 0; t < params.numPeriods; ++t)
-			{
-				for (int i = 0; i < params.numRetailers; ++i)
-				{
-					Inv_Customers[i][t] += initiInv_retailers[i];
-					for (int l = 0; l < t; ++l)
+					if (i != routes_WareToRet_ScenWare_temp[t][k].size() - 1)
 					{
-						Inv_Customers[i][t] -= dem_retailers[i][l];
-					}
-
-					if (Inv_Customers[i][t] < 0)
-					{
-						unmetDemand_Customers[i][t] = -Inv_Customers[i][t];
-						Inv_Customers[i][t] = 0.0;
-					}
-				}
-			}
-
-			// vector<vector<int> > setOne(params.numPeriods, vector<int>());
-			// vector<vector<int> > setTwo(params.numPeriods, vector<int>());
-			std::unordered_map<int, std::set<int>> setOne;
-			std::unordered_map<int, std::set<int>> setTwo;
-			for (int t = 0; t < params.numPeriods; ++t)
-			{
-				int look_ahead_max = std::min(params.numPeriods - t, std::ceil(params.numPeriods / 2));
-				// calculate the stockout to demand satisfaction cost ratio using: Ratio = penaltyCost[i] / F/C + 2c[0][w] + 2c[w][i]
-				vector<int, std::pair<int, double>> customer_costRatio(look_ahead_max, std::pair<int, double>(-1, -1.0));
-				for (int i : RATW[w])
-				{
-					vector<double> currCostRatio(look_ahead_max, 0.0);
-					for (int look_ahead = 0; look_ahead < look_ahead_max; ++look_ahead)
-					{
-						currCostRatio[look_ahead] = (params.undemtDemandPenaltyCost[i]) /
-													((params.setupCost / params.productionCapacity) +
-													 (2 * params.TransportationCost_FirstEchelon[0][w + 1]) +
-													 (2 * transportationCost_SecondEchelon[w][i + params.numWarehouses]) +
-													 look_ahead * params.unitHoldingCost[i]);
-
-						customer_costRatio[look_ahead].emplace_back(i, currRatio);
-					}
-				}
-
-				for (int look_ahead = 0; look_ahead < look_ahead_max; ++look_ahead)
-				{
-					std::sort(customer_costRatio[look_ahead].begin(), customer_costRatio[look_ahead].end(), [](const std::pair<int, double> &a, const std::pair<int, double> &b)
-							  { return a.second > b.second; });
-				}
-
-				vector<int, vector<int>> sorted_customer_costRatio(look_ahead_max, vector<int>());
-				for (int look_ahead = 0; look_ahead < look_ahead_max; ++look_ahead)
-				{
-					for (const auto &pair : customer_costRatio[look_ahead])
-					{
-						sorted_customer_costRatio[look_ahead].push_back(pair.first);
-					}
-				}
-
-				for (int i : sorted_customer_costRatio[0])
-				{
-					if (unmetDemand_Customers[i][t] > 0)
-					{
-						setOne[t].push_back(i);
-					}
-				}
-
-				
-			}
-
-			// start with the highest Ratio and check wether b[i][t]([s]) > 0, if so add the customer to C_1 (customers to be visited);
-			// at the same time check the warehouse inventory and remaining vehicle capacity
-
-			vector<double> remainingAvailInventoryWarehouse(params.numPeriods, 0.0);
-			for (int t = 0; t < params.numPeriods; ++t)
-			{
-				remainingAvailInventoryWarehouse[t] = sol_FE.warehouseInventory[w][t][s];
-			}
-			vector<double> remainingVehicleCapacity(params.numPeriods, params.numVehicles_Warehouse * params.vehicleCapacity_Warehouse);
-
-			for (int t = 0; t < params.numPeriods; ++t)
-			{
-				for (int i : setOne[t])
-				{
-					if (t == 0)
-					{
-						double potentialDelivery = std::min(params.vehicleCapacity_Warehouse, (params.storageCapacity_Retailers[i] - params.initialInventory_Retailers[i]));
+						cout << routes_WareToRet_ScenWare_temp[t][k][i] << " -> ";
 					}
 					else
 					{
-						double potentialDelivery = std::min(params.vehicleCapacity_Warehouse, (params.storageCapacity_Retailers[i] - Inv_Customers[i][t - 1]));
-					}
-
-					if (remainingAvailInventoryWarehouse[t] - potentialDelivery >= 0.0 && remainingVehicleCapacity[t] - potentialDelivery >= 0.0)
-					{
-						remainingAvailInventoryWarehouse[t] -= potentialDelivery;
-						remainingVehicleCapacity[t] -= potentialDelivery;
-
-						deliveryQuantity_Customers[i][t] += potentialDelivery;
-						// unmetDemand_Customers[i][t] -= potentialDelivery;
-						// if (unmetDemand_Customers[i][t] < 0)
-						// {
-						// 	Inv_Customers[i][t] += unmetDemand_Customers[i][t];
-						// 	unmetDemand_Customers[i][t] = 0.0;
-						// }
-					}
-					else if (remainingAvailInventoryWarehouse[t] - potentialDelivery >= 0.0 && remainingVehicleCapacity[t] - potentialDelivery < 0.0)
-					{
-						potentialDelivery = remainingVehicleCapacity[t];
-
-						remainingAvailInventoryWarehouse[t] -= potentialDelivery;
-						remainingVehicleCapacity[t] -= potentialDelivery;
-
-						deliveryQuantity_Customers[i][t] += potentialDelivery;
-						// unmetDemand_Customers[i][t] -= potentialDelivery;
-						// if (unmetDemand_Customers[i][t] < 0)
-						// {
-						// 	Inv_Customers[i][t] += unmetDemand_Customers[i][t];
-						// 	unmetDemand_Customers[i][t] = 0.0;
-						// }
-					}
-					else if (remainingAvailInventoryWarehouse[t] - potentialDelivery < 0.0 && remainingVehicleCapacity[t] - potentialDelivery >= 0.0)
-					{
-						potentialDelivery = remainingAvailInventoryWarehouse[t];
-
-						remainingAvailInventoryWarehouse[t] -= potentialDelivery;
-						remainingVehicleCapacity[t] -= potentialDelivery;
-
-						deliveryQuantity_Customers[i][t] += potentialDelivery;
-						// unmetDemand_Customers[i][t] -= potentialDelivery;
-						// if (unmetDemand_Customers[i][t] < 0)
-						// {
-						// 	Inv_Customers[i][t] += unmetDemand_Customers[i][t];
-						// 	unmetDemand_Customers[i][t] = 0.0;
-						// }
-					}
-					else if (remainingAvailInventoryWarehouse[t] - potentialDelivery < 0.0 && remainingVehicleCapacity[t] - potentialDelivery < 0.0)
-					{
-						potentialDelivery = std::min(remainingAvailInventoryWarehouse[t], remainingVehicleCapacity[t]);
-
-						remainingAvailInventoryWarehouse[t] -= potentialDelivery;
-						remainingVehicleCapacity[t] -= potentialDelivery;
-
-						deliveryQuantity_Customers[i][t] += potentialDelivery;
-						// unmetDemand_Customers[i][t] -= potentialDelivery;
-						// if (unmetDemand_Customers[i][t] < 0)
-						// {
-						// 	Inv_Customers[i][t] += unmetDemand_Customers[i][t];
-						// 	unmetDemand_Customers[i][t] = 0.0;
-						// }
+						cout << routes_WareToRet_ScenWare_temp[t][k][i];
 					}
 				}
+				cout << "]" << endl;
+			}
+		}
 
-				for (int i : setTwo[t])
+		cout << "\n";
+		// Execute the operator
+		if (!operators[index](w, routes_WareToRet_ScenWare_temp))
+		{
+			// Remove the operator from the list
+			operators.erase(operators.begin() + index);
+			--maxIterRVND;
+			continue;
+		}
+
+		LP_ScenarioWarehouse LP(params, sol_FE, s, w, routes_WareToRet_ScenWare_temp);
+		// solve LP to get the value of the coninuous variables
+		string status = LP.solve();
+		if (status != "Optimal")
+		{
+			operators.erase(operators.begin() + index);
+			--maxIterRVND;
+			continue;
+		}
+		Inv_Ret_ScenWare_temp = LP.getInvRetailers();
+		unmetDemand_Ret_ScenWare_temp = LP.getUnmetDemandRetailers();
+		delQuant_Ret_ScenWare_temp = LP.getDeliveryQuantityRetailers();
+
+		// for (int t = 0; t < params.numPeriods; ++t)
+		// {
+		// 	for (size_t i = 0; i < RATW[w].size(); ++i)
+		// 	{
+		// 		cout << "Inv_Ret_temp[" << RATW[w][i] << "][" << t <<  "][" << s << "] = " << Inv_Ret_ScenWare_temp[i][t] << endl;
+		// 		cout << "unmetDemand_Ret_temp[" << RATW[w][i] << "][" << t <<  "][" << s << "] = " << unmetDemand_Ret_ScenWare_temp[i][t] << endl;
+		// 		cout << "delQuant_Ret_temp[" << RATW[w][i] << "][" << t <<  "][" << s << "] = " << delQuant_Ret_ScenWare_temp[i][t] << endl;
+		// 	}
+		// }
+
+		double objValue_ScenarioWarehouse_temp = calculateObjFuncValue_ScenarioWarehouse(s, w, Inv_Ret_ScenWare_temp, unmetDemand_Ret_ScenWare_temp, routes_WareToRet_ScenWare_temp);
+		cout << "\nBest objective value: " << objValue_ScenarioWarehouse << endl;
+		cout << "Current objective value: " << objValue_ScenarioWarehouse_temp << "\n"
+			 << endl;
+
+		if (objValue_ScenarioWarehouse_temp < objValue_ScenarioWarehouse)
+		{
+			cout << "A Better solution found!" << endl;
+			// Update the best solution
+			routes_WareToRet_ScenWare = routes_WareToRet_ScenWare_temp;
+			Inv_Ret_ScenWare = Inv_Ret_ScenWare_temp;
+			unmetDemand_Ret_ScenWare = unmetDemand_Ret_ScenWare_temp;
+			delQuant_Ret_ScenWare = delQuant_Ret_ScenWare_temp;
+
+			objValue_ScenarioWarehouse = objValue_ScenarioWarehouse_temp;
+
+			operators = setOperators();
+		}
+		else
+		{
+			// Remove the operator from the list
+			operators.erase(operators.begin() + index);
+		}
+
+		--maxIterRVND;
+	}
+
+	// for (int t = 0; t < params.numPeriods; ++t)
+	// {
+	// 	for (size_t i = 0; i < RATW[w].size(); ++i)
+	// 	{
+	// 		if (Inv_Ret_ScenWare[i][t] != 0){
+	// 			cout << "Inventory_Ret[" << RATW[w][i] << "][" << t <<  "][" << s << "] = " << Inv_Ret_ScenWare[i][t] << endl;
+	// 		}
+	// 		if (unmetDemand_Ret_ScenWare[i][t] != 0){
+	// 			cout << "unmetDemand_Ret[" << RATW[w][i] << "][" << t <<  "][" << s << "] = " << unmetDemand_Ret_ScenWare[i][t] << endl;
+	// 		}
+	// 		if (delQuant_Ret_ScenWare[i][t] != 0){
+	// 			cout << "delQuant_Ret[" << RATW[w][i] << "][" << t <<  "][" << s << "] = " << delQuant_Ret_ScenWare[i][t] << endl;
+	// 		}
+	// 	}
+	// }
+
+	cout << "Best Objective Value for scenario " << s << " and warehouse " << w << ": " << objValue_ScenarioWarehouse << endl;
+}
+
+vector<std::function<bool(int, vector<vector<vector<int>>> &)>> LocalSearch::setOperators()
+{
+	std::function<bool(int, vector<vector<vector<int>>> &)> OrOptOneFunc = std::bind(&LocalSearch::OrOpt_One, this, std::placeholders::_1, std::placeholders::_2);
+	std::function<bool(int, vector<vector<vector<int>>> &)> OrOptTwoFunc = std::bind(&LocalSearch::OrOpt_Two, this, std::placeholders::_1, std::placeholders::_2);
+	std::function<bool(int, vector<vector<vector<int>>> &)> OrOptThreeFunc = std::bind(&LocalSearch::OrOpt_Three, this, std::placeholders::_1, std::placeholders::_2);
+	std::function<bool(int, vector<vector<vector<int>>> &)> ShiftOneFunc = std::bind(&LocalSearch::Shift_One, this, std::placeholders::_1, std::placeholders::_2);
+	std::function<bool(int, vector<vector<vector<int>>> &)> ShiftTwoFunc = std::bind(&LocalSearch::Shift_Two, this, std::placeholders::_1, std::placeholders::_2);
+	std::function<bool(int, vector<vector<vector<int>>> &)> ShiftThreeFunc = std::bind(&LocalSearch::Shift_Three, this, std::placeholders::_1, std::placeholders::_2);
+	std::function<bool(int, vector<vector<vector<int>>> &)> SwapFunc = std::bind(&LocalSearch::Swap, this, std::placeholders::_1, std::placeholders::_2);
+	std::function<bool(int, vector<vector<vector<int>>> &)> InsertFunc = std::bind(&LocalSearch::Insert, this, std::placeholders::_1, std::placeholders::_2);
+	std::function<bool(int, vector<vector<vector<int>>> &)> RemoveFunc = std::bind(&LocalSearch::Remove, this, std::placeholders::_1, std::placeholders::_2);
+	std::function<bool(int, vector<vector<vector<int>>> &)> MergeFunc = std::bind(&LocalSearch::Merge, this, std::placeholders::_1, std::placeholders::_2);
+	std::function<bool(int, vector<vector<vector<int>>> &)> TransferFunc = std::bind(&LocalSearch::Transfer, this, std::placeholders::_1, std::placeholders::_2);
+	std::function<bool(int, vector<vector<vector<int>>> &)> RemInsFunc = std::bind(&LocalSearch::Remove_Insert, this, std::placeholders::_1, std::placeholders::_2);
+
+	return {
+		OrOptOneFunc,
+		OrOptTwoFunc,
+		OrOptThreeFunc,
+		ShiftOneFunc,
+		ShiftTwoFunc,
+		ShiftThreeFunc,
+		SwapFunc,
+		InsertFunc,
+		RemoveFunc,
+		MergeFunc,
+		TransferFunc,
+		RemInsFunc};
+}
+
+bool LocalSearch::OrOpt_One(int w, vector<vector<vector<int>>> &routes)
+{
+	int v = 1;
+	cout << "Or-Opt(" << v << ")" << endl;
+
+	// Choose random warehouse, period, and vehicle
+	bool routeFound = false;
+	const int maxAttempts = params.numPeriods * params.numVehicles_Warehouse;
+	int attempts = 0;
+
+	std::set<std::tuple<int, int>> usedCombinations;
+
+	int t, k;
+	vector<int> route;
+
+	while (attempts < maxAttempts)
+	{
+
+		// Choose random w, t, k
+		do
+		{
+			t = rand() % params.numPeriods;
+			k = rand() % params.numVehicles_Warehouse;
+		} while (usedCombinations.find(std::make_tuple(t, k)) != usedCombinations.end()); // Ensure the combination is not already used
+
+		usedCombinations.insert(std::make_tuple(t, k)); // Mark this combination as used
+
+		route = routes[t][k];
+		cout << "Old route[" << w << "][" << t << "][" << k << "]: [";
+		for (int i = 0; i < route.size(); ++i)
+		{
+			if (i != route.size() - 1)
+			{
+				cout << route[i] << " -> ";
+			}
+			else
+			{
+				cout << route[i];
+			}
+		}
+		cout << "]" << endl;
+		cout << "route size = " << route.size() << endl;
+
+		if (route.size() >= v + 3)
+		{
+			routeFound = true;
+			break;
+		}
+		++attempts;
+	}
+
+	if (!routeFound)
+	{
+		cerr << "Could not find a route with " << v + 3 << " nodes" << endl;
+		return false;
+	}
+	else
+	{
+		// Choose random starting position for the segment to move
+		int startPos = 1 + rand() % (route.size() - v - 1); // Avoid first and last positions
+		int newPos;
+
+		// Ensure the new position is not the same as the current position
+		do
+		{
+			newPos = 1 + rand() % (route.size() - v - 1);
+		} while (newPos == startPos);
+
+		// Move the segment of v retailers to a new position
+		vector<int> temp(route.begin() + startPos, route.begin() + startPos + v);
+		route.erase(route.begin() + startPos, route.begin() + startPos + v);
+		route.insert(route.begin() + newPos, temp.begin(), temp.end());
+
+		cout << "Moved " << v << " retailers from position " << startPos
+			 << " to position " << newPos << " in route " << k << std::endl;
+
+		routes[t][k] = route;
+		cout << "Updated route[" << w << "][" << t << "][" << k << "]: [";
+		for (int i = 0; i < route.size(); ++i)
+		{
+			if (i != route.size() - 1)
+			{
+				cout << route[i] << " -> ";
+			}
+			else
+			{
+				cout << route[i];
+			}
+		}
+		cout << "]" << endl;
+	}
+	return true;
+}
+
+bool LocalSearch::OrOpt_Two(int w, vector<vector<vector<int>>> &routes)
+{
+	int v = 2;
+	cout << "Or-Opt(" << v << ")" << endl;
+
+	// Choose random warehouse, period, and vehicle
+	bool routeFound = false;
+	const int maxAttempts = params.numPeriods * params.numVehicles_Warehouse;
+	int attempts = 0;
+
+	std::set<std::tuple<int, int>> usedCombinations;
+
+	int t, k;
+	vector<int> route;
+
+	while (attempts < maxAttempts)
+	{
+
+		// Choose random w, t, k
+		do
+		{
+			t = rand() % params.numPeriods;
+			k = rand() % params.numVehicles_Warehouse;
+		} while (usedCombinations.find(std::make_tuple(t, k)) != usedCombinations.end()); // Ensure the combination is not already used
+
+		usedCombinations.insert(std::make_tuple(t, k)); // Mark this combination as used
+
+		route = routes[t][k];
+		cout << "Old route[" << w << "][" << t << "][" << k << "]: [";
+		for (int i = 0; i < route.size(); ++i)
+		{
+			if (i != route.size() - 1)
+			{
+				cout << route[i] << " -> ";
+			}
+			else
+			{
+				cout << route[i];
+			}
+		}
+		cout << "]" << endl;
+		cout << "route size = " << route.size() << endl;
+
+		if (route.size() >= v + 3)
+		{
+			routeFound = true;
+			break;
+		}
+		++attempts;
+	}
+
+	if (!routeFound)
+	{
+		cerr << "Could not find a route with " << v + 3 << " nodes" << endl;
+		return false;
+	}
+	else
+	{
+		// Choose random starting position for the segment to move
+		int startPos = 1 + rand() % (route.size() - v - 1); // Avoid first and last positions
+		int newPos;
+
+		// Ensure the new position is not the same as the current position
+		do
+		{
+			newPos = 1 + rand() % (route.size() - v - 1);
+		} while (newPos == startPos);
+
+		// Move the segment of v retailers to a new position
+		vector<int> temp(route.begin() + startPos, route.begin() + startPos + v);
+		route.erase(route.begin() + startPos, route.begin() + startPos + v);
+		route.insert(route.begin() + newPos, temp.begin(), temp.end());
+
+		cout << "Moved " << v << " retailers from position " << startPos
+			 << " to position " << newPos << " in route " << k << std::endl;
+
+		routes[t][k] = route;
+		cout << "Updated route[" << w << "][" << t << "][" << k << "]: [";
+		for (int i = 0; i < route.size(); ++i)
+		{
+			if (i != route.size() - 1)
+			{
+				cout << route[i] << " -> ";
+			}
+			else
+			{
+				cout << route[i];
+			}
+		}
+		cout << "]" << endl;
+	}
+	return true;
+}
+
+bool LocalSearch::OrOpt_Three(int w, vector<vector<vector<int>>> &routes)
+{
+	int v = 3;
+	cout << "Or-Opt(" << v << ")" << endl;
+
+	// Choose random warehouse, period, and vehicle
+	bool routeFound = false;
+	const int maxAttempts = params.numPeriods * params.numVehicles_Warehouse;
+	int attempts = 0;
+
+	std::set<std::tuple<int, int>> usedCombinations;
+
+	int t, k;
+	vector<int> route;
+
+	while (attempts < maxAttempts)
+	{
+		// Choose random w, t, k
+		do
+		{
+			t = rand() % params.numPeriods;
+			k = rand() % params.numVehicles_Warehouse;
+		} while (usedCombinations.find(std::make_tuple(t, k)) != usedCombinations.end()); // Ensure the combination is not already used
+
+		usedCombinations.insert(std::make_tuple(t, k)); // Mark this combination as used
+
+		route = routes[t][k];
+		cout << "Old route[" << w << "][" << t << "][" << k << "]: [";
+		for (int i = 0; i < route.size(); ++i)
+		{
+			if (i != route.size() - 1)
+			{
+				cout << route[i] << " -> ";
+			}
+			else
+			{
+				cout << route[i];
+			}
+		}
+		cout << "]" << endl;
+		cout << "route size = " << route.size() << endl;
+
+		if (route.size() >= v + 3)
+		{
+			routeFound = true;
+			break;
+		}
+		++attempts;
+	}
+
+	if (!routeFound)
+	{
+		cerr << "Could not find a route with " << v + 3 << " nodes" << endl;
+		return false;
+	}
+	else
+	{
+		// Choose random starting position for the segment to move
+		int startPos = 1 + rand() % (route.size() - v - 1); // Avoid first and last positions
+		int newPos;
+
+		// Ensure the new position is not the same as the current position
+		do
+		{
+			newPos = 1 + rand() % (route.size() - v - 1);
+		} while (newPos == startPos);
+
+		// Move the segment of v retailers to a new position
+		vector<int> temp(route.begin() + startPos, route.begin() + startPos + v);
+		route.erase(route.begin() + startPos, route.begin() + startPos + v);
+		route.insert(route.begin() + newPos, temp.begin(), temp.end());
+
+		routes[t][k] = route;
+
+		cout << "Moved " << v << " retailers from position " << startPos
+			 << " to position " << newPos << " in route " << k << std::endl;
+
+		cout << "Updated route[" << w << "][" << t << "][" << k << "]: [";
+		for (int i = 0; i < route.size(); ++i)
+		{
+			if (i != route.size() - 1)
+			{
+				cout << route[i] << " -> ";
+			}
+			else
+			{
+				cout << route[i];
+			}
+		}
+		cout << "]" << endl;
+	}
+	return true;
+}
+
+bool LocalSearch::Shift_One(int w, vector<vector<vector<int>>> &routes)
+{
+	int v = 1;
+	cout << "Shift(" << v << ")" << endl;
+
+	const int maxAttempts = 5 * params.numPeriods * params.numVehicles_Warehouse;
+	int attempts = 0;
+	bool validShiftFound = false;
+
+	while (attempts < maxAttempts && !validShiftFound)
+	{
+		int t = rand() % params.numPeriods;
+		int sourceRouteIndex = rand() % params.numVehicles_Warehouse;
+		int destRouteIndex = rand() % params.numVehicles_Warehouse;
+
+		// Avoid shifting within the same route
+		if (sourceRouteIndex == destRouteIndex)
+		{
+			++attempts;
+			continue;
+		}
+
+		vector<int> &sourceRoute = routes[t][sourceRouteIndex];
+		vector<int> &destRoute = routes[t][destRouteIndex];
+
+		if (sourceRoute.size() == 0)
+		{
+			++attempts;
+			continue;
+		}
+
+		cout << "Old Source route[" << w << "][" << t << "][" << sourceRouteIndex << "]: [";
+		for (int i = 0; i < sourceRoute.size(); ++i)
+		{
+			if (i != sourceRoute.size() - 1)
+			{
+				cout << sourceRoute[i] << " -> ";
+			}
+			else
+			{
+				cout << sourceRoute[i];
+			}
+		}
+		cout << "]" << endl;
+
+		cout << "Old Dest route[" << w << "][" << t << "][" << destRouteIndex << "]: [";
+		for (int i = 0; i < destRoute.size(); ++i)
+		{
+			if (i != destRoute.size() - 1)
+			{
+				cout << destRoute[i] << " -> ";
+			}
+			else
+			{
+				cout << destRoute[i];
+			}
+		}
+		cout << "]" << endl;
+
+		// Check if source route has enough retailers to shift
+		if (sourceRoute.size() >= 2 + v)
+		{
+			cout << "Source route has enough retailers to shift" << endl;
+			int startPos = (rand() % (sourceRoute.size() - v - 1)) + 1;
+			int endPos = startPos + v;
+
+			vector<int> segment(sourceRoute.begin() + startPos, sourceRoute.begin() + endPos);
+			int insertPos = 0;
+			if (destRoute.size() != 0)
+			{
+				insertPos = (rand() % (destRoute.size() - 1)) + 1;
+			}
+
+			// Execute the shift
+			sourceRoute.erase(sourceRoute.begin() + startPos, sourceRoute.begin() + endPos);
+			destRoute.insert(destRoute.begin() + insertPos, segment.begin(), segment.end());
+			if (sourceRoute.size() == 2)
+			{
+				sourceRoute.clear();
+			}
+
+			if (destRoute.size() == v)
+			{
+				destRoute.insert(destRoute.begin(), w);
+				destRoute.insert(destRoute.end(), w);
+			}
+
+			cout << "Shifted " << v << " retailers from route " << sourceRouteIndex
+				 << " to route " << destRouteIndex << " in period " << t << endl;
+
+			cout << "Updated Source route[" << w << "][" << t << "][" << sourceRouteIndex << "]: [";
+			for (int i = 0; i < sourceRoute.size(); ++i)
+			{
+				if (i != sourceRoute.size() - 1)
 				{
-					if (t == 0)
-					{
-						double potentialDelivery = std::min(dem_customers[i][t], params.vehicleCapacity_Warehouse, (params.storageCapacity_Retailers[i] - params.initialInventory_Retailers[i]));
-					}
-					else
-					{
-						double potentialDelivery = std::min(dem_customers[i][t], params.vehicleCapacity_Warehouse, (params.storageCapacity_Retailers[i] - Inv_Customers[i][t - 1]));
-					}
-
-					if (remainingAvailInventoryWarehouse[t] - potentialDelivery >= 0.0 && remainingVehicleCapacity[t] - potentialDelivery >= 0.0)
-					{
-						remainingAvailInventoryWarehouse[t] -= potentialDelivery;
-						remainingVehicleCapacity[t] -= potentialDelivery;
-
-						deliveryQuantity_Customers[i][t] += potentialDelivery;
-						// unmetDemand_Customers[i][t] -= potentialDelivery;
-						// if (unmetDemand_Customers[i][t] < 0)
-						// {
-						// 	Inv_Customers[i][t] += unmetDemand_Customers[i][t];
-						// 	unmetDemand_Customers[i][t] = 0.0;
-						// }
-					}
-					else if (remainingAvailInventoryWarehouse[t] - potentialDelivery >= 0.0 && remainingVehicleCapacity[t] - potentialDelivery < 0.0)
-					{
-						potentialDelivery = remainingVehicleCapacity[t];
-
-						remainingAvailInventoryWarehouse[t] -= potentialDelivery;
-						remainingVehicleCapacity[t] -= potentialDelivery;
-
-						deliveryQuantity_Customers[i][t] += potentialDelivery;
-						// unmetDemand_Customers[i][t] -= potentialDelivery;
-						// if (unmetDemand_Customers[i][t] < 0)
-						// {
-						// 	Inv_Customers[i][t] += unmetDemand_Customers[i][t];
-						// 	unmetDemand_Customers[i][t] = 0.0;
-						// }
-					}
-					else if (remainingAvailInventoryWarehouse[t] - potentialDelivery < 0.0 && remainingVehicleCapacity[t] - potentialDelivery >= 0.0)
-					{
-						potentialDelivery = remainingAvailInventoryWarehouse[t];
-
-						remainingAvailInventoryWarehouse[t] -= potentialDelivery;
-						remainingVehicleCapacity[t] -= potentialDelivery;
-
-						deliveryQuantity_Customers[i][t] += potentialDelivery;
-						// unmetDemand_Customers[i][t] -= potentialDelivery;
-						// if (unmetDemand_Customers[i][t] < 0)
-						// {
-						// 	Inv_Customers[i][t] += unmetDemand_Customers[i][t];
-						// 	unmetDemand_Customers[i][t] = 0.0;
-						// }
-					}
-					else if (remainingAvailInventoryWarehouse[t] - potentialDelivery < 0.0 && remainingVehicleCapacity[t] - potentialDelivery < 0.0)
-					{
-						potentialDelivery = std::min(remainingAvailInventoryWarehouse[t], remainingVehicleCapacity[t]);
-
-						remainingAvailInventoryWarehouse[t] -= potentialDelivery;
-						remainingVehicleCapacity[t] -= potentialDelivery;
-
-						deliveryQuantity_Customers[i][t] += potentialDelivery;
-						// unmetDemand_Customers[i][t] -= potentialDelivery;
-						// if (unmetDemand_Customers[i][t] < 0)
-						// {
-						// 	Inv_Customers[i][t] += unmetDemand_Customers[i][t];
-						// 	unmetDemand_Customers[i][t] = 0.0;
-						// }
-					}
+					cout << sourceRoute[i] << " -> ";
 				}
+				else
+				{
+					cout << sourceRoute[i];
+				}
+			}
+			cout << "]" << endl;
+
+			cout << "Updated Dest route[" << w << "][" << t << "][" << destRouteIndex << "]: [";
+			for (int i = 0; i < destRoute.size(); ++i)
+			{
+				if (i != destRoute.size() - 1)
+				{
+					cout << destRoute[i] << " -> ";
+				}
+				else
+				{
+					cout << destRoute[i];
+				}
+			}
+			cout << "]" << endl;
+
+			validShiftFound = true;
+		}
+
+		++attempts;
+	}
+
+	if (!validShiftFound)
+	{
+		cerr << "Failed to find a valid shift after " << maxAttempts << " attempts." << endl;
+		return false;
+	}
+
+	return true;
+}
+
+bool LocalSearch::Shift_Two(int w, vector<vector<vector<int>>> &routes)
+{
+	int v = 2;
+	cout << "Shift(" << v << ")" << endl;
+
+	const int maxAttempts = 5 * params.numPeriods * params.numVehicles_Warehouse;
+	int attempts = 0;
+	bool validShiftFound = false;
+
+	while (attempts < maxAttempts && !validShiftFound)
+	{
+		int t = rand() % params.numPeriods;
+		int sourceRouteIndex = rand() % params.numVehicles_Warehouse;
+		int destRouteIndex = rand() % params.numVehicles_Warehouse;
+
+		// Avoid shifting within the same route
+		if (sourceRouteIndex == destRouteIndex)
+		{
+			++attempts;
+			continue;
+		}
+
+		vector<int> &sourceRoute = routes[t][sourceRouteIndex];
+		vector<int> &destRoute = routes[t][destRouteIndex];
+
+		if (sourceRoute.size() == 0)
+		{
+			++attempts;
+			continue;
+		}
+
+		cout << "Old Source route[" << w << "][" << t << "][" << sourceRouteIndex << "]: [";
+		for (int i = 0; i < sourceRoute.size(); ++i)
+		{
+			if (i != sourceRoute.size() - 1)
+			{
+				cout << sourceRoute[i] << " -> ";
+			}
+			else
+			{
+				cout << sourceRoute[i];
+			}
+		}
+		cout << "]" << endl;
+
+		cout << "Old Dest route[" << w << "][" << t << "][" << destRouteIndex << "]: [";
+		for (int i = 0; i < destRoute.size(); ++i)
+		{
+			if (i != destRoute.size() - 1)
+			{
+				cout << destRoute[i] << " -> ";
+			}
+			else
+			{
+				cout << destRoute[i];
+			}
+		}
+		cout << "]" << endl;
+
+		// Check if source route has enough retailers to shift
+		if (sourceRoute.size() >= 2 + v)
+		{
+			cout << "Source route has enough retailers to shift" << endl;
+			int startPos = (rand() % (sourceRoute.size() - v - 1)) + 1;
+			int endPos = startPos + v;
+
+			vector<int> segment(sourceRoute.begin() + startPos, sourceRoute.begin() + endPos);
+			int insertPos = 0;
+			if (destRoute.size() != 0)
+			{
+				insertPos = (rand() % (destRoute.size() - 1)) + 1;
+			}
+
+			// Execute the shift
+			sourceRoute.erase(sourceRoute.begin() + startPos, sourceRoute.begin() + endPos);
+			destRoute.insert(destRoute.begin() + insertPos, segment.begin(), segment.end());
+			if (sourceRoute.size() == 2)
+			{
+				sourceRoute.clear();
+			}
+
+			if (destRoute.size() == v)
+			{
+				destRoute.insert(destRoute.begin(), w);
+				destRoute.insert(destRoute.end(), w);
+			}
+
+			cout << "Shifted " << v << " retailers from route " << sourceRouteIndex
+				 << " to route " << destRouteIndex << " in period " << t << endl;
+
+			cout << "Updated Source route[" << w << "][" << t << "][" << sourceRouteIndex << "]: [";
+			for (int i = 0; i < sourceRoute.size(); ++i)
+			{
+				if (i != sourceRoute.size() - 1)
+				{
+					cout << sourceRoute[i] << " -> ";
+				}
+				else
+				{
+					cout << sourceRoute[i];
+				}
+			}
+			cout << "]" << endl;
+
+			cout << "Updated Dest route[" << w << "][" << t << "][" << destRouteIndex << "]: [";
+			for (int i = 0; i < destRoute.size(); ++i)
+			{
+				if (i != destRoute.size() - 1)
+				{
+					cout << destRoute[i] << " -> ";
+				}
+				else
+				{
+					cout << destRoute[i];
+				}
+			}
+			cout << "]" << endl;
+
+			validShiftFound = true;
+		}
+
+		++attempts;
+	}
+
+	if (!validShiftFound)
+	{
+		cerr << "Failed to find a valid shift after " << maxAttempts << " attempts." << endl;
+		return false;
+	}
+
+	return true;
+}
+
+bool LocalSearch::Shift_Three(int w, vector<vector<vector<int>>> &routes)
+{
+	int v = 3;
+	cout << "Shift(" << v << ")" << endl;
+
+	const int maxAttempts = 5 * params.numPeriods * params.numVehicles_Warehouse;
+	int attempts = 0;
+	bool validShiftFound = false;
+
+	while (attempts < maxAttempts && !validShiftFound)
+	{
+		int t = rand() % params.numPeriods;
+		int sourceRouteIndex = rand() % params.numVehicles_Warehouse;
+		int destRouteIndex = rand() % params.numVehicles_Warehouse;
+
+		// Avoid shifting within the same route
+		if (sourceRouteIndex == destRouteIndex)
+		{
+			++attempts;
+			continue;
+		}
+
+		vector<int> &sourceRoute = routes[t][sourceRouteIndex];
+		vector<int> &destRoute = routes[t][destRouteIndex];
+
+		if (sourceRoute.size() == 0)
+		{
+			++attempts;
+			continue;
+		}
+
+		cout << "Old Source route[" << w << "][" << t << "][" << sourceRouteIndex << "]: [";
+		for (int i = 0; i < sourceRoute.size(); ++i)
+		{
+			if (i != sourceRoute.size() - 1)
+			{
+				cout << sourceRoute[i] << " -> ";
+			}
+			else
+			{
+				cout << sourceRoute[i];
+			}
+		}
+		cout << "]" << endl;
+
+		cout << "Old Dest route[" << w << "][" << t << "][" << destRouteIndex << "]: [";
+		for (int i = 0; i < destRoute.size(); ++i)
+		{
+			if (i != destRoute.size() - 1)
+			{
+				cout << destRoute[i] << " -> ";
+			}
+			else
+			{
+				cout << destRoute[i];
+			}
+		}
+		cout << "]" << endl;
+
+		// Check if source route has enough retailers to shift
+		if (sourceRoute.size() >= 2 + v)
+		{
+			cout << "Source route has enough retailers to shift" << endl;
+			int startPos = (rand() % (sourceRoute.size() - v - 1)) + 1;
+			int endPos = startPos + v;
+
+			vector<int> segment(sourceRoute.begin() + startPos, sourceRoute.begin() + endPos);
+			int insertPos = 0;
+			if (destRoute.size() != 0)
+			{
+				insertPos = (rand() % (destRoute.size() - 1)) + 1;
+			}
+
+			// Execute the shift
+			sourceRoute.erase(sourceRoute.begin() + startPos, sourceRoute.begin() + endPos);
+			destRoute.insert(destRoute.begin() + insertPos, segment.begin(), segment.end());
+			if (sourceRoute.size() == 2)
+			{
+				sourceRoute.clear();
+			}
+
+			if (destRoute.size() == v)
+			{
+				destRoute.insert(destRoute.begin(), w);
+				destRoute.insert(destRoute.end(), w);
+			}
+
+			cout << "Shifted " << v << " retailers from route " << sourceRouteIndex
+				 << " to route " << destRouteIndex << " in period " << t << endl;
+
+			cout << "Updated Source route[" << w << "][" << t << "][" << sourceRouteIndex << "]: [";
+			for (int i = 0; i < sourceRoute.size(); ++i)
+			{
+				if (i != sourceRoute.size() - 1)
+				{
+					cout << sourceRoute[i] << " -> ";
+				}
+				else
+				{
+					cout << sourceRoute[i];
+				}
+			}
+			cout << "]" << endl;
+
+			cout << "Updated Dest route[" << w << "][" << t << "][" << destRouteIndex << "]: [";
+			for (int i = 0; i < destRoute.size(); ++i)
+			{
+				if (i != destRoute.size() - 1)
+				{
+					cout << destRoute[i] << " -> ";
+				}
+				else
+				{
+					cout << destRoute[i];
+				}
+			}
+			cout << "]" << endl;
+
+			validShiftFound = true;
+		}
+
+		++attempts;
+	}
+
+	if (!validShiftFound)
+	{
+		cerr << "Failed to find a valid shift after " << maxAttempts << " attempts." << endl;
+		return false;
+	}
+
+	return true;
+}
+
+bool LocalSearch::Swap(int w, vector<vector<vector<int>>> &routes)
+{
+	cout << "Swap" << endl;
+
+	const int maxAttempts = 100;
+	int attempts = 0;
+	bool validSwapFound = false;
+
+	while (attempts < maxAttempts && !validSwapFound)
+	{
+		int t = rand() % params.numPeriods;
+		int sourceRouteIndex = rand() % params.numVehicles_Warehouse;
+		int destRouteIndex = rand() % params.numVehicles_Warehouse;
+
+		// Avoid swapping within the same route
+		if (sourceRouteIndex == destRouteIndex)
+		{
+			++attempts;
+			continue;
+		}
+
+		vector<int> &sourceRoute = routes[t][sourceRouteIndex];
+		vector<int> &destRoute = routes[t][destRouteIndex];
+
+		cout << "Old Source route[" << w << "][" << t << "][" << sourceRouteIndex << "]: [";
+		for (int i = 0; i < sourceRoute.size(); ++i)
+		{
+			if (i != sourceRoute.size() - 1)
+			{
+				cout << sourceRoute[i] << " -> ";
+			}
+			else
+			{
+				cout << sourceRoute[i];
+			}
+		}
+		cout << "]" << endl;
+
+		cout << "Old Dest route[" << w << "][" << t << "][" << destRouteIndex << "]: [";
+		for (int i = 0; i < destRoute.size(); ++i)
+		{
+			if (i != destRoute.size() - 1)
+			{
+				cout << destRoute[i] << " -> ";
+			}
+			else
+			{
+				cout << destRoute[i];
+			}
+		}
+		cout << "]" << endl;
+
+		if (sourceRoute.size() < 4 || destRoute.size() < 3)
+		{
+			++attempts;
+			continue;
+		}
+
+		// Randomly select v1 and v2 where v1 >= v2
+		int v1 = (rand() % 2) + 1;				   // v1 ∈ {1, 2}
+		int v2 = (v1 == 2) ? (rand() % 2) + 1 : 1; // v2 ∈ {1, v1}
+
+		if (sourceRoute.size() >= v1 + 2 && destRoute.size() >= v2 + 2)
+		{
+			int sourcePos = (rand() % (sourceRoute.size() - v1 - 1)) + 1;
+			int destPos = (rand() % (destRoute.size() - v2 - 1)) + 1;
+
+			// Extract segments
+			vector<int> sourceSegment(sourceRoute.begin() + sourcePos, sourceRoute.begin() + sourcePos + v1);
+			vector<int> destSegment(destRoute.begin() + destPos, destRoute.begin() + destPos + v2);
+
+			sourceRoute.erase(sourceRoute.begin() + sourcePos, sourceRoute.begin() + sourcePos + v1);
+			destRoute.erase(destRoute.begin() + destPos, destRoute.begin() + destPos + v2);
+
+			sourceRoute.insert(sourceRoute.begin() + sourcePos, destSegment.begin(), destSegment.end());
+			destRoute.insert(destRoute.begin() + destPos, sourceSegment.begin(), sourceSegment.end());
+
+			cout << "Swapped " << v1 << " retailers from route " << sourceRouteIndex
+				 << " with " << v2 << " retailers from route " << destRouteIndex
+				 << " in period " << t << endl;
+
+			cout << "Updated Source route[" << w << "][" << t << "][" << sourceRouteIndex << "]: [";
+			for (int i = 0; i < sourceRoute.size(); ++i)
+			{
+				if (i != sourceRoute.size() - 1)
+				{
+					cout << sourceRoute[i] << " -> ";
+				}
+				else
+				{
+					cout << sourceRoute[i];
+				}
+			}
+			cout << "]" << endl;
+
+			cout << "Updated Dest route[" << w << "][" << t << "][" << destRouteIndex << "]: [";
+			for (int i = 0; i < destRoute.size(); ++i)
+			{
+				if (i != destRoute.size() - 1)
+				{
+					cout << destRoute[i] << " -> ";
+				}
+				else
+				{
+					cout << destRoute[i];
+				}
+			}
+			cout << "]" << endl;
+
+			validSwapFound = true;
+		}
+
+		++attempts;
+	}
+
+	if (!validSwapFound)
+	{
+		cerr << "Failed to find a valid swap after " << maxAttempts << " attempts." << endl;
+		return false;
+	}
+
+	return true;
+}
+
+bool LocalSearch::Insert(int w, vector<vector<vector<int>>> &routes)
+{
+	cout << "Insert" << endl;
+
+	int t = rand() % params.numPeriods; // Randomly choose a period
+	std::unordered_set<int> visitedNodes;
+	vector<int> unvisitedNodes;
+
+	// Gather all visited nodes in the selected period across all vehicles
+	int rtIndex = 0;
+	for (auto &route : routes[t])
+	{
+		if (route.size() > 2)
+		{
+			for (int nodeInd = 1; nodeInd < route.size() - 1; ++nodeInd)
+			{
+				visitedNodes.insert(route[nodeInd]);
+			}
+		}
+
+		cout << "Old Route[" << w << "][" << t << "][" << rtIndex << "]: [";
+		for (int i = 0; i < route.size(); ++i)
+		{
+			if (i != route.size() - 1)
+			{
+				cout << route[i] << " -> ";
+			}
+			else
+			{
+				cout << route[i];
+			}
+		}
+		cout << "]" << endl;
+
+		rtIndex++;
+	}
+
+	// Identify unvisited nodes
+	for (int node : RATW[w])
+	{
+		if (visitedNodes.find(node + params.numWarehouses) == visitedNodes.end())
+		{
+			unvisitedNodes.push_back(node + params.numWarehouses);
+		}
+	}
+
+	// If no unvisited nodes are found, return false
+	if (unvisitedNodes.empty())
+	{
+		cout << "No unvisited nodes available for insertion." << endl;
+		return false;
+	}
+
+	// Randomly select an unvisited node from the list
+	int unvisitedNode = unvisitedNodes[rand() % unvisitedNodes.size()];
+
+	// Attempt to insert the unvisited node at the minimum cost position
+	bool inserted = false;
+	double minInsertionCost = std::numeric_limits<double>::max();
+	int minInsertionPos = -1;
+	int routeToIns = -1;
+	int routeInd = 0;
+
+	for (auto &route : routes[t])
+	{
+		if (route.empty())
+		{
+			// For an empty route, calculate the cost of inserting the node between two warehouse nodes
+			double insertionCost = 2 * params.transportationCost_SecondEchelon[w][unvisitedNode];
+			if (insertionCost < minInsertionCost)
+			{
+				minInsertionCost = insertionCost;
+				minInsertionPos = 0;
+				routeToIns = routeInd;
+			}
+		}
+		else
+		{
+			for (int pos = 1; pos < route.size(); ++pos)
+			{
+				double insertionCost = params.transportationCost_SecondEchelon[route[pos - 1]][unvisitedNode] +
+									   params.transportationCost_SecondEchelon[unvisitedNode][route[pos]] -
+									   params.transportationCost_SecondEchelon[route[pos - 1]][route[pos]];
+
+				if (insertionCost < minInsertionCost)
+				{
+					minInsertionCost = insertionCost;
+					minInsertionPos = pos;
+					routeToIns = routeInd;
+				}
+			}
+		}
+		routeInd++;
+	}
+
+	// Insert the node if a position was found
+	if (routeToIns != -1 && !routes[t][routeToIns].empty())
+	{
+		routes[t][routeToIns].insert(routes[t][routeToIns].begin() + minInsertionPos, unvisitedNode);
+		inserted = true;
+	}
+	else if (routeToIns != -1 && routes[t][routeToIns].empty())
+	{
+		// If the route is empty, add warehouse -> node -> warehouse
+		routes[t][routeToIns].push_back(w);
+		routes[t][routeToIns].push_back(unvisitedNode);
+		routes[t][routeToIns].push_back(w);
+		inserted = true;
+	}
+
+	if (!inserted)
+	{
+		cout << "Failed to insert unvisited node." << endl;
+		return false;
+	}
+
+	rtIndex = 0;
+	for (auto &route : routes[t])
+	{
+		cout << "New Route[" << w << "][" << t << "][" << rtIndex << "]: [";
+		for (int i = 0; i < route.size(); ++i)
+		{
+			if (i != route.size() - 1)
+			{
+				cout << route[i] << " -> ";
+			}
+			else
+			{
+				cout << route[i];
+			}
+		}
+		cout << "]" << endl;
+
+		rtIndex++;
+	}
+
+	cout << "Inserted unvisited node " << unvisitedNode << " at period " << t << " with minimum cost." << endl;
+	return true;
+}
+
+bool LocalSearch::Remove(int w, vector<vector<vector<int>>> &routes)
+{
+	cout << "Remove" << endl;
+
+	int t = rand() % params.numPeriods; // Randomly choose a period
+	vector<int> candidateRoutes;
+
+	int rtIndex = 0;
+	for (auto &route : routes[t])
+	{
+		cout << "Old Route[" << w << "][" << t << "][" << rtIndex << "]: [";
+		for (int i = 0; i < route.size(); ++i)
+		{
+			if (i != route.size() - 1)
+			{
+				cout << route[i] << " -> ";
+			}
+			else
+			{
+				cout << route[i];
+			}
+		}
+		cout << "]" << endl;
+
+		rtIndex++;
+	}
+
+	// Gather routes that have more than just the warehouse start and end node
+	for (int i = 0; i < routes[t].size(); ++i)
+	{
+		if (routes[t][i].size() > 2)
+		{ // Ensure there's more than just the warehouse nodes
+			candidateRoutes.push_back(i);
+		}
+	}
+
+	// If no suitable routes are found, return false
+	if (candidateRoutes.empty())
+	{
+		cout << "No suitable routes with removable nodes found." << endl;
+		return false;
+	}
+
+	// Randomly select a route from candidate routes
+	int routeIndex = candidateRoutes[rand() % candidateRoutes.size()];
+	auto &selectedRoute = routes[t][routeIndex];
+
+	// Randomly select a retailer node to remove, avoiding the warehouse nodes at the start and end if present
+	int nodeIndex = rand() % (selectedRoute.size() - 2) + 1; // Avoid first and last positions if they are warehouses
+	selectedRoute.erase(selectedRoute.begin() + nodeIndex);
+	if (selectedRoute.size() == 2)
+	{
+		// Clear the route since it only contains the warehouse start and end nodes
+		selectedRoute.clear();
+	}
+
+	rtIndex = 0;
+	for (auto &route : routes[t])
+	{
+		cout << "New Route[" << w << "][" << t << "][" << rtIndex << "]: [";
+		for (int i = 0; i < route.size(); ++i)
+		{
+			if (i != route.size() - 1)
+			{
+				cout << route[i] << " -> ";
+			}
+			else
+			{
+				cout << route[i];
+			}
+		}
+		cout << "]" << endl;
+
+		rtIndex++;
+	}
+
+	// Additional checks or operations can be performed here if necessary
+	cout << "Removed a visited node from period " << t << ", route " << routeIndex << endl;
+	return true;
+}
+
+bool LocalSearch::Merge(int w, vector<vector<vector<int>>> &routes)
+{
+	cout << "Merge" << endl;
+
+	// Map to store retailer appearances across periods
+	std::unordered_map<int, vector<int>> retailerPeriods;
+
+	// Gather retailers and the periods they appear in
+	for (int period = 0; period < params.numPeriods; ++period)
+	{
+		std::unordered_set<int> periodRetailers;
+		for (const auto &route : routes[period])
+		{
+			for (int retailer : route)
+			{
+				if (retailer != w)
+				{
+					periodRetailers.insert(retailer);
+				}
+			}
+		}
+		for (int retailer : periodRetailers)
+		{
+			retailerPeriods[retailer].push_back(period);
+		}
+	}
+
+	// Find retailers that appear in more than one period
+	vector<int> eligibleRetailers;
+	for (const auto &entry : retailerPeriods)
+	{
+		if (entry.second.size() > 1)
+		{
+			eligibleRetailers.push_back(entry.first);
+		}
+	}
+
+	if (eligibleRetailers.empty())
+	{
+		cout << "No eligible retailers found for merging." << endl;
+		return false;
+	}
+
+	// Select a random retailer to merge
+	int selectedRetailer = eligibleRetailers[rand() % eligibleRetailers.size()];
+	const auto &periods = retailerPeriods[selectedRetailer];
+
+	// Randomly select two different periods to merge retailer presence
+	int mergeFrom = periods[rand() % periods.size()];
+	int mergeTo;
+	do
+	{
+		mergeTo = periods[rand() % periods.size()];
+	} while (mergeTo == mergeFrom);
+
+	int rtIndex = 0;
+	for (auto &route : routes[mergeFrom])
+	{
+		cout << "Old Route (Merge From)[" << w << "][" << mergeFrom << "][" << rtIndex << "]: [";
+		for (int i = 0; i < route.size(); ++i)
+		{
+			if (i != route.size() - 1)
+			{
+				cout << route[i] << " -> ";
+			}
+			else
+			{
+				cout << route[i];
+			}
+		}
+		cout << "]" << endl;
+
+		rtIndex++;
+	}
+
+	rtIndex = 0;
+	for (auto &route : routes[mergeTo])
+	{
+		cout << "Old Route (Merge To)[" << w << "][" << mergeTo << "][" << rtIndex << "]: [";
+		for (int i = 0; i < route.size(); ++i)
+		{
+			if (i != route.size() - 1)
+			{
+				cout << route[i] << " -> ";
+			}
+			else
+			{
+				cout << route[i];
+			}
+		}
+		cout << "]" << endl;
+
+		rtIndex++;
+	}
+
+	// Remove retailer from mergeFrom period
+	for (auto &route : routes[mergeFrom])
+	{
+		auto it = std::find(route.begin(), route.end(), selectedRetailer);
+		if (it != route.end())
+		{
+			route.erase(it);
+			if (route.size() == 2)
+			{
+				// Clear the route since it only contains the warehouse start and end nodes
+				route.clear();
+			}
+			break; // Assume retailer appears only once per route
+		}
+	}
+
+	// Ensure the retailer is in the mergeTo period, if not already
+	bool found = false;
+	for (const auto &route : routes[mergeTo])
+	{
+		if (std::find(route.begin(), route.end(), selectedRetailer) != route.end())
+		{
+			found = true;
+			break;
+		}
+	}
+	if (!found)
+	{
+		// Here you need logic to determine where to insert the retailer in mergeTo period
+		// For simplicity, let's insert into the first route of the period
+		routes[mergeTo][0].push_back(selectedRetailer); // Simplified, consider inserting at a better position
+	}
+
+	rtIndex = 0;
+	for (auto &route : routes[mergeFrom])
+	{
+		cout << "New Route (Merge From)[" << w << "][" << mergeFrom << "][" << rtIndex << "]: [";
+		for (int i = 0; i < route.size(); ++i)
+		{
+			if (i != route.size() - 1)
+			{
+				cout << route[i] << " -> ";
+			}
+			else
+			{
+				cout << route[i];
+			}
+		}
+		cout << "]" << endl;
+
+		rtIndex++;
+	}
+
+	rtIndex = 0;
+	for (auto &route : routes[mergeTo])
+	{
+		cout << "New Route (Merge To)[" << w << "][" << mergeTo << "][" << rtIndex << "]: [";
+		for (int i = 0; i < route.size(); ++i)
+		{
+			if (i != route.size() - 1)
+			{
+				cout << route[i] << " -> ";
+			}
+			else
+			{
+				cout << route[i];
+			}
+		}
+		cout << "]" << endl;
+
+		rtIndex++;
+	}
+
+	cout << "Merged retailer " << selectedRetailer << " from period " << mergeFrom << " to " << mergeTo << endl;
+	return true;
+}
+
+bool LocalSearch::Transfer(int w, vector<vector<vector<int>>> &routes)
+{
+	cout << "Transfer" << endl;
+
+	// Randomly select a customer from RATW[w]
+	if (RATW[w].empty())
+	{
+		cout << "No customers assigned to warehouse " << w << endl;
+		return false;
+	}
+	int customer = RATW[w][rand() % RATW[w].size()] + params.numWarehouses;
+
+	vector<int> visitedPeriods;
+	vector<int> unvisitedPeriods;
+
+	// Determine where the customer is visited and where they are not
+	for (int period = 0; period < params.numPeriods; ++period)
+	{
+		bool found = false;
+		for (auto &route : routes[period])
+		{
+			if (std::find(route.begin(), route.end(), customer) != route.end())
+			{
+				found = true;
+				visitedPeriods.push_back(period);
+				break;
+			}
+		}
+		if (!found)
+		{
+			unvisitedPeriods.push_back(period);
+		}
+	}
+
+	// Remove the customer from all periods they are currently visited
+	for (int period : visitedPeriods)
+	{
+		for (auto &route : routes[period])
+		{
+			auto it = std::find(route.begin(), route.end(), customer);
+			while (it != route.end())
+			{ // Ensure all instances of the customer are removed
+				route.erase(it);
+				it = std::find(route.begin(), route.end(), customer);
+			}
+
+			if (route.size() == 2)
+			{
+				// Clear the route since it only contains the warehouse start and end nodes
+				route.clear();
 			}
 		}
 	}
 
-	bool IRPWS::Solve()
+	// Attempt to insert the customer into all periods they are not visited
+	bool inserted = false;
+	for (int t : unvisitedPeriods)
 	{
-		try
+		double minInsertionCost = std::numeric_limits<double>::max();
+		int minInsertionPos = -1;
+		int routeToIns = -1;
+		int routeInd = 0;
+
+		for (auto &route : routes[t])
 		{
-			IloEnv env;
-			IloModel model(env);
-			IloCplex cplex(model);
-
-			auto startTime = std::chrono::high_resolution_clock::now();
-
-			DefineVariables(env, model);
-			DefineObjectiveFunction(env, model);
-			DefineConstraints(env, model);
-
-			/* Assure linear mappings between the presolved and original models */
-			cplex.setParam(IloCplex::Param::Preprocessing::Presolve, IloFalse);
-
-			if (save_lpFile)
+			if (route.empty())
 			{
-				string directory = "../cplexFiles/lpModel/";
-				string lpFileName = directory + "IRPWS_NW" + std::to_string(params.numWarehouses) + "_NR" + std::to_string(params.numRetailers) + "_KP" + std::to_string(params.numVehicles_Plant) + "_KW" + std::to_string(params.numVehicles_Warehouse) + "_T" + std::to_string(params.numPeriods) + "_S" + std::to_string(params.numScenarios) + "_scenario" + std::to_string(scenario) + "_warehouse" + std::to_string(warehouse) + "_Ins" + params.instance.c_str() + ".lp";
-
-				// Export the model to an LP file
-				cplex.exportModel(lpFileName.c_str());
-			}
-
-			// Extract model
-			cplex.extract(model);
-
-			// Solve the model
-			cplex.solve();
-
-			string status;
-			double objValue = 0.0;
-
-			if (cplex.getStatus() == IloAlgorithm::Optimal)
-			{
-				status = "Optimal";
-				objValue = cplex.getObjValue();
-				cout << "Optimal solution found with objective value: " << std::fixed << std::setprecision(1) << objValue << endl;
-
-				if (save_mpsResultFile)
+				double insertionCost = 2 * params.transportationCost_SecondEchelon[w][customer];
+				if (insertionCost < minInsertionCost)
 				{
-					string directory = "../cplexFiles/solVal/";
-					string solFileName = directory + "IRPWS_NW" + std::to_string(params.numWarehouses) + "_NR" + std::to_string(params.numRetailers) + "_KP" + std::to_string(params.numVehicles_Plant) + "_KW" + std::to_string(params.numVehicles_Warehouse) + "_T" + std::to_string(params.numPeriods) + "_S" + std::to_string(params.numScenarios) + "_scenario" + std::to_string(scenario) + "_warehouse" + std::to_string(warehouse) + "_Ins" + params.instance.c_str();
-
-					// Export the model to an LP file
-					cplex.writeSolution(solFileName.c_str());
+					minInsertionCost = insertionCost;
+					minInsertionPos = 0;
+					routeToIns = routeInd;
 				}
-
-				for (int t = 0; t < params.numPeriods; ++t)
-				{
-					dualValues_WarehouseInventoryLB[t] = cplex.getDual(deliveryConstraints[t]);
-				}
-
-				RetrieveSolutions(cplex);
-			}
-			else if (cplex.getStatus() == IloAlgorithm::Infeasible)
-			{
-				status = "Infeasible";
-				cout << "Problem is infeasible" << endl;
 			}
 			else
 			{
-				status = "Undefined";
-				cout << "Solver terminated with status: " << status << endl;
+				for (int pos = 1; pos < route.size(); ++pos)
+				{
+					double insertionCost = params.transportationCost_SecondEchelon[route[pos - 1]][customer] +
+										   params.transportationCost_SecondEchelon[customer][route[pos]] -
+										   params.transportationCost_SecondEchelon[route[pos - 1]][route[pos]];
+
+					if (insertionCost < minInsertionCost)
+					{
+						minInsertionCost = insertionCost;
+						minInsertionPos = pos;
+						routeToIns = routeInd;
+					}
+				}
+			}
+			routeInd++;
+		}
+
+		// Insert the customer if a position was found
+		if (routeToIns != -1 && !routes[t][routeToIns].empty())
+		{
+			routes[t][routeToIns].insert(routes[t][routeToIns].begin() + minInsertionPos, customer);
+			inserted = true;
+		}
+		else if (routeToIns != -1 && routes[t][routeToIns].empty())
+		{
+			routes[t][routeToIns].push_back(w);
+			routes[t][routeToIns].push_back(customer);
+			routes[t][routeToIns].push_back(w);
+			inserted = true;
+		}
+	}
+
+	return inserted;
+}
+
+bool LocalSearch::Remove_Insert(int w, vector<vector<vector<int>>> &routes)
+{
+	cout << "Remove/Insert" << endl;
+
+	// Step 1: Find a period with at least one customer and randomly select one
+	vector<int> visitedPeriods;
+	for (int period = 0; period < params.numPeriods; ++period)
+	{
+		std::unordered_set<int> uniqueCustomers;
+		for (const auto &route : routes[period])
+		{
+			for (int customer : route)
+			{
+				if (customer != w)
+				{ // Assuming 'w' is the warehouse node
+					uniqueCustomers.insert(customer);
+				}
+			}
+		}
+		if (!uniqueCustomers.empty())
+		{
+			visitedPeriods.push_back(period);
+		}
+	}
+
+	if (visitedPeriods.empty())
+	{
+		cout << "No periods with customers found." << endl;
+		return false;
+	}
+
+	int fromPeriod = visitedPeriods[rand() % visitedPeriods.size()];
+	std::unordered_set<int> customersInFromPeriod;
+	for (const auto &route : routes[fromPeriod])
+	{
+		for (int customer : route)
+		{
+			if (customer != w)
+			{
+				customersInFromPeriod.insert(customer);
+			}
+		}
+	}
+
+	if (customersInFromPeriod.empty())
+	{
+		cout << "No customers in selected period to move." << endl;
+		return false;
+	}
+
+	vector<int> customers(customersInFromPeriod.begin(), customersInFromPeriod.end());
+	int selectedCustomer = customers[rand() % customers.size()];
+
+	// Step 2: Identify a period where this customer is not visited
+	vector<int> targetPeriods;
+	for (int period = 0; period < params.numPeriods; ++period)
+	{
+		if (period == fromPeriod)
+			continue;
+		bool found = false;
+		for (const auto &route : routes[period])
+		{
+			if (std::find(route.begin(), route.end(), selectedCustomer) != route.end())
+			{
+				found = true;
+				break;
+			}
+		}
+		if (!found)
+		{
+			targetPeriods.push_back(period);
+		}
+	}
+
+	if (targetPeriods.empty())
+	{
+		cout << "No eligible periods to move the customer to." << endl;
+		return false;
+	}
+
+	int toPeriod = targetPeriods[rand() % targetPeriods.size()];
+
+	// Step 3: Remove the customer from the original period
+	for (auto &route : routes[fromPeriod])
+	{
+		auto it = std::find(route.begin(), route.end(), selectedCustomer);
+		if (it != route.end())
+		{
+			route.erase(it);
+			if (route.size() == 2)
+			{
+				// Clear the route since it only contains the warehouse start and end nodes
+				route.clear();
+			}
+			break; // Assuming each customer only appears once per route
+		}
+	}
+
+	// Step 4: Insert the customer into the new period using minimal insertion cost strategy
+	double minInsertionCost = std::numeric_limits<double>::max();
+	int minInsertionPos = -1;
+	int routeToIns = -1;
+	int routeInd = 0;
+
+	for (auto &route : routes[toPeriod])
+	{
+		if (route.empty())
+		{
+			double insertionCost = 2 * params.transportationCost_SecondEchelon[w][selectedCustomer];
+			if (insertionCost < minInsertionCost)
+			{
+				minInsertionCost = insertionCost;
+				minInsertionPos = 0;
+				routeToIns = routeInd;
+			}
+		}
+		else
+		{
+			for (int pos = 1; pos < route.size(); ++pos)
+			{
+				double insertionCost = params.transportationCost_SecondEchelon[route[pos - 1]][selectedCustomer] +
+									   params.transportationCost_SecondEchelon[selectedCustomer][route[pos]] -
+									   params.transportationCost_SecondEchelon[route[pos - 1]][route[pos]];
+
+				if (insertionCost < minInsertionCost)
+				{
+					minInsertionCost = insertionCost;
+					minInsertionPos = pos;
+					routeToIns = routeInd;
+				}
+			}
+		}
+		routeInd++;
+	}
+
+	// Insert the customer if a position was found
+	if (routeToIns != -1 && !routes[toPeriod][routeToIns].empty())
+	{
+		routes[toPeriod][routeToIns].insert(routes[toPeriod][routeToIns].begin() + minInsertionPos, selectedCustomer);
+	}
+	else if (routeToIns != -1 && routes[toPeriod][routeToIns].empty())
+	{
+		routes[toPeriod][routeToIns].push_back(w);
+		routes[toPeriod][routeToIns].push_back(selectedCustomer);
+		routes[toPeriod][routeToIns].push_back(w);
+	}
+
+	cout << "Moved customer " << selectedCustomer << " from period " << fromPeriod << " to period " << toPeriod << "." << endl;
+	return true;
+}
+
+double LocalSearch::calculateObjFuncValue_ScenarioWarehouse(int s, int w, const vector<vector<double>> &Inv_Ret_Temp, const vector<vector<double>> &unmetDem_Ret_Temp, const vector<vector<vector<int>>> &route_WTR_Temp)
+{
+	// cout << "\ncalculating objFuncValue_ScenarioWarehouse" << endl;
+	// for (int t = 0; t < params.numPeriods; ++t)
+	// {
+	// 	for (int i = 0; i < RATW[w].size(); ++i)
+	// 	{
+	// 		if (Inv_Ret_Temp[i][t] > 0.0)
+	// 		{
+	// 			cout << "ret_Inv[" << i << "][" << t << "] = " << Inv_Ret_Temp[i][t] << endl;
+	// 		}
+
+	// 		if (unmetDem_Ret_Temp[i][t] > 0.0)
+	// 		{
+	// 			cout << "ret_unmDem[" << i << "][" << t << "] = " << unmetDem_Ret_Temp[i][t] << endl;
+	// 		}
+	// 	}
+	// }
+
+	double objFuncValue = 0.0;
+
+	double inventoryCost = 0.0;
+	double unmetDemandCost = 0.0;
+	double routeCost_Warehouse = 0.0;
+
+	// Inventory Holding Cost and Unmet Demand Cost
+	for (int t = 0; t < params.numPeriods; ++t)
+	{
+		for (int i = 0; i < RATW[w].size(); ++i)
+		{
+			objFuncValue += params.unitHoldingCost_Retailer[RATW[w][i]] * Inv_Ret_Temp[i][t];
+			objFuncValue += params.unmetDemandPenalty[RATW[w][i]] * unmetDem_Ret_Temp[i][t];
+
+			inventoryCost += params.unitHoldingCost_Retailer[RATW[w][i]] * Inv_Ret_Temp[i][t];
+			// cout << params.unitHoldingCost_Retailer[RATW[w][i]] << " * " << Inv_Ret_Temp[i][t] << " = " << params.unitHoldingCost_Retailer[RATW[w][i]] * Inv_Ret_Temp[i][t] << endl;
+			unmetDemandCost += params.unmetDemandPenalty[RATW[w][i]] * unmetDem_Ret_Temp[i][t];
+		}
+	}
+
+	for (int t = 0; t < params.numPeriods; ++t)
+	{
+		for (int k = 0; k < params.numVehicles_Warehouse; ++k)
+		{
+			double routeCost = 0.0;
+
+			int previousNode = w;
+			for (int j = 1; j < route_WTR_Temp[t][k].size(); ++j)
+			{
+				int currentNode = route_WTR_Temp[t][k][j];
+				objFuncValue += params.transportationCost_SecondEchelon[previousNode][currentNode];
+
+				routeCost += params.transportationCost_SecondEchelon[previousNode][currentNode];
+
+				routeCost_Warehouse += params.transportationCost_SecondEchelon[previousNode][currentNode];
+				previousNode = currentNode;
 			}
 
-			auto currentTime = std::chrono::high_resolution_clock::now();
-			auto CPUtime = std::chrono::duration_cast<std::chrono::duration<double>>(currentTime - startTime).count();
-			cout << "Timer (seconds): " << std::fixed << std::setprecision(4) << CPUtime << endl;
+			// cout << "Route[" << w << "][" << t << "][" << k << "]: [";
+			// for (int i = 0; i < route_WTR_Temp[t][k].size(); ++i)
+			// {
+			// 	if (i != route_WTR_Temp[t][k].size() - 1)
+			// 	{
+			// 		cout << route_WTR_Temp[t][k][i] << " -> ";
+			// 	}
+			// 	else
+			// 	{
+			// 		cout << route_WTR_Temp[t][k][i];
+			// 	}
+			// }
+			// cout << "]" << endl;
 
-			env.end();
+			// cout << "Route Cost(RVND)[" << s << "][" << w << "][" << t << "][" << k << "]: " << routeCost << endl;
 		}
-		catch (const IloException &e)
+	}
+
+	// cout << "Inventory Cost (RVND)[" << s << "][" << w << "]: " << inventoryCost << endl;
+	// cout << "Unmet Demand Cost (RVND)[" << s << "][" << w << "]: " << unmetDemandCost << endl;
+	// cout << "Route Cost (RVND)[" << s << "][" << w << "]: " << routeCost_Warehouse << endl;
+
+	// cout << "objFuncValue:" << objFuncValue << endl;
+	return objFuncValue;
+}
+
+// --------------------------------------------------------------------------------------------------------------------------
+// --------------------------------------------------------------------------------------------------------------------------
+Perturbation::Perturbation(const ParameterSetting &parameters, const Solution &solution)
+	: params(parameters), sol_FE(solution)
+{
+	// ----------------------------------------------------------------------------------------------------------
+	RATW = params.getRetailersAssignedToWarehouse();
+	// ----------------------------------------------------------------------------------------------------------
+}
+
+bool Perturbation::run(int s, int w,
+					   vector<vector<double>> &Inv_Ret_ScenWare,
+					   vector<vector<double>> &unmetDemand_Ret_ScenWare,
+					   vector<vector<double>> &delQuant_Ret_ScenWare,
+					   vector<vector<vector<int>>> &routes_WareToRet_ScenWare)
+{
+	cout << "\nPerturbation for scenario " << s << " and warehouse " << w << endl;
+	// --------------------------------------------------------------------------------------------------------------------------
+	// objValue_ScenarioWarehouse = calculateObjFuncValue_ScenarioWarehouse(s, w, Inv_Ret_ScenWare, unmetDemand_Ret_ScenWare, routes_WareToRet_ScenWare);
+	// cout << "\nCurrent Objective Value for scenario " << s << " and warehouse " << w << ": " << objValue_ScenarioWarehouse << endl;
+
+	// Initialize the operators
+	vector<std::function<bool(int, vector<vector<vector<int>>> &)>> perturbOperators = setPerturbOperators();
+	int max_perturb = 10;
+
+	while (max_perturb > 0)
+	{
+		vector<vector<vector<int>>> routes_WareToRet_ScenWare_temp = routes_WareToRet_ScenWare;
+		vector<vector<double>> Inv_Ret_ScenWare_temp = Inv_Ret_ScenWare;
+		vector<vector<double>> unmetDemand_Ret_ScenWare_temp = unmetDemand_Ret_ScenWare;
+		vector<vector<double>> delQuant_Ret_ScenWare_temp = delQuant_Ret_ScenWare;
+
+		// double objValue_ScenarioWarehouse_temp = 0.0;
+		// Generate random number between 0 and operators.size()
+		int index = rand() % perturbOperators.size();
+
+		for (int t = 0; t < params.numPeriods; ++t)
 		{
-			cerr << "Error: " << e << endl;
-			return false;
+			for (int k = 0; k < params.numVehicles_Warehouse; ++k)
+			{
+				cout << "Route[" << s << "][" << w << "][" << t << "][" << k << "]: [";
+				for (int i = 0; i < routes_WareToRet_ScenWare_temp[t][k].size(); ++i)
+				{
+					if (i != routes_WareToRet_ScenWare_temp[t][k].size() - 1)
+					{
+						cout << routes_WareToRet_ScenWare_temp[t][k][i] << " -> ";
+					}
+					else
+					{
+						cout << routes_WareToRet_ScenWare_temp[t][k][i];
+					}
+				}
+				cout << "]" << endl;
+			}
 		}
-		catch (const std::runtime_error &e)
+		cout << "\n";
+
+		// Execute the operator
+		if (!perturbOperators[index](w, routes_WareToRet_ScenWare_temp))
 		{
-			cerr << "Runtime Error: " << e.what() << endl;
-			return false;
+			--max_perturb;
+			continue;
 		}
+
+		LP_ScenarioWarehouse LP(params, sol_FE, s, w, routes_WareToRet_ScenWare_temp);
+		// solve LP to get the value of the coninuous variables
+		string status = LP.solve();
+		if (status != "Optimal")
+		{
+			--max_perturb;
+			continue;
+		}
+		Inv_Ret_ScenWare = LP.getInvRetailers();
+		unmetDemand_Ret_ScenWare = LP.getUnmetDemandRetailers();
+		delQuant_Ret_ScenWare = LP.getDeliveryQuantityRetailers();
+		routes_WareToRet_ScenWare = routes_WareToRet_ScenWare_temp;
+
+		// for (int t = 0; t < params.numPeriods; ++t)
+		// {
+		// 	for (size_t i = 0; i < RATW[w].size(); ++i)
+		// 	{
+		// 		cout << "Inv_Ret_temp[" << RATW[w][i] << "][" << t <<  "][" << s << "] = " << Inv_Ret_ScenWare_temp[i][t] << endl;
+		// 		cout << "unmetDemand_Ret_temp[" << RATW[w][i] << "][" << t <<  "][" << s << "] = " << unmetDemand_Ret_ScenWare_temp[i][t] << endl;
+		// 		cout << "delQuant_Ret_temp[" << RATW[w][i] << "][" << t <<  "][" << s << "] = " << delQuant_Ret_ScenWare_temp[i][t] << endl;
+		// 	}
+		// }
+
+		// double objValue_ScenarioWarehouse_temp = calculateObjFuncValue_ScenarioWarehouse(s, w, Inv_Ret_ScenWare_temp, unmetDemand_Ret_ScenWare_temp, routes_WareToRet_ScenWare_temp);
+		// cout << "Current objective value: " << objValue_ScenarioWarehouse_temp << "\n" << endl;
+
 		return true;
 	}
+	return false;
+}
 
-	void IRPWS::DefineVariables(IloEnv & env, IloModel & model)
+vector<std::function<bool(int, vector<vector<vector<int>>> &)>> Perturbation::setPerturbOperators()
+{
+	std::function<bool(int, vector<vector<vector<int>>> &)> randomShiftFunc = std::bind(&Perturbation::randomShift, this, std::placeholders::_1, std::placeholders::_2);
+	std::function<bool(int, vector<vector<vector<int>>> &)> randomInsertionFunc = std::bind(&Perturbation::randomInsertion, this, std::placeholders::_1, std::placeholders::_2);
+	std::function<bool(int, vector<vector<vector<int>>> &)> randomRemovalFunc = std::bind(&Perturbation::randomRemoval, this, std::placeholders::_1, std::placeholders::_2);
+
+	return {
+		randomShiftFunc,
+		randomInsertionFunc,
+		randomRemovalFunc};
+}
+
+bool Perturbation::randomShift(int w, vector<vector<vector<int>>> &routes)
+{
+	int v = 1;
+	cout << "Random Shift Perturbation(" << v << ")" << endl;
+
+	const int maxAttempts = 10;
+	int attempts = 0;
+	bool validShiftFound = false;
+
+	while (attempts < maxAttempts && !validShiftFound)
 	{
-		// Define Decision Variables
+		int t = rand() % params.numPeriods;
+		int sourceRouteIndex = rand() % params.numVehicles_Warehouse;
+		int destRouteIndex = rand() % params.numVehicles_Warehouse;
 
-		// Initialize Variable Manager
-		VariableManager varManager(env);
-		// -------------------------------------------------------------------------------------------------------------------------------
-		// Define I[i][t][s] variables (Retailer i inventory at the end of period t under scenario (s))
-		//
-		I = varManager.create2D(numRetailer_w[warehouse] + 1, params.numPeriods);
-		for (int i = 0; i < numRetailer_w[warehouse] + 1; ++i)
+		// Avoid shifting within the same route
+		if (sourceRouteIndex == destRouteIndex)
 		{
-			for (int t = 0; t < params.numPeriods; ++t)
-			{
-				if (i == 0)
-				{
-					string varName = "I_warehouse[" + std::to_string(i) + "][" + std::to_string(t) + "]";
-					I[i][t] = IloNumVar(env, 0.0, 0.0, IloNumVar::Float, varName.c_str());
-					model.add(I[i][t]);
-				}
-				else
-				{
-					string varName = "I_retailer[" + std::to_string(i) + "][" + std::to_string(t) + "]";
-					I[i][t] = IloNumVar(env, 0.0, params.storageCapacity_Retailer[RATW[warehouse][i - 1]], IloNumVar::Float, varName.c_str());
-					model.add(I[i][t]);
-				}
-			}
+			++attempts;
+			continue;
 		}
-		// -------------------------------------------------------------------------------------------------------------------------------
-		// Define b[i][t] variables (amount of unmet params.demand in period t (retailers are assigned to warehouses, thus i in N_w))
-		b = varManager.create2D(numRetailer_w[warehouse] + 1, params.numPeriods);
-		for (int i = 0; i < numRetailer_w[warehouse] + 1; ++i)
+
+		vector<int> &sourceRoute = routes[t][sourceRouteIndex];
+		vector<int> &destRoute = routes[t][destRouteIndex];
+
+		if (sourceRoute.size() == 0)
 		{
-			for (int t = 0; t < params.numPeriods; ++t)
-			{
-				if (i == 0)
-				{
-					string varName = "b_warehouse[" + std::to_string(i) + "][" + std::to_string(t) + "]";
-					b[i][t] = IloNumVar(env, 0.0, 0.0, IloNumVar::Float, varName.c_str());
-					model.add(b[i][t]);
-				}
-				else
-				{
-					string varName = "b_retailer[" + std::to_string(i) + "][" + std::to_string(t) + "]";
-					b[i][t] = IloNumVar(env, 0.0, params.demand[RATW[warehouse][i - 1]][t][scenario], IloNumVar::Float, varName.c_str());
-					model.add(b[i][t]);
-				}
-			}
+			++attempts;
+			continue;
 		}
-		// -------------------------------------------------------------------------------------------------------------------------------
-		// Define w[i][t] variables (delivery to retailer i in period t (retailers are assigned to warehouses, thus i in N_w))
-		w = varManager.create2D(numRetailer_w[warehouse] + 1, params.numPeriods);
-		for (int i = 0; i < numRetailer_w[warehouse] + 1; ++i)
+
+		cout << "Old Source route[" << w << "][" << t << "][" << sourceRouteIndex << "]: [";
+		for (int i = 0; i < sourceRoute.size(); ++i)
 		{
-			for (int t = 0; t < params.numPeriods; ++t)
+			if (i != sourceRoute.size() - 1)
 			{
-				if (i == 0)
-				{
-					string varName = "w_warehouse[" + std::to_string(i) + "][" + std::to_string(t) + "]";
-					w[i][t] = IloNumVar(env, 0.0, 0.0, IloNumVar::Float, varName.c_str());
-					model.add(w[i][t]);
-				}
-				else
-				{
-					string varName = "w_retailer[" + std::to_string(i) + "][" + std::to_string(t) + "]";
-					w[i][t] = IloNumVar(env, 0.0, params.DeliveryUB_perRetailer[RATW[warehouse][i - 1]][t][scenario], IloNumVar::Float, varName.c_str()); // check delivery capacity
-					model.add(w[i][t]);
-				}
-			}
-		}
-		// -------------------------------------------------------------------------------------------------------------------------------
-		// Define z[i][t] variables (load on the vehicle immediately before making delivery to retailer i in period t (retailers are assigned to warehouses, thus i in N_w))
-		z = varManager.create2D(numRetailer_w[warehouse] + 1, params.numPeriods);
-		for (int i = 0; i < numRetailer_w[warehouse] + 1; ++i)
-		{
-			for (int t = 0; t < params.numPeriods; ++t)
-			{
-				string varName = "z[" + std::to_string(i) + "][" + std::to_string(t) + "]";
-				z[i][t] = IloNumVar(env, 0.0, params.vehicleCapacity_Warehouse, IloNumVar::Float, varName.c_str());
-				model.add(z[i][t]);
-			}
-		}
-		// -------------------------------------------------------------------------------------------------------------------------------
-		// Define x[i][j][t] variables (1 if node i immediately precedes node j on a delivery route in period t; 0 otherwise)
-		// Note that node 0 denotes the warehouse and other nodes denote the retailers assigned to warehouse w, Thus we add 1 to retailer nodes!
-		x = varManager.create3D(numRetailer_w[warehouse] + 1, numRetailer_w[warehouse] + 1, params.numPeriods);
-		for (int i = 0; i < numRetailer_w[warehouse] + 1; ++i)
-		{
-			for (int j = 0; j < numRetailer_w[warehouse] + 1; ++j)
-			{
-				for (int t = 0; t < params.numPeriods; ++t)
-				{
-					string varName = "x[" + std::to_string(i) + "][" + std::to_string(j) + "][" + std::to_string(t) + "]";
-					// x[i][j][t] = IloNumVar(env, 0.0, 1.0, IloNumVar::Bool, varName.c_str());
-					x[i][j][t] = IloNumVar(env, 0.0, 1.0, IloNumVar::Float, varName.c_str());
-					model.add(x[i][j][t]);
-
-					if (i == j)
-					{
-						model.add(x[i][j][t] == 0.0);
-					}
-				}
-			}
-		}
-		// -------------------------------------------------------------------------------------------------------------------------------
-	}
-
-	void IRPWS::DefineObjectiveFunction(IloEnv & env, IloModel & model)
-	{
-		// Define objective function
-		IloExpr obj(env);
-		for (int t = 0; t < params.numPeriods; ++t)
-		{
-			for (int i = 1; i < numRetailer_w[warehouse] + 1; ++i)
-			{
-				obj += params.probability[scenario] * params.unitHoldingCost_Retailer[RATW[warehouse][i - 1]] * I[i][t];
-				obj += params.probability[scenario] * params.unmetDemandPenalty[RATW[warehouse][i - 1]] * b[i][t];
-			}
-
-			for (int i = 0; i < numRetailer_w[warehouse] + 1; ++i)
-			{
-				for (int j = 0; j < numRetailer_w[warehouse] + 1; ++j)
-				{
-					if (i != j)
-					{
-						if (i == 0)
-						{
-							obj += params.probability[scenario] * params.transportationCost_SecondEchelon[warehouse][RATW[warehouse][j - 1] + params.numWarehouses] * x[i][j][t];
-						}
-						else if (j == 0)
-						{
-							obj += params.probability[scenario] * params.transportationCost_SecondEchelon[RATW[warehouse][i - 1] + params.numWarehouses][warehouse] * x[i][j][t];
-						}
-						else
-						{
-							obj += params.probability[scenario] * params.transportationCost_SecondEchelon[RATW[warehouse][i - 1] + params.numWarehouses][RATW[warehouse][j - 1] + params.numWarehouses] * x[i][j][t];
-						}
-					}
-				}
-			}
-		}
-		model.add(IloMinimize(env, obj));
-	}
-
-	void IRPWS::DefineConstraints(IloEnv & env, IloModel & model)
-	{
-		/* Define Constraints */
-		// ---------------------------------------------------------------------------------------------------------------------------
-		/*
-			Define Inventory Balance Constraints (Retailers):
-				I[i][t]^([s]) = I[i][t-1]^([s]) + w[i][t]^([s]) - d[i][t]^([s]) + b[i][t]^([s]) 	for all i in N_w, t in T
-		*/
-		for (int t = 0; t < params.numPeriods; ++t)
-		{
-			for (int i = 1; i < numRetailer_w[warehouse] + 1; ++i)
-			{
-				string constraintName = "RetailerInventoryBalance(" + std::to_string(i) + "," + std::to_string(t + 1) + "," + std::to_string(scenario + 1) + ")";
-
-				IloExpr expr(env);
-				if (t == 0)
-				{
-					expr += I[i][t];
-					expr += -w[i][t];
-					expr += -b[i][t];
-					IloConstraint RetailerInventoryBalanceConstraint(expr == params.initialInventory_Retailer[RATW[warehouse][i - 1]] - params.demand[RATW[warehouse][i - 1]][t][scenario]);
-					expr.end();
-
-					model.add(RetailerInventoryBalanceConstraint).setName(constraintName.c_str());
-				}
-				else
-				{
-					expr += I[i][t];
-					expr += -I[i][t - 1];
-					expr += -w[i][t];
-					expr += -b[i][t];
-					IloConstraint RetailerInventoryBalanceConstraint(expr == -params.demand[RATW[warehouse][i - 1]][t][scenario]);
-					expr.end();
-
-					model.add(RetailerInventoryBalanceConstraint).setName(constraintName.c_str());
-				}
-			}
-		}
-		// ---------------------------------------------------------------------------------------------------------------------------
-		/*
-			Define Inventory Capacity Constraints (Retailers):
-				I[i][t] + d[i][t]^([s]) <= params.storageCapacity_Retailer[i] 		for all i in N_w, t in T
-		// */
-		for (int t = 0; t < params.numPeriods; ++t)
-		{
-			for (int i = 1; i < numRetailer_w[warehouse] + 1; ++i)
-			{
-				string constraintName = "RetailerInventoryCapacity(" + std::to_string(i) + "," + std::to_string(t + 1) + "," + std::to_string(scenario + 1) + ")";
-
-				IloExpr expr(env);
-				expr += I[i][t];
-				expr += params.demand[RATW[warehouse][i - 1]][t][scenario];
-				IloConstraint RetailerInventoryCapacityConstraint(expr <= params.storageCapacity_Retailer[RATW[warehouse][i - 1]]);
-				expr.end();
-
-				model.add(RetailerInventoryCapacityConstraint).setName(constraintName.c_str());
-			}
-		}
-		// ---------------------------------------------------------------------------------------------------------------------------
-		/*
-			Ensure that there is at most one successor on a route for each retailer:
-				sum(j in N & j != i, t in T) x[i][j][t]^([s]) <= 1			for all i in N_w t in T
-		*/
-		for (int t = 0; t < params.numPeriods; ++t)
-		{
-			for (int i = 1; i < numRetailer_w[warehouse] + 1; ++i)
-			{
-				string constraintName = "OneSuccessor(" + std::to_string(i) + "," + std::to_string(t + 1) + "," + std::to_string(scenario + 1) + ")";
-
-				IloExpr expr(env);
-				for (int j = 0; j < numRetailer_w[warehouse] + 1; ++j)
-				{
-					if (j != i)
-					{
-						expr += x[i][j][t];
-					}
-				}
-				IloConstraint oneSuccessorConstraint(expr <= 1);
-				expr.end();
-
-				model.add(oneSuccessorConstraint).setName(constraintName.c_str());
-			}
-		}
-		// ---------------------------------------------------------------------------------------------------------------------------
-		/*
-			Define flow balance constraints:
-				sum(i in N & i != j) x[i][j][t]^([s]) = sum(i in N & i != j) x[j][i][t]^([s])			for all j in N_w, t in T
-		*/
-		for (int t = 0; t < params.numPeriods; ++t)
-		{
-			for (int j = 1; j < numRetailer_w[warehouse] + 1; ++j)
-			{
-				string constraintName = "FlowBalance(" + std::to_string(j) + "," + std::to_string(t + 1) + "," + std::to_string(scenario + 1) + ")";
-
-				IloExpr expr(env);
-				for (int i = 0; i < numRetailer_w[warehouse] + 1; ++i)
-				{
-					if (i != j)
-					{
-						expr += x[i][j][t];
-						expr += -x[j][i][t];
-					}
-				}
-				IloConstraint flowBalanceConstraint(expr == 0);
-				expr.end();
-
-				model.add(flowBalanceConstraint).setName(constraintName.c_str());
-			}
-		}
-		// ---------------------------------------------------------------------------------------------------------------------------
-		/*
-			Define Delivery limit constraints:
-				w[i][t]^([s]) <= M[i][t]^([s]) * sum(j in N) x[i][j][t]^([s])			for all i in N_w, t in T
-		*/
-		for (int t = 0; t < params.numPeriods; ++t)
-		{
-			for (int i = 1; i < numRetailer_w[warehouse] + 1; ++i)
-			{
-				string constraintName = "DeliveryLimit(" + std::to_string(i) + "," + std::to_string(t + 1) + "," + std::to_string(scenario + 1) + ")";
-
-				IloExpr expr(env);
-				expr += w[i][t];
-				for (int j = 0; j < numRetailer_w[warehouse] + 1; ++j)
-				{
-					expr += -params.DeliveryUB_perRetailer[RATW[warehouse][i - 1]][t][scenario] * x[i][j][t];
-				}
-				IloConstraint deliveryLimitConstraint(expr <= 0);
-				expr.end();
-
-				model.add(deliveryLimitConstraint).setName(constraintName.c_str());
-			}
-		}
-		// ---------------------------------------------------------------------------------------------------------------------------
-		/*
-			Define the fleet size constraint:
-				sum(j in N_w) x[0][j][t]^([s]) <= params.numVehicles_Warehouse			for all t in T
-		*/
-		for (int t = 0; t < params.numPeriods; ++t)
-		{
-			string constraintName = "FleetSize(" + std::to_string(t + 1) + ")";
-
-			IloExpr expr(env);
-			for (int j = 1; j < numRetailer_w[warehouse] + 1; ++j)
-			{
-				expr += x[0][j][t];
-			}
-			IloConstraint fleetSizeConstraint(expr <= params.numVehicles_Warehouse);
-			expr.end();
-
-			model.add(fleetSizeConstraint).setName(constraintName.c_str());
-		}
-		// ---------------------------------------------------------------------------------------------------------------------------
-		/*
-			Define vehicle load capacity constraint:
-				z[i][t]^([s]) <= params.vehicleCapacity_Warehouse			for all i in N_w, t in T
-		*/
-		for (int t = 0; t < params.numPeriods; ++t)
-		{
-			for (int i = 1; i < numRetailer_w[warehouse] + 1; ++i)
-			{
-				string constraintName = "VehicleLoadCapacity(" + std::to_string(i) + "," + std::to_string(t + 1) + "," + std::to_string(scenario + 1) + ")";
-
-				IloExpr expr(env);
-				expr += z[i][t];
-				IloConstraint vehicleLoadCapacityConstraint(expr <= params.vehicleCapacity_Warehouse);
-				expr.end();
-
-				model.add(vehicleLoadCapacityConstraint).setName(constraintName.c_str());
-			}
-		}
-		// ---------------------------------------------------------------------------------------------------------------------------
-		/*
-			MTZ Constraints:
-				Guarantee that the load on the vehicle before visiting retailer j on a route must
-				be less than or equal to the load just before visiting predecessor retailer i
-
-				z[j][t]^([s]) <= z[i][t]^([s]) - w[i][t]^([s]) + W[t][s] * (1 - x[i][j][t]^([s]))			for all i in N_w, j in N, t in T
-		*/
-		for (int t = 0; t < params.numPeriods; ++t)
-		{
-			for (int i = 1; i < numRetailer_w[warehouse] + 1; ++i)
-			{
-				for (int j = 0; j < numRetailer_w[warehouse] + 1; ++j)
-				{
-					string constraintName = "MTZ(" + std::to_string(i) + "," + std::to_string(j) + "," + std::to_string(t + 1) + "," + std::to_string(scenario + 1) + ")";
-
-					IloExpr expr(env);
-					expr += z[j][t];
-					expr += -z[i][t];
-					expr += w[i][t];
-					expr += -params.DeliveryUB[t][scenario] * (1 - x[i][j][t]);
-					IloConstraint MTZConstraint(expr <= 0);
-					expr.end();
-
-					model.add(MTZConstraint).setName(constraintName.c_str());
-				}
-			}
-		}
-		// ---------------------------------------------------------------------------------------------------------------------------
-		/*
-			Define delivery constraints to limit the deliveries to the available inventory of the warehouse:
-				sum(i in N_w) w[i][t]^([s]) <= warehouseInventory[warehouse][t-1]^([s]) + sum(r in R) warehouseDelivery[r][warehouse][t]			for all t in T
-		*/
-		deliveryConstraints.resize(params.numPeriods);
-
-		for (int t = 0; t < params.numPeriods; ++t)
-		{
-			string constraintName = "DeliveryLimit(" + std::to_string(t + 1) + ")";
-
-			IloExpr expr(env);
-			for (int i = 1; i < numRetailer_w[warehouse] + 1; ++i)
-			{
-				expr += w[i][t];
-			}
-			// Store each constraint in the vector with its handle
-			if (t == 0)
-			{
-				deliveryConstraints[t] = IloRange(expr <= params.initialInventory_Warehouse[warehouse] + sumDeliveredToWarehouse[warehouse][t]);
+				cout << sourceRoute[i] << " -> ";
 			}
 			else
 			{
-				deliveryConstraints[t] = IloRange(expr <= warehouseInventory[warehouse][t - 1][scenario] + sumDeliveredToWarehouse[warehouse][t]);
+				cout << sourceRoute[i];
 			}
-			expr.end();
+		}
+		cout << "]" << endl;
 
-			model.add(deliveryConstraints[t]); // Add constraint to model
+		cout << "Old Dest route[" << w << "][" << t << "][" << destRouteIndex << "]: [";
+		for (int i = 0; i < destRoute.size(); ++i)
+		{
+			if (i != destRoute.size() - 1)
+			{
+				cout << destRoute[i] << " -> ";
+			}
+			else
+			{
+				cout << destRoute[i];
+			}
+		}
+		cout << "]" << endl;
+
+		// Check if source route has enough retailers to shift
+		if (sourceRoute.size() >= 2 + v)
+		{
+			cout << "Source route has enough retailers to shift" << endl;
+			int startPos = (rand() % (sourceRoute.size() - v - 1)) + 1;
+			int endPos = startPos + v;
+
+			vector<int> segment(sourceRoute.begin() + startPos, sourceRoute.begin() + endPos);
+			int insertPos = 0;
+			if (destRoute.size() != 0)
+			{
+				insertPos = (rand() % (destRoute.size() - 1)) + 1;
+			}
+
+			// Execute the shift
+			sourceRoute.erase(sourceRoute.begin() + startPos, sourceRoute.begin() + endPos);
+			destRoute.insert(destRoute.begin() + insertPos, segment.begin(), segment.end());
+			if (sourceRoute.size() == 2)
+			{
+				sourceRoute.clear();
+			}
+
+			if (destRoute.size() == v)
+			{
+				destRoute.insert(destRoute.begin(), w);
+				destRoute.insert(destRoute.end(), w);
+			}
+
+			cout << "Shifted " << v << " retailers from route " << sourceRouteIndex
+				 << " to route " << destRouteIndex << " in period " << t << endl;
+
+			cout << "Updated Source route[" << w << "][" << t << "][" << sourceRouteIndex << "]: [";
+			for (int i = 0; i < sourceRoute.size(); ++i)
+			{
+				if (i != sourceRoute.size() - 1)
+				{
+					cout << sourceRoute[i] << " -> ";
+				}
+				else
+				{
+					cout << sourceRoute[i];
+				}
+			}
+			cout << "]" << endl;
+
+			cout << "Updated Dest route[" << w << "][" << t << "][" << destRouteIndex << "]: [";
+			for (int i = 0; i < destRoute.size(); ++i)
+			{
+				if (i != destRoute.size() - 1)
+				{
+					cout << destRoute[i] << " -> ";
+				}
+				else
+				{
+					cout << destRoute[i];
+				}
+			}
+			cout << "]" << endl;
+
+			validShiftFound = true;
+		}
+
+		++attempts;
+	}
+
+	if (!validShiftFound)
+	{
+		cerr << "Failed to find a valid shift after " << maxAttempts << " attempts." << endl;
+		return false;
+	}
+
+	return true;
+}
+
+bool Perturbation::randomInsertion(int w, vector<vector<vector<int>>> &routes)
+{
+	cout << "Random Insertion Perturbation" << endl;
+
+	int t = rand() % params.numPeriods; // Randomly choose a period
+	std::unordered_set<int> visitedNodes;
+	vector<int> unvisitedNodes;
+
+	// Gather all visited nodes in the selected period across all vehicles
+	int rtIndex = 0;
+	for (auto &route : routes[t])
+	{
+		if (route.size() > 2)
+		{
+			for (int nodeInd = 1; nodeInd < route.size() - 1; ++nodeInd)
+			{
+				visitedNodes.insert(route[nodeInd]);
+			}
+		}
+
+		cout << "Old Route[" << w << "][" << t << "][" << rtIndex << "]: [";
+		for (int i = 0; i < route.size(); ++i)
+		{
+			if (i != route.size() - 1)
+			{
+				cout << route[i] << " -> ";
+			}
+			else
+			{
+				cout << route[i];
+			}
+		}
+		cout << "]" << endl;
+
+		rtIndex++;
+	}
+
+	// Identify unvisited nodes
+	for (int node : RATW[w])
+	{
+		if (visitedNodes.find(node + params.numWarehouses) == visitedNodes.end())
+		{
+			unvisitedNodes.push_back(node + params.numWarehouses);
 		}
 	}
 
-	void IRPWS::RetrieveSolutions(IloCplex & cplex)
+	// If no unvisited nodes are found, return false
+	if (unvisitedNodes.empty())
 	{
-		// Retrieve solution
-		// initilize variables
-		retailerInventory_S.assign(params.numRetailers, vector<double>(params.numPeriods, 0.0));
-		unmetDemandQuantity_S.assign(params.numRetailers, vector<double>(params.numPeriods, 0.0));
-		deliveryQuantityToRetailers_W_S.assign(params.numRetailers, vector<double>(params.numPeriods, 0.0));
+		cout << "No unvisited nodes available for insertion." << endl;
+		return false;
+	}
 
-		// Get solution values of decision variables
+	// Randomly select an unvisited node from the list
+	int unvisitedNode = unvisitedNodes[rand() % unvisitedNodes.size()];
+
+	// Attempt to insert the unvisited node at the minimum cost position
+	bool inserted = false;
+	double minInsertionCost = std::numeric_limits<double>::max();
+	int minInsertionPos = -1;
+	int routeToIns = -1;
+	int routeInd = 0;
+
+	for (auto &route : routes[t])
+	{
+		if (route.empty())
+		{
+			// For an empty route, calculate the cost of inserting the node between two warehouse nodes
+			double insertionCost = 2 * params.transportationCost_SecondEchelon[w][unvisitedNode];
+			if (insertionCost < minInsertionCost)
+			{
+				minInsertionCost = insertionCost;
+				minInsertionPos = 0;
+				routeToIns = routeInd;
+			}
+		}
+		else
+		{
+			for (int pos = 1; pos < route.size(); ++pos)
+			{
+				double insertionCost = params.transportationCost_SecondEchelon[route[pos - 1]][unvisitedNode] +
+									   params.transportationCost_SecondEchelon[unvisitedNode][route[pos]] -
+									   params.transportationCost_SecondEchelon[route[pos - 1]][route[pos]];
+
+				if (insertionCost < minInsertionCost)
+				{
+					minInsertionCost = insertionCost;
+					minInsertionPos = pos;
+					routeToIns = routeInd;
+				}
+			}
+		}
+		routeInd++;
+	}
+
+	// Insert the node if a position was found
+	if (routeToIns != -1 && !routes[t][routeToIns].empty())
+	{
+		routes[t][routeToIns].insert(routes[t][routeToIns].begin() + minInsertionPos, unvisitedNode);
+		inserted = true;
+	}
+	else if (routeToIns != -1 && routes[t][routeToIns].empty())
+	{
+		// If the route is empty, add warehouse -> node -> warehouse
+		routes[t][routeToIns].push_back(w);
+		routes[t][routeToIns].push_back(unvisitedNode);
+		routes[t][routeToIns].push_back(w);
+		inserted = true;
+	}
+
+	if (!inserted)
+	{
+		cout << "Failed to insert unvisited node." << endl;
+		return false;
+	}
+
+	rtIndex = 0;
+	for (auto &route : routes[t])
+	{
+		cout << "New Route[" << w << "][" << t << "][" << rtIndex << "]: [";
+		for (int i = 0; i < route.size(); ++i)
+		{
+			if (i != route.size() - 1)
+			{
+				cout << route[i] << " -> ";
+			}
+			else
+			{
+				cout << route[i];
+			}
+		}
+		cout << "]" << endl;
+
+		rtIndex++;
+	}
+
+	cout << "Inserted unvisited node " << unvisitedNode << " at period " << t << " with minimum cost." << endl;
+	return true;
+}
+
+bool Perturbation::randomRemoval(int w, vector<vector<vector<int>>> &routes)
+{
+	cout << "Random Removal Perturbation" << endl;
+
+	int t = rand() % params.numPeriods; // Randomly choose a period
+	vector<int> candidateRoutes;
+
+	int rtIndex = 0;
+	for (auto &route : routes[t])
+	{
+		cout << "Old Route[" << w << "][" << t << "][" << rtIndex << "]: [";
+		for (int i = 0; i < route.size(); ++i)
+		{
+			if (i != route.size() - 1)
+			{
+				cout << route[i] << " -> ";
+			}
+			else
+			{
+				cout << route[i];
+			}
+		}
+		cout << "]" << endl;
+
+		rtIndex++;
+	}
+
+	// Gather routes that have more than just the warehouse start and end node
+	for (int i = 0; i < routes[t].size(); ++i)
+	{
+		if (routes[t][i].size() > 2)
+		{ // Ensure there's more than just the warehouse nodes
+			candidateRoutes.push_back(i);
+		}
+	}
+
+	// If no suitable routes are found, return false
+	if (candidateRoutes.empty())
+	{
+		cout << "No suitable routes with removable nodes found." << endl;
+		return false;
+	}
+
+	// Randomly select a route from candidate routes
+	int routeIndex = candidateRoutes[rand() % candidateRoutes.size()];
+	auto &selectedRoute = routes[t][routeIndex];
+
+	// Randomly select a retailer node to remove, avoiding the warehouse nodes at the start and end if present
+	int nodeIndex = rand() % (selectedRoute.size() - 2) + 1; // Avoid first and last positions if they are warehouses
+	selectedRoute.erase(selectedRoute.begin() + nodeIndex);
+	if (selectedRoute.size() == 2)
+	{
+		// Clear the route since it only contains the warehouse start and end nodes
+		selectedRoute.clear();
+	}
+
+	rtIndex = 0;
+	for (auto &route : routes[t])
+	{
+		cout << "New Route[" << w << "][" << t << "][" << rtIndex << "]: [";
+		for (int i = 0; i < route.size(); ++i)
+		{
+			if (i != route.size() - 1)
+			{
+				cout << route[i] << " -> ";
+			}
+			else
+			{
+				cout << route[i];
+			}
+		}
+		cout << "]" << endl;
+
+		rtIndex++;
+	}
+
+	// Additional checks or operations can be performed here if necessary
+	cout << "Removed a visited node from period " << t << ", route " << routeIndex << endl;
+	return true;
+}
+
+// ------------------------------------------------------------------------------------------------------------------------
+LP_ScenarioWarehouse::LP_ScenarioWarehouse(const ParameterSetting &parameters, const Solution &solution,
+										   int scenario,
+										   int warehouse,
+										   vector<vector<vector<int>>> routes_WareToRet_ScenWare)
+	: params(parameters),
+	  sol_FE(solution),
+	  scenario(scenario),
+	  warehouse(warehouse),
+	  routes_WareToRet_ScenWare(routes_WareToRet_ScenWare)
+{
+	// ----------------------------------------------------------------------------------------------------------
+	cout << "Solving LP for scenario " << scenario << " and warehouse " << warehouse << endl;
+
+	// Initialize random seed
+	RATW = params.getRetailersAssignedToWarehouse();
+	numRetailers_w = RATW[warehouse].size();
+	// ----------------------------------------------------------------------------------------------------------
+	ret_Inv.resize(numRetailers_w, vector<double>(params.numPeriods, 0.0));
+	ret_unmDem.resize(numRetailers_w, vector<double>(params.numPeriods, 0.0));
+	ret_delQuant.resize(numRetailers_w, vector<double>(params.numPeriods, 0.0));
+}
+
+string LP_ScenarioWarehouse::solve()
+{
+	IloEnv env;
+	IloModel model(env);
+	IloCplex cplex(model);
+
+	bool save_lpFile = false;
+	bool save_mpsResultFile = false;
+
+	// -------------------------------------------------------------------------------------------------------------------------------
+	// Define variables
+	// -------------------------------------------------------------------------------------------------------------------------------
+	// Initialize Variable Manager
+	VariableManager varManager(env);
+	// -------------------------------------------------------------------------------------------------------------------------------
+	// Define I[i][t][s] variables - inventory level at retailer i, period t and scenario s (retailers are assigned to warehouses -> i in N_w))
+	IloArray<IloNumVarArray> I_retailer = varManager.create2D(numRetailers_w, params.numPeriods);
+	for (int i = 0; i < numRetailers_w; ++i)
+	{
 		for (int t = 0; t < params.numPeriods; ++t)
 		{
-			int retInd = 1;
-			for (int i = 0; i < params.numRetailers; ++i)
+			string varName = "I_retailer[" + std::to_string(i) + "][" + std::to_string(t) + "]";
+			I_retailer[i][t] = IloNumVar(env, 0.0, params.storageCapacity_Retailer[RATW[warehouse][i]], IloNumVar::Float, varName.c_str());
+			model.add(I_retailer[i][t]);
+		}
+	}
+
+	// Define b[i][t][s] variables - unmet demand at retailer i, period t and scenario s (retailers are assigned to warehouses -> i in N_w)
+	IloArray<IloNumVarArray> b_retailer = varManager.create2D(numRetailers_w, params.numPeriods);
+	for (int i = 0; i < numRetailers_w; ++i)
+	{
+		for (int t = 0; t < params.numPeriods; ++t)
+		{
+			string varName = "b_retailer[" + std::to_string(i) + "][" + std::to_string(t) + "]";
+			b_retailer[i][t] = IloNumVar(env, 0.0, params.demand[RATW[warehouse][i]][t][scenario], IloNumVar::Float, varName.c_str());
+			model.add(b_retailer[i][t]);
+		}
+	}
+
+	// Define w[i][t][k][s] variables - delivery to retailer i, period t with vehicle k and scenario s (retailers are assigned to warehouses -> i in N_w)
+	IloArray<IloArray<IloNumVarArray>> w_retailer = varManager.create3D(numRetailers_w, params.numPeriods, params.numVehicles_Warehouse);
+	for (int i = 0; i < numRetailers_w; ++i)
+	{
+		for (int t = 0; t < params.numPeriods; ++t)
+		{
+			for (int k = 0; k < params.numVehicles_Warehouse; ++k)
 			{
-				if (std::find(RATW[warehouse].begin(), RATW[warehouse].end(), i) != RATW[warehouse].end())
+				string varName = "w_retailer[" + std::to_string(i) + "][" + std::to_string(t) + "][" + std::to_string(k) + "]";
+				w_retailer[i][t][k] = IloNumVar(env, 0.0, params.DeliveryUB_perRetailer[RATW[warehouse][i]][t][scenario], IloNumVar::Float, varName.c_str());
+				model.add(w_retailer[i][t][k]);
+			}
+		}
+	}
+	// -------------------------------------------------------------------------------------------------------------------------------
+	/* Define objective function */
+	// -------------------------------------------------------------------------------------------------------------------------------
+	IloExpr obj(env);
+	for (int t = 0; t < params.numPeriods; ++t)
+	{
+		for (int i = 0; i < numRetailers_w; ++i)
+		{
+			obj += params.unitHoldingCost_Retailer[RATW[warehouse][i]] * I_retailer[i][t];
+			obj += params.unmetDemandPenalty[RATW[warehouse][i]] * b_retailer[i][t];
+		}
+	}
+	model.add(IloMinimize(env, obj));
+	// -------------------------------------------------------------------------------------------------------------------------------
+	/* Define Constraints */
+	// ---------------------------------------------------------------------------------------------------------------------------
+	/*
+		Define Inventory Balance Constraints (Retailers):
+			I[i][t]^([s]) = I[i][t-1]^([s]) + w[i][t]^([s]) - d[i][t]^([s]) + b[i][t]^([s]) 	for all i in N_w, t in T
+	*/
+	for (int t = 0; t < params.numPeriods; ++t)
+	{
+		for (int i = 0; i < numRetailers_w; ++i)
+		{
+			string constraintName = "RetailerInventoryBalance(" + std::to_string(RATW[warehouse][i] + params.numWarehouses) + "," + std::to_string(t + 1) + "," + std::to_string(scenario + 1) + ")";
+
+			IloExpr expr(env);
+			if (t == 0)
+			{
+				expr += I_retailer[i][t];
+				for (int k = 0; k < params.numVehicles_Warehouse; ++k)
 				{
-					retailerInventory_S[i][t] = cplex.getValue(I[retInd][t]);
-					unmetDemandQuantity_S[i][t] = cplex.getValue(b[retInd][t]);
-					deliveryQuantityToRetailers_W_S[i][t] = cplex.getValue(w[retInd++][t]);
+					expr += -w_retailer[i][t][k];
+				}
+				expr += -b_retailer[i][t];
+				IloConstraint RetailerInventoryBalanceConstraint(expr == params.initialInventory_Retailer[RATW[warehouse][i]] - params.demand[RATW[warehouse][i]][t][scenario]);
+				expr.end();
+
+				model.add(RetailerInventoryBalanceConstraint).setName(constraintName.c_str());
+			}
+			else
+			{
+				expr += I_retailer[i][t];
+				expr += -I_retailer[i][t - 1];
+				for (int k = 0; k < params.numVehicles_Warehouse; ++k)
+				{
+					expr += -w_retailer[i][t][k];
+				}
+				expr += -b_retailer[i][t];
+				IloConstraint RetailerInventoryBalanceConstraint(expr == -params.demand[RATW[warehouse][i]][t][scenario]);
+				expr.end();
+
+				model.add(RetailerInventoryBalanceConstraint).setName(constraintName.c_str());
+			}
+		}
+	}
+	// ---------------------------------------------------------------------------------------------------------------------------
+	/*
+		Define Inventory Capacity Constraints (Retailers):
+			I[i][t]^([s]) + d[i][t]^([s]) <= params.storageCapacity_Retailer[i] 		for all i in N_w, t in T
+	// */
+	for (int t = 0; t < params.numPeriods; ++t)
+	{
+		for (int i = 0; i < numRetailers_w; ++i)
+		{
+			string constraintName = "RetailerInventoryCapacity(" + std::to_string(RATW[warehouse][i] + params.numWarehouses) + "," + std::to_string(t + 1) + "," + std::to_string(scenario + 1) + ")";
+
+			IloExpr expr(env);
+			expr += I_retailer[i][t];
+			IloConstraint RetailerInventoryCapacityConstraint(expr <= params.storageCapacity_Retailer[RATW[warehouse][i]] - params.demand[RATW[warehouse][i]][t][scenario]);
+			expr.end();
+
+			model.add(RetailerInventoryCapacityConstraint).setName(constraintName.c_str());
+		}
+	}
+	// ---------------------------------------------------------------------------------------------------------------------------
+	/*
+		Define delivery constraints to limit the deliveries to the available inventory of the warehouse:
+			sum(i in N_w) sum(k in K) w[i][t][k]^([s]) <= warehouseInventory[warehouse][t-1]^([s]) + warehouseDelivery[warehouse][t]			for all t in T
+	*/
+	for (int t = 0; t < params.numPeriods; ++t)
+	{
+		string constraintName = "WarehouseInventoryLimitConstraint(" + std::to_string(t + 1) + ")";
+
+		IloExpr expr(env);
+		for (int k = 0; k < params.numVehicles_Warehouse; ++k)
+		{
+			for (int i = 0; i < numRetailers_w; ++i)
+			{
+				expr += w_retailer[i][t][k];
+			}
+		}
+
+		if (t == 0)
+		{
+			IloConstraint warehouseInvLimitConstraint(expr <= params.initialInventory_Warehouse[warehouse] + sol_FE.deliveryQuantityToWarehouse[warehouse][t]);
+			expr.end();
+
+			model.add(warehouseInvLimitConstraint).setName(constraintName.c_str());
+		}
+		else
+		{
+			IloConstraint warehouseInvLimitConstraint(expr <= sol_FE.warehouseInventory[warehouse][t - 1][scenario] + sol_FE.deliveryQuantityToWarehouse[warehouse][t]);
+
+			expr.end();
+
+			model.add(warehouseInvLimitConstraint).setName(constraintName.c_str());
+		}
+	}
+	// ---------------------------------------------------------------------------------------------------------------------------
+	/*
+		Define delivery constraints to limit the deliveries to the available vehicle capacity of the warehouse:
+			sum(i in N_w) w[i][t][k]^([s]) <= Q_warehouse[k]^([s])			for all t in T
+	*/
+	for (int t = 0; t < params.numPeriods; ++t)
+	{
+		for (int k = 0; k < params.numVehicles_Warehouse; ++k)
+		{
+			string constraintName = "vehicleCapacityConstraint(" + std::to_string(t + 1) + ")" + std::to_string(k + 1);
+
+			IloExpr expr(env);
+
+			for (int i = 0; i < numRetailers_w; ++i)
+			{
+				expr += w_retailer[i][t][k];
+			}
+
+			IloConstraint vehicleCapacityConstraint(expr <= params.vehicleCapacity_Warehouse);
+
+			expr.end();
+
+			model.add(vehicleCapacityConstraint).setName(constraintName.c_str());
+		}
+	}
+	// ---------------------------------------------------------------------------------------------------------------------------
+	/*
+		Define Delivery limit constraints:
+			w[i][t][k]^([s]) <= M[i][t]^([s]) * sum(j in N) a[s][w][t][i]			for all i in N_w, t in T
+	*/
+	for (int t = 0; t < params.numPeriods; ++t)
+	{
+		for (int k = 0; k < params.numVehicles_Warehouse; ++k)
+		{
+			for (int i = 0; i < numRetailers_w; ++i)
+			{
+				string constraintName = "deliveryLimitConstraint(" + std::to_string(RATW[warehouse][i] + params.numWarehouses) + "," + std::to_string(k + 1) + "," + std::to_string(t + 1) + "," + std::to_string(scenario + 1) + ")";
+
+				auto it = std::find(routes_WareToRet_ScenWare[t][k].begin() + 1, routes_WareToRet_ScenWare[t][k].end() - 1, RATW[warehouse][i] + params.numWarehouses);
+				if (it != routes_WareToRet_ScenWare[t][k].end() - 1)
+				{
+					IloExpr expr(env);
+					expr += w_retailer[i][t][k];
+					expr += -params.DeliveryUB_perRetailer[RATW[warehouse][i]][t][scenario];
+					IloConstraint deliveryLimitConstraint(expr <= 0);
+					expr.end();
+
+					model.add(deliveryLimitConstraint).setName(constraintName.c_str());
+				}
+				else
+				{
+					IloExpr expr(env);
+					expr += w_retailer[i][t][k];
+					IloConstraint deliveryLimitConstraint(expr == 0);
+					expr.end();
+
+					model.add(deliveryLimitConstraint).setName(constraintName.c_str());
 				}
 			}
 		}
 	}
+	// ---------------------------------------------------------------------------------------------------------------------------
+	/* Assure linear mappings between the presolved and original models */
+	cplex.setParam(IloCplex::Param::Preprocessing::Presolve, IloFalse);
 
-	vector<double> IRPWS::getDualValues_WarehouseInventoryLB()
+	if (save_lpFile)
 	{
-		return dualValues_WarehouseInventoryLB;
+		string directory = "../cplexFiles/lpModel/";
+		string lpFileName = directory + "ILS_LP" + std::to_string(params.numWarehouses) + "_NR" + std::to_string(params.numRetailers) + "_KP" + std::to_string(params.numVehicles_Plant) + "_KW" + std::to_string(params.numVehicles_Warehouse) + "_T" + std::to_string(params.numPeriods) + "_S" + std::to_string(params.numScenarios) + "_scenario" + std::to_string(scenario) + "_warehouse" + std::to_string(warehouse) + "_Ins" + params.instance.c_str() + ".lp";
+
+		// Export the model to an LP file
+		cplex.exportModel(lpFileName.c_str());
 	}
 
-	vector<vector<double>> IRPWS::getRetailerInventory_S()
+	// Extract model
+	cplex.extract(model);
+
+	// Solve the model
+	cplex.solve();
+
+	string status;
+	double objValue = 0.0;
+
+	if (cplex.getStatus() == IloAlgorithm::Optimal)
 	{
-		return retailerInventory_S;
+		status = "Optimal";
+		objValue = cplex.getObjValue();
+		cout << "Optimal solution found with objective value: " << std::fixed << std::setprecision(1) << objValue << endl;
+
+		if (save_mpsResultFile)
+		{
+			string directory = "../cplexFiles/solVal/";
+			string solFileName = directory + "ILS_LP" + std::to_string(params.numWarehouses) + "_NR" + std::to_string(params.numRetailers) + "_KP" + std::to_string(params.numVehicles_Plant) + "_KW" + std::to_string(params.numVehicles_Warehouse) + "_T" + std::to_string(params.numPeriods) + "_S" + std::to_string(params.numScenarios) + "_scenario" + std::to_string(scenario) + "_warehouse" + std::to_string(warehouse) + "_Ins" + params.instance.c_str();
+
+			// Export the model to an LP file
+			cplex.writeSolution(solFileName.c_str());
+		}
+
+		for (int t = 0; t < params.numPeriods; ++t)
+		{
+			for (int i = 0; i < numRetailers_w; ++i)
+			{
+				ret_Inv[i][t] = cplex.getValue(I_retailer[i][t]);
+				ret_unmDem[i][t] = cplex.getValue(b_retailer[i][t]);
+
+				for (int k = 0; k < params.numVehicles_Warehouse; ++k)
+				{
+					ret_delQuant[i][t] += cplex.getValue(w_retailer[i][t][k]);
+				}
+			}
+		}
+
+		// for (int t = 0; t < params.numPeriods; ++t)
+		// {
+		// 	for (int i = 0; i < numRetailers_w; ++i)
+		// 	{
+		// 		if (ret_Inv[i][t] > 0.0){
+		// 			cout << "ret_Inv[" << RATW[warehouse][i] + params.numWarehouses << "][" << t << "] = " << ret_Inv[i][t] << endl;
+		// 		}
+
+		// 		if (ret_unmDem[i][t] > 0.0){
+		// 			cout << "ret_unmDem[" << RATW[warehouse][i] + params.numWarehouses << "][" << t << "] = " << ret_unmDem[i][t] << endl;
+		// 		}
+
+		// 		if (ret_delQuant[i][t] > 0.0){
+		// 			cout << "ret_delQuant[" << RATW[warehouse][i] + params.numWarehouses << "][" << t << "] = " << ret_delQuant[i][t] << endl;
+		// 		}
+		// 	}
+		// }
+	}
+	else if (cplex.getStatus() == IloAlgorithm::Infeasible)
+	{
+		status = "Infeasible";
+		cout << "Problem is infeasible" << endl;
+	}
+	else
+	{
+		status = "Undefined";
+		cout << "Solver terminated with status: " << status << endl;
 	}
 
-	vector<vector<double>> IRPWS::getUnmetDemandQuantity_S()
-	{
-		return unmetDemandQuantity_S;
-	}
+	env.end();
 
-	vector<vector<double>> IRPWS::getDeliveryQuantityToRetailers_W_S()
-	{
-		return deliveryQuantityToRetailers_W_S;
-	}
+	return status;
+}
 
-	// void IRPWS::RetrieveSolutions(IloCplex &cplex)
-	// {
-	// 	// Retrieve solution
-	// 	// initilize variables
-	// 	sol.productionSetup.assign(params.numPeriods, 0);
-	// 	sol.productionQuantity.assign(params.numPeriods, 0.0);
-	// 	sol.plantInventory.assign(params.numPeriods, 0.0);
-	// 	sol.warehouseInventory.assign(params.numWarehouses, vector<vector<double>>(params.numPeriods, vector<double>(params.numScenarios, 0.0)));
-	// 	sol.retailerInventory.assign(params.numRetailers, vector<vector<double>>(params.numPeriods, vector<double>(params.numScenarios, 0.0)));
-	// 	sol.deliveryQuantityToWarehouse.assign(numRoutes_FirstEchelon, vector<vector<double>>(params.numWarehouses, vector<double>(params.numPeriods, 0.0)));
-	// 	sol.routePlantToWarehouse.resize(params.numPeriods);
+vector<vector<double>> LP_ScenarioWarehouse::getInvRetailers()
+{
+	return ret_Inv;
+}
 
-	// 	selectedRoute.assign(numRoutes_FirstEchelon, vector<int>(params.numPeriods, 0));
+vector<vector<double>> LP_ScenarioWarehouse::getUnmetDemandRetailers()
+{
+	return ret_unmDem;
+}
 
-	// 	// Get solution values of decision variables
-	// 	for (int t = 0; t < params.numPeriods; ++t)
-	// 	{
-	// 		sol.productionSetup[t] = cplex.getIntValue(y[t]);
-	// 		sol.productionQuantity[t] = cplex.getValue(p[t]);
-	// 		sol.plantInventory[t] = cplex.getValue(I_plant[t]);
-
-	// 		for (int routeInd = 0; routeInd < numRoutes_FirstEchelon; ++routeInd)
-	// 		{
-	// 			selectedRoute[routeInd][t] = cplex.getIntValue(o[routeInd][t]);
-	// 			if (selectedRoute[routeInd][t] == 1)
-	// 			{
-	// 				sol.routePlantToWarehouse[t].push_back(optimalRoutes_FirstEchelon[routeInd]);
-	// 			}
-	// 		}
-
-	// 		for (int w = 0; w < params.numWarehouses; ++w)
-	// 		{
-	// 			for (int routeInd = 0; routeInd < numRoutes_FirstEchelon; ++routeInd)
-	// 			{
-	// 				sol.deliveryQuantityToWarehouse[routeInd][warehouse][t] = cplex.getValue(q[routeInd][warehouse][t]);
-	// 			}
-
-	// 			for (int s = 0; s < params.numScenarios; ++s)
-	// 			{
-	// 				sol.warehouseInventory[warehouse][t][s] = cplex.getValue(I_warehouse[warehouse][t][s]);
-	// 			}
-	// 		}
-	// 	}
-	// }
-
-	// void IRPWS::CalculateCostsForEachPart()
-	// {
-	// 	for (int t = 0; t < params.numPeriods; ++t)
-	// 	{
-	// 		sol.setupCost += sol.productionSetup[t] * setupCost;
-	// 		sol.productionCost += unitProdCost * sol.productionQuantity[t];
-	// 		sol.holdingCostPlant += params.unitHoldingCost_Plant * sol.plantInventory[t];
-
-	// 		for (int routeInd = 0; routeInd < numRoutes_FirstEchelon; ++routeInd)
-	// 		{
-	// 			if (selectedRoute[routeInd][t] == 1)
-	// 			{
-	// 				sol.transportationCostPlantToWarehouse += routeCosts_FirstEchelon[routeInd];
-	// 			}
-	// 		}
-
-	// 		for (int s = 0; s < params.numScenarios; ++s)
-	// 		{
-	// 			for (int w = 0; w < params.numWarehouses; ++w)
-	// 			{
-	// 				sol.holdingCostWarehouse_Avg += params.probability[s] * params.unitHoldingCost_Warehouse[warehouse] * sol.warehouseInventory[warehouse][t][s];
-	// 			}
-	// 		}
-	// 	}
-	// }
-
-	// void IRPWS::DisplayProductionSetupVars()
-	// {
-	// 	for (int t = 0; t < params.numPeriods; ++t)
-	// 	{
-	// 		if (sol.productionSetup[t] == 1)
-	// 		{
-	// 			cout << "y[" << t + 1 << "] = " << sol.productionSetup[t] << endl;
-	// 		}
-	// 	}
-	// }
-
-	// void IRPWS::DisplayProductionQuantVars()
-	// {
-	// 	for (int t = 0; t < params.numPeriods; ++t)
-	// 	{
-	// 		if (sol.productionQuantity[t] > THRESHOLD)
-	// 		{
-	// 			cout << "p[" << t + 1 << "] = " << sol.productionQuantity[t] << endl;
-	// 		}
-	// 	}
-	// }
-
-	// void IRPWS::DisplayPlantInventoryVars()
-	// {
-	// 	for (int t = 0; t < params.numPeriods; ++t)
-	// 	{
-	// 		if (sol.plantInventory[t] > THRESHOLD)
-	// 		{
-	// 			cout << "I_plant[" << t + 1 << "] = " << sol.plantInventory[t] << endl;
-	// 		}
-	// 	}
-	// }
-
-	// void IRPWS::DisplayWarehouseInventoryVars()
-	// {
-	// 	for (int s = 0; s < params.numScenarios; ++s)
-	// 	{
-	// 		for (int t = 0; t < params.numPeriods; ++t)
-	// 		{
-	// 			for (int w = 0; w < params.numWarehouses; ++w)
-	// 			{
-	// 				if (sol.warehouseInventory[warehouse][t][s] > THRESHOLD)
-	// 				{
-	// 					cout << "I_warehouse[" << w + 1 << "][" << t + 1 << "][" << scenario + 1 << "] = " << sol.warehouseInventory[warehouse][t][s] << endl;
-	// 				}
-	// 			}
-	// 		}
-	// 	}
-	// }
-
-	// void IRPWS::DisplayFirstEchelonRouteVars()
-	// {
-	// 	for (int t = 0; t < params.numPeriods; ++t)
-	// 	{
-	// 		for (int routeInd = 0; routeInd < numRoutes_FirstEchelon; ++routeInd)
-	// 		{
-	// 			if (selectedRoute[routeInd][t] == 1)
-	// 			{
-	// 				cout << "o[" << routeInd + 1 << "][" << t + 1 << "] = " << selectedRoute[routeInd][t] << endl;
-	// 			}
-	// 		}
-	// 	}
-
-	// 	for (int t = 0; t < params.numPeriods; ++t)
-	// 	{
-	// 		int routeInd = 1;
-	// 		for (const auto &route : sol.routePlantToWarehouse[t])
-	// 		{
-	// 			cout << "Period: " << t + 1 << ", Route: " << routeInd << " : ";
-	// 			if (!route.empty())
-	// 			{
-	// 				for (auto it = route.begin(); it != route.end() - 1; ++it)
-	// 				{
-	// 					cout << *it << " -> ";
-	// 				}
-	// 				cout << route.back() << endl;
-	// 			}
-	// 			++routeInd;
-	// 		}
-	// 	}
-	// }
-
-	// void IRPWS::DisplayDeliveryQuantityToWarehousesVars()
-	// {
-	// 	for (int t = 0; t < params.numPeriods; ++t)
-	// 	{
-	// 		for (int w = 0; w < params.numWarehouses; ++w)
-	// 		{
-	// 			for (int routeInd = 0; routeInd < numRoutes_FirstEchelon; ++routeInd)
-	// 			{
-	// 				if (sol.deliveryQuantityToWarehouse[routeInd][warehouse][t] > THRESHOLD)
-	// 				{
-	// 					cout << "q[" << routeInd + 1 << "][" << w + 1 << "][" << t + 1 << "] = " << sol.deliveryQuantityToWarehouse[routeInd][warehouse][t] << endl;
-	// 				}
-	// 			}
-	// 		}
-	// 	}
-	// }
+vector<vector<double>> LP_ScenarioWarehouse::getDeliveryQuantityRetailers()
+{
+	return ret_delQuant;
+}

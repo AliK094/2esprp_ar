@@ -21,6 +21,7 @@ public:
     // Getters for private members
     vector<vector<int>> getSortedWarehousesByDistance() const;
     vector<vector<int>> getRetailersAssignedToWarehouse() const;
+    vector<int> getWarehouseAssignedToRetailer() const;
     vector<vector<int>> getRouteMatrix() const;
     vector<vector<int>> getOptimalRoutes() const;
     vector<double> getRouteCosts() const;
@@ -28,7 +29,7 @@ public:
 
     // Public member variables
     string solutionAlgorithm;
-    string inp;
+    string inputFile;
     int numWarehouses;
     int numRetailers;
     int numPeriods;
@@ -125,6 +126,7 @@ private:
     // Private member variables
     vector<vector<int>> sorted_warehouses_by_distance;
     vector<vector<int>> retailers_assigned_to_warehouse;
+    vector<int> warehouse_assigned_to_retailer;
     vector<vector<int>> routeMatrix;
     vector<double> routeCosts;
     vector<vector<int>> optimalRoutes;

@@ -21,17 +21,7 @@ IRPWS::IRPWS(const ParameterSetting &parameters, const Solution &solution, int w
 	warehouseInventory = sol_FE.warehouseInventory;
 
 	numRoutes_FirstEchelon = sol_FE.deliveryQuantityToWarehouse.size();
-	sumDeliveredToWarehouse.resize(params.numWarehouses, vector<double>(params.numPeriods, 0.0));
-	for (int t = 0; t < params.numPeriods; ++t)
-	{
-		for (int w = 0; w < params.numWarehouses; ++w)
-		{
-			for (int routeInd = 0; routeInd < numRoutes_FirstEchelon; ++routeInd)
-			{
-				sumDeliveredToWarehouse[w][t] += sol_FE.deliveryQuantityToWarehouse[routeInd][w][t];
-			}
-		}
-	}
+	DeliveredToWarehouse = sol_FE.deliveryQuantityToWarehouse;
 
 	dualValues_WarehouseInventoryLB.resize(params.numPeriods, 0.0);
 }
@@ -188,7 +178,7 @@ void IRPWS::DefineVariables(IloEnv &env, IloModel &model)
 			else
 			{
 				string varName = "w_retailer[" + std::to_string(i) + "][" + std::to_string(t) + "]";
-				w[i][t] = IloNumVar(env, 0.0,params.DeliveryUB_perRetailer[RATW[warehouse][i - 1]][t][scenario], IloNumVar::Float, varName.c_str()); // check delivery capacity
+				w[i][t] = IloNumVar(env, 0.0, params.DeliveryUB_perRetailer[RATW[warehouse][i - 1]][t][scenario], IloNumVar::Float, varName.c_str()); // check delivery capacity
 				model.add(w[i][t]);
 			}
 		}
@@ -484,11 +474,11 @@ void IRPWS::DefineConstraints(IloEnv &env, IloModel &model)
 		// Store each constraint in the vector with its handle
 		if (t == 0)
 		{
-			deliveryConstraints[t] = IloRange(expr <= params.initialInventory_Warehouse[warehouse] + sumDeliveredToWarehouse[warehouse][t]);
+			deliveryConstraints[t] = IloRange(expr <= params.initialInventory_Warehouse[warehouse] + DeliveredToWarehouse[warehouse][t]);
 		}
 		else
 		{
-			deliveryConstraints[t] = IloRange(expr <= warehouseInventory[warehouse][t - 1][scenario] + sumDeliveredToWarehouse[warehouse][t]);
+			deliveryConstraints[t] = IloRange(expr <= warehouseInventory[warehouse][t - 1][scenario] + DeliveredToWarehouse[warehouse][t]);
 		}
 		expr.end();
 

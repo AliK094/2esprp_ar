@@ -1,8 +1,7 @@
 #include "ParameterSetting.h"
 
 ParameterSetting::ParameterSetting(int argc, char *argv[])
-    : solutionAlgorithm(argv[1]),
-      inp(argv[2]),
+    : inputFile(argv[2]),
       numWarehouses(std::stoi(argv[3])),
       numRetailers(std::stoi(argv[4])),
       numPeriods(std::stoi(argv[5])),
@@ -146,7 +145,7 @@ bool ParameterSetting::readDataFromFile()
 {
     try
     {
-        std::ifstream file(inp);
+        std::ifstream file(inputFile);
         if (!file.is_open())
         {
             throw std::runtime_error("Unable to open file");
@@ -215,7 +214,7 @@ void ParameterSetting::checkDemandsDistribution() const
     {
         for (const auto &dem_period : dem_retailer)
         {
-            sum_demands +=  1./numScenarios * std::accumulate(dem_period.begin(), dem_period.end(), 0.0);
+            sum_demands += 1. / numScenarios * std::accumulate(dem_period.begin(), dem_period.end(), 0.0);
         }
     }
     cout << "Sum of demands in all periods (sample): " << sum_demands << endl;
@@ -267,13 +266,14 @@ void ParameterSetting::setWarehouseParameters()
         std::mt19937 gen3(int(1e3 + (seed * seed)));
 
         std::uniform_int_distribution<> dis1(0, 2500);
-        std::uniform_int_distribution<> dis2(storageCapacity_Plant / 2, storageCapacity_Plant);
+        // std::uniform_int_distribution<> dis2(storageCapacity_Plant / 2, storageCapacity_Plant);
         std::uniform_int_distribution<> dis3(uhc_min, uhc_max);
 
         coordX_Warehouse[i] = std::floor(dis1(gen1));
         coordY_Warehouse[i] = std::floor(dis1(gen2));
         initialInventory_Warehouse[i] = 0;
-        storageCapacity_Warehouse[i] = std::floor(dis2(gen3));
+        // storageCapacity_Warehouse[i] = std::floor(dis2(gen3));
+        storageCapacity_Warehouse[i] = storageCapacity_Plant;
         unitHoldingCost_Warehouse[i] = std::floor(dis3(gen3));
     }
 }
@@ -371,7 +371,7 @@ void ParameterSetting::calculateDeliveryUB()
                     remainingDemand += demand[i][l][s];
                     remainingDemandAllRetailers += demand[i][l][s];
                 }
-                DeliveryUB_perRetailer[i][t][s] = remainingDemand;
+                DeliveryUB_perRetailer[i][t][s] = std::min({remainingDemand, vehicleCapacity_Warehouse, storageCapacity_Retailer[i]});
             }
             DeliveryUB[t][s] = remainingDemandAllRetailers;
         }
@@ -416,8 +416,8 @@ void ParameterSetting::printParameters() const
 void ParameterSetting::saveInstance()
 {
     string file_path = "../instances2eprp/" + instance + "_W" + std::to_string(numWarehouses) +
-                            "_R" + std::to_string(numRetailers) + "_T" + std::to_string(numPeriods) +
-                            "_KP" + std::to_string(numVehicles_Plant) + "_KW" + std::to_string(numVehicles_Warehouse) + ".txt";
+                       "_R" + std::to_string(numRetailers) + "_T" + std::to_string(numPeriods) +
+                       "_KP" + std::to_string(numVehicles_Plant) + "_KW" + std::to_string(numVehicles_Warehouse) + ".txt";
     try
     {
         std::ofstream file(file_path);
@@ -603,12 +603,20 @@ void ParameterSetting::assign_retailers_to_warehouse()
     try
     {
         retailers_assigned_to_warehouse.resize(numWarehouses);
+        warehouse_assigned_to_retailer.resize(numRetailers, -1);
 
         vector<double> remainingStorageCapacityWarehouse(storageCapacity_Warehouse.begin(), storageCapacity_Warehouse.end());
 
-        vector<vector<double>> remainingVehicleCapacityWarehouse(numWarehouses, vector<double>(numVehicles_Warehouse, vehicleCapacity_Warehouse));
+        double lambda = 1.0;
+        // if (numVehicles_Warehouse != 1)
+        // {
+        //     lambda = 0.9;
+        // }
 
-        for (int retInd = 0; retInd < numRetailers; ++retInd)
+        vector<double> remainingVehicleCapacityWarehouse(numWarehouses, lambda * numVehicles_Warehouse * vehicleCapacity_Warehouse);
+
+        int retInd = 0;
+        while (retInd < numRetailers)
         {
             bool retailer_assigned = false;
 
@@ -617,29 +625,28 @@ void ParameterSetting::assign_retailers_to_warehouse()
                 if (retailer_assigned)
                     break;
 
-                if (remainingStorageCapacityWarehouse[w] - consumeRate[retInd] >= 0.0)
+                if (remainingStorageCapacityWarehouse[w] - consumeRate[retInd] >= 0.0 && remainingVehicleCapacityWarehouse[w] - consumeRate[retInd] >= 0.0)
                 {
-                    for (int k = 0; k < numVehicles_Warehouse; ++k)
-                    {
-                        if (remainingVehicleCapacityWarehouse[w][k] - consumeRate[retInd] >= 0.0)
-                        {
-                            remainingStorageCapacityWarehouse[w] -= consumeRate[retInd];
-                            remainingVehicleCapacityWarehouse[w][k] -= consumeRate[retInd];
-                            retailers_assigned_to_warehouse[w].push_back(retInd);
-                            retailer_assigned = true;
-                            break;
-                        }
-                    }
+                    remainingStorageCapacityWarehouse[w] -= consumeRate[retInd];
+                    remainingVehicleCapacityWarehouse[w] -= consumeRate[retInd];
+                    retailers_assigned_to_warehouse[w].push_back(retInd);
+                    warehouse_assigned_to_retailer[retInd] = w;
+                    retailer_assigned = true;
+                    retInd++;
+                    break;
                 }
             }
         }
 
-        for (int w = 0; w < numWarehouses; ++w)
-        {
+        for (int w = 0; w < numWarehouses; ++w) {
             cout << "Retailers assigned to warehouse " << w << ": [";
-            for (int retInd : retailers_assigned_to_warehouse[w])
-            {
-                cout << retInd << " ";
+            bool first = true;
+            for (int retInd : retailers_assigned_to_warehouse[w]) {
+                if (!first) {
+                    cout << " ";
+                }
+                cout << retInd;
+                first = false;
             }
             cout << "]" << endl;
         }
@@ -807,6 +814,11 @@ vector<vector<int>> ParameterSetting::getSortedWarehousesByDistance() const
 vector<vector<int>> ParameterSetting::getRetailersAssignedToWarehouse() const
 {
     return retailers_assigned_to_warehouse;
+}
+
+vector<int> ParameterSetting::getWarehouseAssignedToRetailer() const
+{
+    return warehouse_assigned_to_retailer;
 }
 
 vector<vector<int>> ParameterSetting::getRouteMatrix() const

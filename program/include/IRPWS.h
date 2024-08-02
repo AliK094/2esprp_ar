@@ -56,7 +56,7 @@ private:
     vector<int> numRetailer_w;
     vector<vector<vector<double>>> warehouseInventory;
     int numRoutes_FirstEchelon;
-    vector<vector<double>> sumDeliveredToWarehouse;
+    vector<vector<double>> DeliveredToWarehouse;
     vector<double> dualValues_WarehouseInventoryLB;
 
     vector<vector<double>> retailerInventory_S;

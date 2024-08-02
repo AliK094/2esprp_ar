@@ -48,7 +48,7 @@ struct Solution
     vector<vector<vector<double>>> warehouseInventory;
     vector<vector<vector<double>>> retailerInventory;
     vector<vector<vector<double>>> retailerUnmetDemand;
-    vector<vector<vector<double>>> deliveryQuantityToWarehouse;
+    vector<vector<double>> deliveryQuantityToWarehouse;
     vector<vector<vector<vector<double>>>> deliveryQuantityToRetailer;
     vector<vector<vector<int>>> routePlantToWarehouse;
     vector<vector<vector<vector<vector<int>>>>> routeWarehouseToRetailer;

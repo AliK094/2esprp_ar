@@ -53,7 +53,7 @@ bool MWPRP_FE::Solve()
 
 		// Set CPLEX Parameters: (DISPLAY LEVEL(0,1,2,3,4), OPTIMALITY GAP, RUN TIME (SECS), THREADS, MEMORY (MB))
 		CplexParameterManager parameterManager(cplex);
-		parameterManager.setParameters(4, 1e-6, 7200, 8, 32000);
+		parameterManager.setParameters(4, 1e-6, 600, 8, 16000);
 		cplex.setParam(IloCplex::Param::Emphasis::MIP, 2);
 
 		DefineVariables(env, model);
@@ -568,7 +568,7 @@ void MWPRP_FE::RetrieveSolutions(IloCplex &cplex)
 	sol.plantInventory.assign(params.numPeriods, 0.0);
 	sol.warehouseInventory.assign(params.numWarehouses, vector<vector<double>>(params.numPeriods, vector<double>(params.numScenarios, 0.0)));
 	sol.retailerInventory.assign(params.numRetailers, vector<vector<double>>(params.numPeriods, vector<double>(params.numScenarios, 0.0)));
-	sol.deliveryQuantityToWarehouse.assign(numRoutes_FirstEchelon, vector<vector<double>>(params.numWarehouses, vector<double>(params.numPeriods, 0.0)));
+	sol.deliveryQuantityToWarehouse.assign(params.numWarehouses, vector<double>(params.numPeriods, 0.0));
 	sol.routePlantToWarehouse.resize(params.numPeriods);
 
 	selectedRoute.assign(numRoutes_FirstEchelon, vector<int>(params.numPeriods, 0));
@@ -593,7 +593,7 @@ void MWPRP_FE::RetrieveSolutions(IloCplex &cplex)
 		{
 			for (int routeInd = 0; routeInd < numRoutes_FirstEchelon; ++routeInd)
 			{
-				sol.deliveryQuantityToWarehouse[routeInd][w][t] = cplex.getValue(q[routeInd][w][t]);
+				sol.deliveryQuantityToWarehouse[w][t] += cplex.getValue(q[routeInd][w][t]);
 			}
 
 			for (int s = 0; s < params.numScenarios; ++s)
@@ -647,7 +647,7 @@ void MWPRP_FE::DisplayProductionQuantVars()
 	{
 		if (sol.productionQuantity[t] > THRESHOLD)
 		{
-			cout << "p[" << t + 1 << "] = " << sol.productionQuantity[t] << endl;
+			cout << "p[" << t + 1 << "] = " << std::setprecision(0) << std::fixed << sol.productionQuantity[t] << endl;
 		}
 	}
 }
@@ -658,7 +658,7 @@ void MWPRP_FE::DisplayPlantInventoryVars()
 	{
 		if (sol.plantInventory[t] > THRESHOLD)
 		{
-			cout << "I_plant[" << t + 1 << "] = " << sol.plantInventory[t] << endl;
+			cout << "I_plant[" << t + 1 << "] = " << std::setprecision(0) << std::fixed << sol.plantInventory[t] << endl;
 		}
 	}
 }
@@ -673,7 +673,7 @@ void MWPRP_FE::DisplayWarehouseInventoryVars()
 			{
 				if (sol.warehouseInventory[w][t][s] > THRESHOLD)
 				{
-					cout << "I_warehouse[" << w + 1 << "][" << t + 1 << "][" << s + 1 << "] = " << sol.warehouseInventory[w][t][s] << endl;
+					cout << "I_warehouse[" << w + 1 << "][" << t + 1 << "][" << s + 1 << "] = " << std::setprecision(0) << std::fixed << sol.warehouseInventory[w][t][s] << endl;
 				}
 			}
 		}
@@ -718,12 +718,9 @@ void MWPRP_FE::DisplayDeliveryQuantityToWarehousesVars()
 	{
 		for (int w = 0; w < params.numWarehouses; ++w)
 		{
-			for (int routeInd = 0; routeInd < numRoutes_FirstEchelon; ++routeInd)
+			if (sol.deliveryQuantityToWarehouse[w][t] > THRESHOLD)
 			{
-				if (sol.deliveryQuantityToWarehouse[routeInd][w][t] > THRESHOLD)
-				{
-					cout << "q[" << routeInd + 1 << "][" << w + 1 << "][" << t + 1 << "] = " << sol.deliveryQuantityToWarehouse[routeInd][w][t] << endl;
-				}
+				cout << "q[" << w + 1 << "][" << t + 1 << "] = " << sol.deliveryQuantityToWarehouse[w][t] << endl;
 			}
 		}
 	}

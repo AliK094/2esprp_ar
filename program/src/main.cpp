@@ -2,6 +2,7 @@
 #include "ParameterSetting.h"
 #include "MWPRP_FE.h"
 #include "IRPWS.h"
+#include "ILS.h"
 
 int main(int argc, char *argv[])
 {
@@ -10,9 +11,9 @@ int main(int argc, char *argv[])
 	{
 		cerr << "Wrong number of arguments" << endl;
 		cerr << "Usage: " << argv[0] << " <solutionAlgorithm> <inputFilename> "
-				  << "<Number of Warehouses> <Number of Retailers> <Planning Horizon> <Number of Vehicles at the plant> "
-				  << "<Number of Vehicles Per each Warehouse> <Number of Scenarios> <Penalty Coefficient (For a Unit of Unmet demand)>"
-				  << "<Uncertainty Range> <ProbabilityFunction> <instanceName>" << endl;
+			 << "<Number of Warehouses> <Number of Retailers> <Planning Horizon> <Number of Vehicles at the plant> "
+			 << "<Number of Vehicles Per each Warehouse> <Number of Scenarios> <Penalty Coefficient (For a Unit of Unmet demand)>"
+			 << "<Uncertainty Range> <ProbabilityFunction> <instanceName>" << endl;
 		return EXIT_FAILURE;
 	}
 
@@ -32,10 +33,13 @@ int main(int argc, char *argv[])
 	vector<Result> resPool;
 	for (int iter = 0; iter < maxIteration; ++iter)
 	{
-		cout << "iteration: " << iter + 1 << endl;
+		cout << "\n\n\nStart Solving The Problem With Hybrid-ILS." << endl;
+		cout << "\niteration: " << iter + 1 << endl;
 		Solution sol_Current;
 		Result res_Current;
 		// Solve the problem
+
+		cout << "Solve The First-Echelon Problem" << endl;
 		MWPRP_FE mwprp_fe(params, warehouseInventory_Previous, dualValues_WarehouseInventoryLB);
 		if (!mwprp_fe.Solve())
 		{
@@ -60,6 +64,17 @@ int main(int argc, char *argv[])
 
 		// Update the Result
 		res_Current.objValue += sol_Current.setupCost + sol_Current.productionCost + sol_Current.holdingCostPlant + sol_Current.holdingCostWarehouse_Avg + sol_Current.transportationCostPlantToWarehouse;
+
+		ILS_SIRP ils_SIRP(params, sol_FE);
+		bool status = ils_SIRP.solve();
+
+		if (!status)
+		{
+			return EXIT_FAILURE;
+		}
+
+		cout << "Done" << endl;
+		return EXIT_SUCCESS;
 		// --------------------------------------------------------
 		auto warehouseInventory_Previous = sol_FE.warehouseInventory;
 
@@ -72,17 +87,18 @@ int main(int argc, char *argv[])
 		{
 			for (int w = 0; w < params.numWarehouses; ++w)
 			{
-				cout << "Solving Scenario: " << s << ", Warehouse: " << w << endl;
+				cout << "\nSolving Scenario: " << s << ", Warehouse: " << w << endl;
 				IRPWS irpws(params, sol_FE, w, s);
 				if (!irpws.Solve())
 				{
 					return EXIT_FAILURE;
 				}
-				else {
+				else
+				{
 					for (int t = 0; t < params.numPeriods; ++t)
 					{
 						dualValues_WarehouseInventoryLB[w][t][s] = irpws.getDualValues_WarehouseInventoryLB()[t];
-						cout << "Dual Value warehouse " << w << " period " << t << " scenario " << s << " = " << dualValues_WarehouseInventoryLB[w][t][s] << endl;
+						cout << "Dual Value warehouse " << w << " period " << t << " scenario " << s << " = " << std::setprecision(0) << std::fixed << dualValues_WarehouseInventoryLB[w][t][s] << endl;
 
 						for (int i = 0; i < params.numRetailers; ++i)
 						{
@@ -112,7 +128,6 @@ int main(int argc, char *argv[])
 		}
 		res_Current.objValue += sol_Current.holdingCostRetailer_Avg + sol_Current.costOfUnmetDemand_Avg;
 		cout << "Objective Value: " << res_Current.objValue << endl;
-
 
 		solPool.push_back(sol_Current);
 	}
