@@ -19,3 +19,13 @@ Results/
 # Ignore all files in the solution folder
 run/
 
+# Ignore object files
+*.o
+# Ignore compiled files
+*.out
+# Ignore temporary files
+*.tmp
+# Ignore build directory
+program/build/
+program/main/
+
