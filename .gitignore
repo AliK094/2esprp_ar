@@ -1,0 +1,21 @@
+# Ignore all files in the solution folder
+cplexFiles/*
+
+# But don't ignore the folder itself
+!cplexFiles/.gitignore
+
+# Ignore instanceGenerator Folder
+instanceGenerator/
+
+# Ignore instanceGenerator Folder
+instancesOriginal/
+
+# Ignore program test
+program_V1.0/
+
+# Ignore all files in the solution folder
+Results/
+
+# Ignore all files in the solution folder
+run/
+
