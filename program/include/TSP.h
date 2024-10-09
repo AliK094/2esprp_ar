@@ -28,12 +28,18 @@ public:
         return visitMat;
     }
 
-    Result getResult() const {
-        return result;
+    double getObjValue() const {
+        return objValue;
     }
 
 private:
     std::vector<std::vector<double>> transCostMat;
+
+    string status;
+    double objValue;
+    double optimalityGap;
+    double lowerBound;
+
     int numNodes;
     int numEdges;
     double THRESHOLD;

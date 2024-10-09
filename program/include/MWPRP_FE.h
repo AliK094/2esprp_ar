@@ -8,29 +8,20 @@
 class MWPRP_FE
 {
 public:
-    MWPRP_FE(const ParameterSetting &parameters,
-        const vector<vector<vector<double>>>& warehouseInventory_Previous, 
-        const vector<vector<vector<double>>>& dualValues_WarehouseInventoryLB);
+    MWPRP_FE(const ParameterSetting &parameters);
 
     bool Solve();
 
-    Solution getSolution() const
+    SolutionFirstEchelon getSolutionFE() const
     {
-        return sol;
-    }
-
-    Result getResult() const
-    {
-        return result;
+        return solFE;
     }
 
 private:
     double THRESHOLD;
 
     ParameterSetting params; // Member variable to hold the ParameterSetting object
-
-    Result result;
-    Solution sol;
+    SolutionFirstEchelon solFE;
 
     // Decision Variables
     IloNumVarArray y;
@@ -47,11 +38,11 @@ private:
     vector<vector<int>> optimalRoutes_FirstEchelon;
     vector<double> routeCosts_FirstEchelon;
     vector<vector<vector<double>>> demand_warehouse;
+    vector<vector<vector<vector<int>>>> CATW;
 
-    vector<vector<vector<double>>> warehouseInventory_PreviousIter;
-    vector<vector<vector<double>>> dualValues_WarehouseInventoryLB;
+    vector<vector<vector<double>>> approximatedUnmetDemandPenalty_warehouse;
 
-    vector<double> approximatedUnmetDemandPenalty_warehouse;
+    vector<vector<vector<double>>> warehouseInventory;
 
     bool save_lpFile;
     bool save_mpsResultFile;

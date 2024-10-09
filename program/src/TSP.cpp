@@ -78,7 +78,7 @@ bool TSP::solve()
             // Export the model to an LP file
             std::string lpFileName = "../cplexFiles/lpModel/TSP_N" + std::to_string(numNodes) + ".lp";
             cplex.exportModel(lpFileName.c_str());
-            std::cout << "LP file created successfully." << std::endl;
+            cout << "LP file created successfully." << endl;
         }
 
         // Extract model and solve
@@ -86,11 +86,11 @@ bool TSP::solve()
         cplex.solve();
 
         if (cplex.getStatus() == IloAlgorithm::Optimal) {
-            result.status = "Optimal";
-            result.objValue = cplex.getObjValue();
-            std::cout << "Optimal solution found with objective value: " << std::fixed << std::setprecision(1) << result.objValue << std::endl;
-            result.optimalityGap = cplex.getMIPRelativeGap() * 100;
-            result.lowerBound = cplex.getBestObjValue();
+            status = "Optimal";
+            objValue = cplex.getObjValue();
+            cout << "Optimal solution found with objective value: " << std::fixed << std::setprecision(1) << objValue << endl;
+            optimalityGap = cplex.getMIPRelativeGap() * 100;
+            lowerBound = cplex.getBestObjValue();
 
             if (save_mpsResultFile) {
                 // Write the solution to a file in MPS format
@@ -98,13 +98,13 @@ bool TSP::solve()
                 cplex.writeSolution(resultsFileName.c_str());
             }
         } else if (cplex.getStatus() == IloAlgorithm::Feasible) {
-            result.status = "Incumbent";
-            result.objValue = cplex.getObjValue();
-            std::cout << "Incumbent solution found with objective value: " << std::fixed << std::setprecision(1) << result.objValue << std::endl;
-            result.optimalityGap = cplex.getMIPRelativeGap() * 100;
-            std::cout << "Optimality gap: " << result.optimalityGap << "%" << std::endl;
-            result.lowerBound = cplex.getBestObjValue();
-            std::cout << "Lower bound: " << result.lowerBound << std::endl;
+            status = "Incumbent";
+            objValue = cplex.getObjValue();
+            cout << "Incumbent solution found with objective value: " << std::fixed << std::setprecision(1) << objValue << endl;
+            optimalityGap = cplex.getMIPRelativeGap() * 100;
+            cout << "Optimality gap: " << optimalityGap << "%" << endl;
+            lowerBound = cplex.getBestObjValue();
+            cout << "Lower bound: " << lowerBound << endl;
 
             if (save_mpsResultFile) {
                 // Write the solution to a file in MPS format
@@ -112,8 +112,8 @@ bool TSP::solve()
                 cplex.writeSolution(resultsFileName.c_str());
             }
         } else if (cplex.getStatus() == IloAlgorithm::Infeasible) {
-            result.status = "Infeasible";
-            std::cout << "Problem is infeasible" << std::endl;
+            status = "Infeasible";
+            cout << "Problem is infeasible" << endl;
 
             IloConstraintArray conflictConstraints(env);
             cplex.getConflict(conflictConstraints);
@@ -123,34 +123,34 @@ bool TSP::solve()
                 conflictStatus.add(cplex.getConflict(conflictConstraints[i]));
             }
 
-            std::cout << "Conflict constraints:" << std::endl;
-            std::cout << conflictConstraints << std::endl;
+            cout << "Conflict constraints:" << endl;
+            cout << conflictConstraints << endl;
 
-            std::cout << "Conflict status:" << std::endl;
-            std::cout << conflictStatus << std::endl;
+            cout << "Conflict status:" << endl;
+            cout << conflictStatus << endl;
 
             throw std::runtime_error("Solver terminated with infeasible solution.");
         } else {
-            result.status = "Undefined";
-            std::cout << "Solver terminated with status: " << result.status << std::endl;
+            status = "Undefined";
+            cout << "Solver terminated with status: " << status << endl;
         }
 
         auto currentTime = std::chrono::high_resolution_clock::now();
-        result.CPUtime = std::chrono::duration_cast<std::chrono::duration<double>>(currentTime - startTime).count();
-        std::cout << "Timer (seconds): " << std::fixed << std::setprecision(4) << result.CPUtime << std::endl;
+        auto CPUtime = std::chrono::duration_cast<std::chrono::duration<double>>(currentTime - startTime).count();
+        cout << "Timer (seconds): " << std::fixed << std::setprecision(4) << CPUtime << endl;
 
         RetrieveSolutions(cplex);
         DisplayVariables();
 
         env.end();
     } catch (const IloException& e) {
-        std::cerr << "Error: " << e << std::endl;
-        return result.success = false;
+        std::cerr << "Error: " << e << endl;
+        return false;
     } catch (const std::runtime_error& e) {
-        std::cerr << "Runtime Error: " << e.what() << std::endl;
-        return result.success = false;
+        std::cerr << "Runtime Error: " << e.what() << endl;
+        return false;
     }
-    return result.success = true;
+    return true;
 }
 
 void TSP::DefineVariables(IloEnv& env, IloModel& model)
@@ -242,30 +242,30 @@ void TSP::RetrieveSolutions(IloCplex& cplex)
 
 void TSP::DisplayVariables()
 {
-    bool print_route = true;
+    bool print_route = false;
     bool print_visitMat = false;
 
     if (print_route) {
-        std::cout << "route_TSP: ";
+        cout << "route_TSP: ";
         for (int node : routeTSP) {
-            std::cout << node << " ";
+            cout << node << " ";
         }
-        std::cout << "\n" << std::endl;
+        cout << "\n" << endl;
     }
 
     if (print_visitMat) {
-        std::cout << "nd: ";
+        cout << "nd: ";
         for (int i = 0; i < numNodes; ++i) {
-            std::cout << (i < 10 ? std::to_string(i) + "  " : std::to_string(i) + " ");
+            cout << (i < 10 ? std::to_string(i) + "  " : std::to_string(i) + " ");
         }
-        std::cout << std::endl;
+        cout << endl;
 
         for (int i = 0; i < numNodes; ++i) {
-            std::cout << (i < 10 ? std::to_string(i) + ":  " : std::to_string(i) + ": ");
+            cout << (i < 10 ? std::to_string(i) + ":  " : std::to_string(i) + ": ");
             for (int j = 0; j < numNodes; ++j) {
-                std::cout << visitMat[i][j] << "  ";
+                cout << visitMat[i][j] << "  ";
             }
-            std::cout << std::endl;
+            cout << endl;
         }
     }
 }

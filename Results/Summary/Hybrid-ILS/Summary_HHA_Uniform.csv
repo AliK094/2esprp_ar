@@ -1,0 +1,2 @@
+Instance,NumWarehouses,NumCustomers,NumPeriods,NumScenarios,NumVehicles_Plant,NumVehicles_Warehouse,UnmetDemandPenaltyCoeff,ProbabilityFunction,UncertaintyRange,ObjectiveValue_FirstEchelon,ObjectiveValue_SecondEchelon,ObjectiveValue_Total,TotalCPUTime,SetupCost,ProductionCost,HoldingCostPlant,TransportationCostPlantToWarehouse,HoldingCostWarehouse_Avg,HoldingCostCustomer_Avg,CostOfUnmetDemand_Avg,TransportationCostWarehouseToCustomer_Avg
+S01W2C10T3VP1VW1,2,10,3,8,1,1,10,Uniform,20%,14436.0,7961.1,22397.1,123.691,3000.0,8100.0,576.0,2760.0,1256.2,1115.9,521.2,5067.8

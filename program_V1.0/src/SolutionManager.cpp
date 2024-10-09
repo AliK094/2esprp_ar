@@ -1,0 +1,413 @@
+#include "SolutionManager.h"
+
+SolutionManager::SolutionManager(const ParameterSetting &parameters, const string solAlg)
+    : params(parameters),
+      Algorithm(solAlg)
+{
+}
+
+void SolutionManager::saveSolution(const Solution &solution)
+{
+    string resultsFileName;
+    if (Algorithm == "Hybrid-ILS")
+    {
+        cout << "Saving solution for " << Algorithm << endl;
+        resultsFileName = "../Results/Solutions/" + Algorithm + "/" + params.probabilityFunction.c_str() + "/Sol_S2EPRPAR_Hybrid-ILS_" + params.instance.c_str() + "_PF-" + params.probabilityFunction.c_str() + "_W" + std::to_string(params.numWarehouses) + "_C" + std::to_string(params.numCustomers) + "_KP" + std::to_string(params.numVehicles_Plant) + "_KW" + std::to_string(params.numVehicles_Warehouse) + "_T" + std::to_string(params.numPeriods) + "_S" + std::to_string(params.numScenarios) + "_UR" + std::to_string(static_cast<int>(params.uncertaintyRange * 100)) + "%_PenalyCoeff" + std::to_string(static_cast<int>(params.unmetDemandPenaltyCoeff)) + ".txt";
+    }
+    else if (Algorithm == "BC")
+    {
+        cout << "Saving solution for " << Algorithm << endl;
+        resultsFileName = "../Results/Solutions/" + Algorithm + "/" + params.probabilityFunction.c_str() + "/Sol_S2EPRPAR_BC_" + params.instance.c_str() + "_PF-" + params.probabilityFunction.c_str() + "_W" + std::to_string(params.numWarehouses) + "_C" + std::to_string(params.numCustomers) + "_KP" + std::to_string(params.numVehicles_Plant) + "_KW" + std::to_string(params.numVehicles_Warehouse) + "_T" + std::to_string(params.numPeriods) + "_S" + std::to_string(params.numScenarios) + "_UR" + std::to_string(static_cast<int>(params.uncertaintyRange * 100)) + "%_PenalyCoeff" + std::to_string(static_cast<int>(params.unmetDemandPenaltyCoeff)) + ".txt";
+    }
+    // }  else if (strcmp(Algorithm, "FR_BC") == 0){
+    // 	snprintf(resultsFileName, sizeof(resultsFileName), "../Results/Solutions/FR_BC/%s/%s/S%d/ep%.2lf/Solution_FR_BC_%s_%s_%s_N%d_K%d_T%d_S%d_UR%.2lf_SL%.2lf.txt",
+    //           probabilityFunction.c_str(), SLtype.c_str(), numScenarios, uncertaintyRange, instance.c_str(), SLtype.c_str(), probabilityFunction.c_str(), numNodes, numVehicles, numPeriods, numScenarios, uncertaintyRange, ServiceLevel);
+    // }
+
+    // Write the data to a file
+    std::ofstream file(resultsFileName);
+    if (file.is_open())
+    {
+        // Write Parameters
+        file << params.numNodes_Total << " ";
+        file << params.numWarehouses << " ";
+        file << params.numCustomers << " ";
+        file << params.numVehicles_Plant << " ";
+        file << params.numVehicles_Warehouse << " ";
+        file << params.numPeriods << " ";
+        file << params.numScenarios << " " << endl;
+
+        file << params.uncertaintyRange << " ";
+        file << params.probabilityFunction << " ";
+        file << params.unmetDemandPenaltyCoeff << " " << endl;
+
+        file << std::fixed << std::setprecision(1) << params.unitProdCost << " ";
+        file << std::fixed << std::setprecision(1) << params.setupCost << " ";
+        file << std::fixed << std::setprecision(1) << params.prodCapacity << " ";
+        file << std::fixed << std::setprecision(1) << params.vehicleCapacity_Plant << " ";
+        file << std::fixed << std::setprecision(1) << params.vehicleCapacity_Warehouse << " " << endl;
+
+        // Write Coordinate
+        file << std::fixed << std::setprecision(1) << params.coordX_Plant << " ";
+        file << std::fixed << std::setprecision(1) << params.coordY_Plant << " " << endl;
+
+        for (const auto &d : params.coordX_Warehouse)
+        {
+            file << std::fixed << std::setprecision(1) << d << " ";
+        }
+        file << endl;
+        for (const auto &d : params.coordY_Warehouse)
+        {
+            file << std::fixed << std::setprecision(1) << d << " ";
+        }
+        file << endl;
+
+        for (const auto &d : params.coordX_Customer)
+        {
+            file << std::fixed << std::setprecision(1) << d << " ";
+        }
+        file << endl;
+
+        for (const auto &d : params.coordY_Customer)
+        {
+            file << std::fixed << std::setprecision(1) << d << " ";
+        }
+        file << endl;
+
+        // Write Holding Cost
+        file << params.unitHoldingCost_Plant << endl;
+
+        for (const auto &d : params.unitHoldingCost_Warehouse)
+        {
+            file << std::fixed << std::setprecision(1) << d << " ";
+        }
+        file << endl;
+
+        for (const auto &d : params.unitHoldingCost_Customer)
+        {
+            file << std::fixed << std::setprecision(1) << d << " ";
+        }
+        file << endl;
+
+        // Write Storage Capacity
+        file << params.storageCapacity_Plant << endl;
+
+        for (const auto &d : params.storageCapacity_Warehouse)
+        {
+            file << std::fixed << std::setprecision(1) << d << " ";
+        }
+        file << endl;
+
+        for (const auto &d : params.storageCapacity_Customer)
+        {
+            file << std::fixed << std::setprecision(1) << d << " ";
+        }
+        file << endl;
+
+        // Write Initial Inventory
+        file << std::fixed << std::setprecision(1) << params.initialInventory_Plant << endl;
+
+        for (const auto &d : params.initialInventory_Warehouse)
+        {
+            file << std::fixed << std::setprecision(1) << d << " ";
+        }
+        file << endl;
+
+        for (const auto &d : params.initialInventory_Customer)
+        {
+            file << std::fixed << std::setprecision(1) << d << " ";
+        }
+        file << endl;
+
+        // Write Unmet Demand Penalty
+        for (const auto &d : params.unmetDemandPenalty)
+        {
+            file << std::fixed << std::setprecision(1) << d << " ";
+        }
+        file << endl;
+
+        // Write Consume Rate
+        for (const auto &d : params.consumeRate)
+        {
+            file << std::fixed << std::setprecision(1) << d << " ";
+        }
+        file << endl;
+
+        // Write Demand
+        for (const auto &d1 : params.demand)
+        {
+            for (const auto &d2 : d1)
+            {
+                for (const auto &element : d2)
+                {
+                    file << std::fixed << std::setprecision(1) << element << " ";
+                }
+                file << endl;
+            }
+        }
+
+        // Write Probability
+        for (const auto &d : params.probability)
+        {
+            file << std::fixed << std::setprecision(3) << d << " ";
+        }
+        file << endl;
+
+        // Write Transportation Cost - First Echelon
+        for (const auto &d1 : params.transportationCost_FirstEchelon)
+        {
+            for (const auto &element : d1)
+            {
+                file << std::fixed << std::setprecision(1) << element << " ";
+            }
+            file << endl;
+        }
+
+        // Write Transportation Cost - Second Echelon
+        for (const auto &d1 : params.transportationCost_SecondEchelon)
+        {
+            for (const auto &element : d1)
+            {
+                file << std::fixed << std::setprecision(1) << element << " ";
+            }
+            file << endl;
+        }
+
+        // -----------------------------------------------
+        // Write Solutions
+        for (const auto &d1 : solution.customerAssignmentToWarehouse)
+        {
+            for (const auto &d2 : d1)
+            {
+                for (const auto &d3 : d2)
+                {
+                    for (const auto &element : d3)
+                    {
+                        file << std::fixed << std::setprecision(0) << element << " ";
+                    }
+                    file << endl;
+                }
+            }
+        }
+
+        for (const auto &d : solution.productionSetup)
+        {
+            file << std::fixed << std::setprecision(0) << d << " ";
+        }
+        file << endl;
+
+        for (const auto &d : solution.productionQuantity)
+        {
+            file << std::fixed << std::setprecision(1) << d << " ";
+        }
+        file << endl;
+
+        for (const auto &d : solution.plantInventory)
+        {
+            file << std::fixed << std::setprecision(1) << d << " ";
+        }
+        file << endl;
+
+        for (const auto &d1 : solution.warehouseInventory)
+        {
+            for (const auto &d2 : d1)
+            {
+                for (const auto &element : d2)
+                {
+                    file << std::fixed << std::setprecision(1) << element << " ";
+                }
+                file << endl;
+            }
+        }
+
+        for (const auto &d1 : solution.customerInventory)
+        {
+            for (const auto &d2 : d1)
+            {
+                for (const auto &element : d2)
+                {
+                    file << std::fixed << std::setprecision(1) << element << " ";
+                }
+                file << endl;
+            }
+        }
+
+        for (const auto &d1 : solution.customerUnmetDemand)
+        {
+            for (const auto &d2 : d1)
+            {
+                for (const auto &element : d2)
+                {
+                    file << std::fixed << std::setprecision(1) << element << " ";
+                }
+                file << endl;
+            }
+        }
+
+        int t_index = 0;
+        for (const auto &period : solution.routesPlantToWarehouse)
+        {
+            int k_index = 0;
+            for (const auto &vehicle : period)
+            {
+                if (!vehicle.empty())
+                {
+                    file << t_index << " " << k_index << " : ";
+                    for (const auto &node : vehicle)
+                    {
+                        file << node << " ";
+                    }
+                    file << endl;
+                }
+                k_index++;
+            }
+            t_index++;
+        }
+        file << "endRoutesPlantToWarehouse" << endl;
+
+        // for (const auto &d1 : solution.routesPlantToWarehouse)
+        // {
+        //     for (const auto &d2 : d1)
+        //     {
+        //         for (const auto &element : d2)
+        //         {
+        //             file << std::fixed << std::setprecision(0) << element << " ";
+        //         }
+        //         file << endl;
+        //     }
+        // }
+
+        for (const auto &d2 : solution.deliveryQuantityToWarehouse)
+        {
+            for (const auto &element : d2)
+            {
+                file << std::fixed << std::setprecision(1) << element << " ";
+            }
+            file << endl;
+        }
+
+        int s_index = 0;
+        for (const auto &scenario : solution.routesWarehouseToCustomer)
+        {
+            int w_index = 0;
+            for (const auto &warehouse : scenario)
+            {
+                int t_index = 0;
+                for (const auto &period : warehouse)
+                {
+                    int k_index = 0;
+                    for (const auto &vehicle : period)
+                    {
+                        if (!vehicle.empty())
+                        {
+                            file << s_index << " " << w_index << " " << t_index << " " << k_index << " : ";
+                            for (const auto &node : vehicle)
+                            { // Innermost level for 'i', actual route
+                                file << node << " ";
+                            }
+                            file << std::endl; // End the line after each route
+                        }
+                        k_index++;
+                    }
+                    t_index++;
+                }
+                w_index++;
+            }
+            s_index++;
+        }
+        file << "endRoutesWarehouseToCustomer" << endl;
+
+        for (const auto &d1 : solution.deliveryQuantityToCustomer)
+        {
+            for (const auto &d2 : d1)
+            {
+                for (const auto &element : d2)
+                {
+                    file << std::fixed << std::setprecision(1) << element << " ";
+                }
+                file << endl;
+            }
+        }
+
+        file.close();
+    }
+    else
+    {
+        cerr << "Failed to open the file for Saving Solution." << endl;
+    }
+}
+
+bool SolutionManager::checkFeasibility()
+{
+    string resultsFileName;
+    if (Algorithm == "Hybrid-ILS")
+    {
+        cout << "Checking feasibility for " << Algorithm << endl;
+        resultsFileName = "../Results/Solutions/" + Algorithm + "/" + params.probabilityFunction.c_str() + "/Sol_S2EPRPAR_Hybrid-ILS_" + params.instance.c_str() + "_PF-" + params.probabilityFunction.c_str() + "_W" + std::to_string(params.numWarehouses) + "_C" + std::to_string(params.numCustomers) + "_KP" + std::to_string(params.numVehicles_Plant) + "_KW" + std::to_string(params.numVehicles_Warehouse) + "_T" + std::to_string(params.numPeriods) + "_S" + std::to_string(params.numScenarios) + "_UR" + std::to_string(static_cast<int>(params.uncertaintyRange * 100)) + "%_PenalyCoeff" + std::to_string(static_cast<int>(params.unmetDemandPenaltyCoeff)) + ".txt";
+    }
+    else if (Algorithm == "BC")
+    {
+        cout << "Checking feasibility for " << Algorithm << endl;
+        resultsFileName = "../Results/Solutions/" + Algorithm + "/" + params.probabilityFunction.c_str() + "/Sol_S2EPRPAR_BC_" + params.instance.c_str() + "_PF-" + params.probabilityFunction.c_str() + "_W" + std::to_string(params.numWarehouses) + "_C" + std::to_string(params.numCustomers) + "_KP" + std::to_string(params.numVehicles_Plant) + "_KW" + std::to_string(params.numVehicles_Warehouse) + "_T" + std::to_string(params.numPeriods) + "_S" + std::to_string(params.numScenarios) + "_UR" + std::to_string(static_cast<int>(params.uncertaintyRange * 100)) + "%_PenalyCoeff" + std::to_string(static_cast<int>(params.unmetDemandPenaltyCoeff)) + ".txt";
+    }
+
+    cout << "Check the solution feasibility using Python" << endl;
+
+    // Call the Python script with the file name as a command line argument
+    string command = string("python ../program/src/feasCheck/feasibilityCheck.py ") + resultsFileName + " | tail -1";
+    cout << command << endl;
+
+    system(command.c_str());
+    FILE *pipe = popen(command.c_str(), "r");
+    if (!pipe)
+    {
+        cerr << "Error running command: " << command << endl;
+        return 1;
+    }
+
+    // Read the output from the pipe
+    vector<char> buffer(128);
+    string result;
+    while (fgets(buffer.data(), buffer.size(), pipe) != nullptr)
+    {
+        result += buffer.data();
+    }
+
+    // Close the pipe
+    pclose(pipe);
+
+    // Convert the result to an integer
+    int feas_check = std::stoi(result);
+
+    // Check if the output is 0
+    if (feas_check == 0)
+    {
+        cout << "Feasibility Confirmed." << endl;
+        return true;
+    }
+    else
+    {
+        cout << "The solution is infeasible" << endl;
+        cout << "Violated Constraints:" << endl;
+
+        // Run the Python script again to capture the violated constraints
+        string constraints_command = string("python ...//Program/src/feasCheck/feasibilityCheck.py ") + resultsFileName;
+        FILE *constraints_pipe = popen(constraints_command.c_str(), "r");
+        if (!constraints_pipe)
+        {
+            cerr << "Error running command: " << constraints_command << endl;
+            // return 1;
+        }
+
+        // Read and print the output (violated constraints)
+        while (fgets(buffer.data(), buffer.size(), constraints_pipe) != nullptr)
+        {
+            cout << buffer.data();
+        }
+
+        // Close the pipe for constraints
+        pclose(constraints_pipe);
+
+        return false;
+    }
+}

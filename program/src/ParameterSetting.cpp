@@ -3,7 +3,7 @@
 ParameterSetting::ParameterSetting(int argc, char *argv[])
     : inputFile(argv[2]),
       numWarehouses(std::stoi(argv[3])),
-      numRetailers(std::stoi(argv[4])),
+      numCustomers(std::stoi(argv[4])),
       numPeriods(std::stoi(argv[5])),
       numVehicles_Plant(std::stoi(argv[6])),
       numVehicles_Warehouse(std::stoi(argv[7])),
@@ -13,29 +13,30 @@ ParameterSetting::ParameterSetting(int argc, char *argv[])
       probabilityFunction(argv[11]),
       instance(argv[12]),
       probability(numScenarios, 0.0),
-      numNodes_Total(numWarehouses + numRetailers + 1),
+      numNodes_Total(numWarehouses + numCustomers + 1),
       numNodes_FirstEchelon(numWarehouses + 1),
       numEdges_FirstEchelon((numNodes_FirstEchelon * (numNodes_FirstEchelon - 1)) / 2),
-      numNodes_SecondEchelon(numRetailers + numWarehouses),
+      numNodes_SecondEchelon(numCustomers + numWarehouses),
       numEdges_SecondEchelon((numNodes_SecondEchelon * (numNodes_SecondEchelon - 1)) / 2),
+      numVehicles_SecondEchelon(numWarehouses * numVehicles_Warehouse),
       coordX_Plant(0),
       coordY_Plant(0),
       coordX_Warehouse(numWarehouses, 0),
       coordY_Warehouse(numWarehouses, 0),
-      coordX_Retailer(numRetailers, 0),
-      coordY_Retailer(numRetailers, 0),
+      coordX_Customer(numCustomers, 0),
+      coordY_Customer(numCustomers, 0),
       unitHoldingCost_Plant(0),
       unitHoldingCost_Warehouse(numWarehouses, 0),
-      unitHoldingCost_Retailer(numRetailers, 0),
+      unitHoldingCost_Customer(numCustomers, 0),
       storageCapacity_Plant(0),
       storageCapacity_Warehouse(numWarehouses, 0),
-      storageCapacity_Retailer(numRetailers, 0),
+      storageCapacity_Customer(numCustomers, 0),
       initialInventory_Plant(0),
       initialInventory_Warehouse(numWarehouses, 0),
-      initialInventory_Retailer(numRetailers, 0),
-      unmetDemandPenalty(numRetailers, std::numeric_limits<double>::infinity()),
-      consumeRate(numRetailers, 0),
-      demand(numRetailers, vector<vector<double>>(numPeriods, vector<double>(numScenarios, 0))),
+      initialInventory_Customer(numCustomers, 0),
+      unmetDemandPenalty(numCustomers, std::numeric_limits<double>::infinity()),
+      consumeRate(numCustomers, 0),
+      demand(numCustomers, vector<vector<double>>(numPeriods, vector<double>(numScenarios, 0))),
       index_i_FirstEchelon(numEdges_FirstEchelon, 0),
       index_j_FirstEchelon(numEdges_FirstEchelon, 0),
       index_e_FirstEchelon(numNodes_FirstEchelon, vector<int>(numNodes_FirstEchelon, 0)),
@@ -44,7 +45,7 @@ ParameterSetting::ParameterSetting(int argc, char *argv[])
       index_j_SecondEchelon(numEdges_SecondEchelon, 0),
       index_e_SecondEchelon(numNodes_SecondEchelon, vector<int>(numNodes_SecondEchelon, 0)),
       transportationCost_SecondEchelon(numNodes_SecondEchelon, vector<double>(numNodes_SecondEchelon, 0)),
-      DeliveryUB_perRetailer(numRetailers, vector<vector<double>>(numPeriods, vector<double>(numScenarios, 0.))),
+      DeliveryUB_perCustomer(numCustomers, vector<vector<double>>(numPeriods, vector<double>(numScenarios, 0.))),
       DeliveryUB(numPeriods, vector<double>(numScenarios, 0.))
 {
     initializeIndices();
@@ -87,6 +88,12 @@ void ParameterSetting::initializeIndices()
     {
         index_e_SecondEchelon[i][i] = NONE;
     }
+
+    set_WarehouseVehicles.resize(numWarehouses, vector<int>(numVehicles_Warehouse));
+    for (int w = 0; w < numWarehouses; ++w)
+    {
+        std::iota(set_WarehouseVehicles[w].begin(), set_WarehouseVehicles[w].end(), w * numVehicles_Warehouse);
+    }
 }
 
 bool ParameterSetting::setParameters()
@@ -114,10 +121,7 @@ bool ParameterSetting::setParameters()
         }
 
         checkDemandsDistribution();
-        adjustInitialInventory();
-        calculateProductionCapacity();
-        setWarehouseParameters();
-        calculateVehicleCapacities();
+
         calculateTransportationCost_FirstEchelon();
         calculateTransportationCost_SecondEchelon();
         calculateDeliveryUB();
@@ -126,7 +130,7 @@ bool ParameterSetting::setParameters()
         calculateUnmetDemandPenalty();
         setProbabilities();
 
-        assign_retailers_to_warehouse();
+        assign_customers_to_warehouse();
 
         printParameters();
         saveInstance();
@@ -151,7 +155,7 @@ bool ParameterSetting::readDataFromFile()
             throw std::runtime_error("Unable to open file");
         }
 
-        readOriginalDatasetInfo(file);
+        read2ESPRPlDatasetInfo(file);
 
         file.close();
         cout << "File loaded successfully." << endl;
@@ -164,42 +168,58 @@ bool ParameterSetting::readDataFromFile()
     return true;
 }
 
-void ParameterSetting::readOriginalDatasetInfo(std::ifstream &file)
+void ParameterSetting::read2ESPRPlDatasetInfo(std::ifstream &file)
 {
-    string line;
-    int i = 0;
-    int j = 0;
-    while (std::getline(file, line) && j < numRetailers)
+    std::string line;
+    int customerIndex = 0;
+    int warehouseIndex = 0;
+
+    // Skip the header lines
+    std::getline(file, line); // Skip "THIS IS AN INSTANCE FOR THE TWO-ECHELON PRODUCTION ROUTING PROBLEM"
+    std::getline(file, line); // Skip "THIS INSTANCE INCLUDES ONE PRODUCTION PLANT, ..."
+    std::getline(file, line); // Skip "THIS INSTANCE HAS 6 PERIODS, ..."
+
+    // Read plant vehicle capacity from the fourth line
+    std::getline(file, line);
+    sscanf(line.c_str(), "PLANT VEHICLE CAPACITY: %lf", &vehicleCapacity_Plant);
+
+    // Read warehouse vehicle capacity from the fifth line
+    std::getline(file, line);
+    sscanf(line.c_str(), "WAREHOUSE VEHICLE CAPACITY: %lf", &vehicleCapacity_Warehouse);
+
+    // Read the production plant data
+    std::getline(file, line); // Skip "PRODUCTION_PLANT, COORD_X, COORD_Y, ..."
+    if (std::getline(file, line))
     {
-        if (i == 8)
-        {
-            sscanf(line.c_str(), "%*s %d", &originalDimension);
-            cout << "Original Dimension (Deterministic): " << originalDimension << endl;
-        }
-        else if (i == 9)
-        {
-            sscanf(line.c_str(), "%*s %d", &originalHorizon);
-            cout << "Original Horizon (Deterministic): " << originalHorizon << endl;
-        }
-        else if (i == 10)
-        {
-            sscanf(line.c_str(), "%*s %*s %d", &originalVehicleCapacity);
-            cout << "Original Vehicle Capacity (Deterministic): " << originalVehicleCapacity << endl;
-        }
-        if (i == 13)
-        {
-            sscanf(line.c_str(), "%*d %lf %lf %lf %lf %lf %lf",
-                   &coordX_Plant, &coordY_Plant, &initialInventory_Plant,
-                   &unitHoldingCost_Plant, &unitProdCost, &setupCost);
-        }
-        else if (i >= 15)
-        {
-            sscanf(line.c_str(), "%*d %lf %lf %lf %lf %*f %lf %lf",
-                   &coordX_Retailer[j], &coordY_Retailer[j], &initialInventory_Retailer[j],
-                   &storageCapacity_Retailer[j], &consumeRate[j], &unitHoldingCost_Retailer[j]);
-            j++;
-        }
-        i++;
+        sscanf(line.c_str(), "%*d, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf",
+               &coordX_Plant, &coordY_Plant, &initialInventory_Plant,
+               &unitHoldingCost_Plant, &storageCapacity_Plant,
+               &unitProdCost, &setupCost, &prodCapacity);
+    }
+
+    // Read the warehouses data
+    std::getline(file, line); // Skip "WAREHOUSE, COORD_X, COORD_Y, ..."
+    while (warehouseIndex < numWarehouses && std::getline(file, line))
+    {
+        sscanf(line.c_str(), "%*d, %lf, %lf, %lf, %lf, %lf",
+               &coordX_Warehouse[warehouseIndex], &coordY_Warehouse[warehouseIndex],
+               &initialInventory_Warehouse[warehouseIndex],
+               &unitHoldingCost_Warehouse[warehouseIndex],
+               &storageCapacity_Warehouse[warehouseIndex]);
+        warehouseIndex++;
+    }
+
+    // Read the customers data
+    std::getline(file, line); // Skip "CUSTOMER, COORD_X, COORD_Y, ..."
+    while (customerIndex < numCustomers && std::getline(file, line))
+    {
+        sscanf(line.c_str(), "%*d, %lf, %lf, %lf, %lf, %lf, %lf",
+               &coordX_Customer[customerIndex], &coordY_Customer[customerIndex],
+               &initialInventory_Customer[customerIndex],
+               &unitHoldingCost_Customer[customerIndex],
+               &storageCapacity_Customer[customerIndex],
+               &consumeRate[customerIndex]);
+        customerIndex++;
     }
 }
 
@@ -210,91 +230,14 @@ void ParameterSetting::checkDemandsDistribution() const
     cout << "Sum of demands in all periods (population): " << sum_demands_avg << endl;
 
     double sum_demands = 0.0;
-    for (const auto &dem_retailer : demand)
+    for (const auto &dem_customer : demand)
     {
-        for (const auto &dem_period : dem_retailer)
+        for (const auto &dem_period : dem_customer)
         {
             sum_demands += 1. / numScenarios * std::accumulate(dem_period.begin(), dem_period.end(), 0.0);
         }
     }
     cout << "Sum of demands in all periods (sample): " << sum_demands << endl;
-}
-
-void ParameterSetting::adjustInitialInventory()
-{
-    if (numPeriods == 3)
-    {
-        initialInventory_Plant = std::floor(initialInventory_Plant / 2);
-
-        for (int i = 0; i < numWarehouses; ++i)
-        {
-            initialInventory_Warehouse[i] = std::floor(initialInventory_Warehouse[i] / 2);
-        }
-
-        for (int i = 0; i < numRetailers; ++i)
-        {
-            initialInventory_Retailer[i] = std::floor(initialInventory_Retailer[i] / 2);
-        }
-    }
-}
-
-void ParameterSetting::calculateProductionCapacity()
-{
-    double totalConsumption = 0.0;
-    for (int t = 0; t < numPeriods; ++t)
-    {
-        for (int i = 0; i < numRetailers; ++i)
-        {
-            totalConsumption += consumeRate[i];
-        }
-    }
-    prodCapacity = std::floor(2 * (totalConsumption / numPeriods));
-    storageCapacity_Plant = prodCapacity / 2;
-}
-
-void ParameterSetting::setWarehouseParameters()
-{
-    double uhc_min = std::min(unitHoldingCost_Plant, *std::min_element(unitHoldingCost_Retailer.begin(), unitHoldingCost_Retailer.end()));
-    double uhc_max = *std::min_element(unitHoldingCost_Retailer.begin(), unitHoldingCost_Retailer.end());
-
-    std::random_device rd;
-    for (int i = 0; i < numWarehouses; ++i)
-    {
-        int seed = i + 1;
-        std::mt19937 gen1(int(1e9 + (seed * seed)));
-        std::mt19937 gen2(int(1e6 + (seed * seed)));
-        std::mt19937 gen3(int(1e3 + (seed * seed)));
-
-        std::uniform_int_distribution<> dis1(0, 2500);
-        // std::uniform_int_distribution<> dis2(storageCapacity_Plant / 2, storageCapacity_Plant);
-        std::uniform_int_distribution<> dis3(uhc_min, uhc_max);
-
-        coordX_Warehouse[i] = std::floor(dis1(gen1));
-        coordY_Warehouse[i] = std::floor(dis1(gen2));
-        initialInventory_Warehouse[i] = 0;
-        // storageCapacity_Warehouse[i] = std::floor(dis2(gen3));
-        storageCapacity_Warehouse[i] = storageCapacity_Plant;
-        unitHoldingCost_Warehouse[i] = std::floor(dis3(gen3));
-    }
-}
-
-void ParameterSetting::calculateVehicleCapacities()
-{
-    double maxofInvCap_Warehouse = *std::max_element(storageCapacity_Warehouse.begin(), storageCapacity_Warehouse.end());
-    double VehicleCapacityCoefficient_Plant = 2.5 * (std::floor(numWarehouses / 10) + 1);
-    vehicleCapacity_Plant = std::floor(VehicleCapacityCoefficient_Plant * (maxofInvCap_Warehouse / numVehicles_Plant));
-
-    double maxofInvCap_Retailer = *std::max_element(storageCapacity_Retailer.begin(), storageCapacity_Retailer.end());
-    double VehicleCapacityCoefficient_Warehouse = 1.5 * (std::floor(numRetailers / (10 * numWarehouses)) + 1);
-    vehicleCapacity_Warehouse = std::floor(VehicleCapacityCoefficient_Warehouse * (maxofInvCap_Retailer / numVehicles_Warehouse));
-}
-
-void ParameterSetting::updateStorageCapacityForRetailers()
-{
-    for (int i = 0; i < numRetailers; ++i)
-    {
-        storageCapacity_Retailer[i] += consumeRate[i];
-    }
 }
 
 void ParameterSetting::calculateTransportationCost_FirstEchelon()
@@ -305,11 +248,11 @@ void ParameterSetting::calculateTransportationCost_FirstEchelon()
         {
             if (i == 0)
             {
-                transportationCost_FirstEchelon[i][j] = transportationCost_FirstEchelon[j][i] = std::hypot(coordX_Plant - coordX_Warehouse[j], coordY_Plant - coordY_Warehouse[j]);
+                transportationCost_FirstEchelon[i][j] = transportationCost_FirstEchelon[j][i] = std::floor(std::hypot(coordX_Plant - coordX_Warehouse[j], coordY_Plant - coordY_Warehouse[j]) + 0.5);
             }
             else
             {
-                transportationCost_FirstEchelon[i][j] = transportationCost_FirstEchelon[j][i] = std::hypot(coordX_Warehouse[i] - coordX_Warehouse[j], coordY_Warehouse[i] - coordY_Warehouse[j]);
+                transportationCost_FirstEchelon[i][j] = transportationCost_FirstEchelon[j][i] = std::floor(std::hypot(coordX_Warehouse[i] - coordX_Warehouse[j], coordY_Warehouse[i] - coordY_Warehouse[j]) + 0.5);
             }
             // cout << "Cost_FirstE[" << i << "][" << j << "] = " << transportationCost_FirstEchelon[i][j] << endl;
         }
@@ -324,24 +267,23 @@ void ParameterSetting::calculateTransportationCost_SecondEchelon()
         {
             if (i < numWarehouses && j < numWarehouses)
             {
-                transportationCost_SecondEchelon[i][j] = transportationCost_SecondEchelon[j][i] = std::hypot(coordX_Warehouse[i] - coordX_Warehouse[j], coordY_Warehouse[i] - coordY_Warehouse[j]);
+                transportationCost_SecondEchelon[i][j] = transportationCost_SecondEchelon[j][i] = std::floor(std::hypot(coordX_Warehouse[i] - coordX_Warehouse[j], coordY_Warehouse[i] - coordY_Warehouse[j]) + 0.5);
             }
             else if (i < numWarehouses && j >= numWarehouses)
             {
-                transportationCost_SecondEchelon[i][j] = transportationCost_SecondEchelon[j][i] = std::hypot(coordX_Warehouse[i] - coordX_Retailer[j], coordY_Warehouse[i] - coordY_Retailer[j]);
+                transportationCost_SecondEchelon[i][j] = transportationCost_SecondEchelon[j][i] = std::floor(std::hypot(coordX_Warehouse[i] - coordX_Customer[j - numWarehouses], coordY_Warehouse[i] - coordY_Customer[j - numWarehouses]) + 0.5);
             }
             else
             {
-                transportationCost_SecondEchelon[i][j] = transportationCost_SecondEchelon[j][i] = std::hypot(coordX_Retailer[i] - coordX_Retailer[j], coordY_Retailer[i] - coordY_Retailer[j]);
+                transportationCost_SecondEchelon[i][j] = transportationCost_SecondEchelon[j][i] = std::floor(std::hypot(coordX_Customer[i - numWarehouses] - coordX_Customer[j - numWarehouses], coordY_Customer[i - numWarehouses] - coordY_Customer[j - numWarehouses]) + 0.5);
             }
-            // cout << "Cost_SecondE[" << i << "][" << j << "] = " << transportationCost_SecondEchelon[i][j] << endl;
         }
     }
 }
 
 void ParameterSetting::calculateUnmetDemandPenalty()
 {
-    for (int i = 0; i < numRetailers; ++i)
+    for (int i = 0; i < numCustomers; ++i)
     {
         unmetDemandPenalty[i] = unmetDemandPenaltyCoeff * std::ceil(unitProdCost + (setupCost / prodCapacity) +
                                                                     (2 * ((transportationCost_SecondEchelon[sorted_warehouses_by_distance[i][0]][i + numWarehouses] / vehicleCapacity_Warehouse) +
@@ -362,18 +304,18 @@ void ParameterSetting::calculateDeliveryUB()
     {
         for (int t = 0; t < numPeriods; ++t)
         {
-            double remainingDemandAllRetailers = 0.0;
-            for (int i = 0; i < numRetailers; ++i)
+            double remainingDemandAllCustomers = 0.0;
+            for (int i = 0; i < numCustomers; ++i)
             {
                 double remainingDemand = 0.0;
                 for (int l = t; l < numPeriods; ++l)
                 {
                     remainingDemand += demand[i][l][s];
-                    remainingDemandAllRetailers += demand[i][l][s];
+                    remainingDemandAllCustomers += demand[i][l][s];
                 }
-                DeliveryUB_perRetailer[i][t][s] = std::min({remainingDemand, vehicleCapacity_Warehouse, storageCapacity_Retailer[i]});
+                DeliveryUB_perCustomer[i][t][s] = std::min({remainingDemand, vehicleCapacity_Warehouse, storageCapacity_Customer[i]});
             }
-            DeliveryUB[t][s] = remainingDemandAllRetailers;
+            DeliveryUB[t][s] = remainingDemandAllCustomers;
         }
     }
 }
@@ -382,7 +324,7 @@ void ParameterSetting::printParameters() const
 {
     cout << "Instance: " << instance << endl;
     cout << "Number of Warehouses (W): " << numWarehouses << endl;
-    cout << "Number of Retailers (R): " << numRetailers << endl;
+    cout << "Number of Customers (C): " << numCustomers << endl;
     cout << "Number of Periods (T): " << numPeriods << endl;
     cout << "Fleet Size (Plant) (K_plant): " << numVehicles_Plant << endl;
     cout << "Fleet Capacity (Plant) (Q_plant): " << vehicleCapacity_Plant << endl;
@@ -404,11 +346,11 @@ void ParameterSetting::printParameters() const
         cout << "storage_capacity = " << storageCapacity_Warehouse[i] << ", initial_inventory = " << initialInventory_Warehouse[i] << ", unit_holding_cost = " << unitHoldingCost_Warehouse[i] << endl;
     }
 
-    cout << "\nRetailers parameters: " << endl;
-    for (int i = 0; i < numRetailers; ++i)
+    cout << "\nCustomers parameters: " << endl;
+    for (int i = 0; i < numCustomers; ++i)
     {
-        cout << "x_coord = " << coordX_Retailer[i] << ", y_coord = " << coordY_Retailer[i] << endl;
-        cout << "inventory_capacity = " << storageCapacity_Retailer[i] << ", initial_inventory = " << initialInventory_Retailer[i] << ", unit_holding_cost = " << unitHoldingCost_Retailer[i] << endl;
+        cout << "x_coord = " << coordX_Customer[i] << ", y_coord = " << coordY_Customer[i] << endl;
+        cout << "inventory_capacity = " << storageCapacity_Customer[i] << ", initial_inventory = " << initialInventory_Customer[i] << ", unit_holding_cost = " << unitHoldingCost_Customer[i] << endl;
         cout << "nominal_demand = " << consumeRate[i] << endl;
     }
 }
@@ -416,7 +358,7 @@ void ParameterSetting::printParameters() const
 void ParameterSetting::saveInstance()
 {
     string file_path = "../instances2eprp/" + instance + "_W" + std::to_string(numWarehouses) +
-                       "_R" + std::to_string(numRetailers) + "_T" + std::to_string(numPeriods) +
+                       "_R" + std::to_string(numCustomers) + "_T" + std::to_string(numPeriods) +
                        "_KP" + std::to_string(numVehicles_Plant) + "_KW" + std::to_string(numVehicles_Warehouse) + ".txt";
     try
     {
@@ -425,7 +367,7 @@ void ParameterSetting::saveInstance()
         {
             file << "ORIGINAL INSTANCE: " << instance << "\n";
             file << "THIS IS AN INSTANCE FOR THE TWO ECHELON PRODUCTION ROUTING PROBLEM\n";
-            file << "THIS INSTANCE INCLUDES ONE PRODUCTION PLANT, " << numWarehouses << " WAREHOUSES, AND " << numRetailers << " RETAILERS.\n";
+            file << "THIS INSTANCE INCLUDES ONE PRODUCTION PLANT, " << numWarehouses << " WAREHOUSES, AND " << numCustomers << " RETAILERS.\n";
             file << "THIS INSTANCE HAS " << numPeriods << " PERIODS, " << numVehicles_Plant << " VEHICLES AT THE PRODUCTION PLANT, AND " << numVehicles_Warehouse << " VEHICLES AT EACH WAREHOUSE.\n";
             file << "PLANT VEHICLE CAPACITY: " << std::setprecision(1) << std::fixed << vehicleCapacity_Plant << "\n";
             file << "WAREHOUSE VEHICLE CAPACITY: " << std::setprecision(1) << std::fixed << vehicleCapacity_Warehouse << "\n";
@@ -440,9 +382,9 @@ void ParameterSetting::saveInstance()
             }
 
             file << "RETAILER, COORD_X, COORD_Y, INITIAL_INVENTORY, UNIT_HOLDING_COST, INVENTORY_CAPACITY, DEMAND_AVG\n";
-            for (int ind = 0; ind < numRetailers; ++ind)
+            for (int ind = 0; ind < numCustomers; ++ind)
             {
-                file << ind + 1 + numWarehouses << ", " << std::setprecision(1) << std::fixed << coordX_Retailer[ind] << ", " << coordY_Retailer[ind] << ", " << initialInventory_Retailer[ind] << ", " << unitHoldingCost_Retailer[ind] << ", " << storageCapacity_Retailer[ind] << ", " << consumeRate[ind] << "\n";
+                file << ind + 1 + numWarehouses << ", " << std::setprecision(1) << std::fixed << coordX_Customer[ind] << ", " << coordY_Customer[ind] << ", " << initialInventory_Customer[ind] << ", " << unitHoldingCost_Customer[ind] << ", " << storageCapacity_Customer[ind] << ", " << consumeRate[ind] << "\n";
             }
 
             cout << "Instance Data Was Saved Successfully at: " << file_path << endl;
@@ -481,10 +423,10 @@ bool ParameterSetting::monteCarloSimulation()
 
 void ParameterSetting::generateScenarioDemands(int scenario, int period)
 {
-    for (int i = 0; i < numRetailers; ++i)
+    for (int i = 0; i < numCustomers; ++i)
     {
         double demand = 0.0;
-        unsigned int seed = i + (period * numRetailers) + (scenario * numPeriods * numRetailers);
+        unsigned int seed = i + (period * numCustomers) + (scenario * numPeriods * numCustomers);
 
         if (probabilityFunction == "Uniform")
         {
@@ -509,7 +451,7 @@ void ParameterSetting::generateScenarioDemands(int scenario, int period)
         }
         this->demand[i][period][scenario] = demand;
 
-        // cout << "Demand for retailer " << i << ", Period " << period << ", Scenario " << scenario << " = " << demand << endl;
+        // cout << "Demand for customer " << i << ", Period " << period << ", Scenario " << scenario << " = " << demand << endl;
     }
 }
 
@@ -518,6 +460,12 @@ double ParameterSetting::uniformDistribution(double min, double max, unsigned lo
     if (min > max)
     {
         throw std::invalid_argument("Minimum value cannot be greater than maximum value.");
+    }
+
+    if (seed == 0)
+    {
+        std::random_device rd; // Will generate a different seed each time
+        seed = rd();
     }
 
     // Seed the random number engine with a fixed value
@@ -559,15 +507,15 @@ void ParameterSetting::sort_warehouses_by_distance()
 {
     try
     {
-        sorted_warehouses_by_distance.resize(numRetailers);
+        sorted_warehouses_by_distance.resize(numCustomers);
 
-        for (int retInd = 0; retInd < numRetailers; ++retInd)
+        for (int custInd = 0; custInd < numCustomers; ++custInd)
         {
             vector<std::pair<int, double>> distances; // Pair of warehouse ID and distance
 
             for (int w = 0; w < numWarehouses; ++w)
             {
-                double distance = std::hypot(coordX_Retailer[retInd] - coordX_Warehouse[w], coordY_Retailer[retInd] - coordY_Warehouse[w]);
+                double distance = std::hypot(coordX_Customer[custInd] - coordX_Warehouse[w], coordY_Customer[custInd] - coordY_Warehouse[w]);
                 distances.emplace_back(w, distance);
             }
 
@@ -581,12 +529,17 @@ void ParameterSetting::sort_warehouses_by_distance()
             {
                 sorted_warehouses.push_back(pair.first);
             }
-            sorted_warehouses_by_distance[retInd] = sorted_warehouses;
+            sorted_warehouses_by_distance[custInd] = sorted_warehouses;
 
-            // cout << "Sorted warehouses by distance for retailer " << retInd << ": [";
+            // for (const auto &pair : distances)
+            // {
+            //     cout << "distance: " << pair.second << ", warehouse: " << pair.first << endl;
+            // }
+
+            // cout << "Sorted warehouses by distance for customer " << custInd + numWarehouses << ": [";
             // for (int w = 0; w < numWarehouses; ++w)
             // {
-            //     cout << sorted_warehouses_by_distance[retInd][w] << " ";
+            //     cout << sorted_warehouses_by_distance[custInd][w] << " ";
             // }
             // cout << "]" << endl;
         }
@@ -598,64 +551,82 @@ void ParameterSetting::sort_warehouses_by_distance()
     }
 }
 
-void ParameterSetting::assign_retailers_to_warehouse()
+void ParameterSetting::assign_customers_to_warehouse()
 {
     try
     {
-        retailers_assigned_to_warehouse.resize(numWarehouses);
-        warehouse_assigned_to_retailer.resize(numRetailers, -1);
+        customers_assigned_to_warehouse.resize(numScenarios, vector<vector<vector<int>>>(numPeriods, vector<vector<int>>(numWarehouses, vector<int>(numCustomers, -1))));
+        warehouse_assigned_to_customer.resize(numScenarios, vector<vector<int>>(numPeriods, vector<int>(numCustomers, -1)));
 
-        vector<double> remainingStorageCapacityWarehouse(storageCapacity_Warehouse.begin(), storageCapacity_Warehouse.end());
+        for (int s = 0; s < numScenarios; ++s)
+        {
+            for (int t = 0; t < numPeriods; ++t)
+            {
+                for (int w = 0; w < numWarehouses; ++w)
+                {
+                    for (int i = 0; i < numCustomers; ++i)
+                    {
+                        if (w == sorted_warehouses_by_distance[i][0])
+                        {
+                            customers_assigned_to_warehouse[s][t][w][i] = 1;
+                            warehouse_assigned_to_customer[s][t][i] = w;
+                        }
+                        else
+                        {
+                            customers_assigned_to_warehouse[s][t][w][i] = 0;
+                        }
+                    }
+                }
+            }
+        }
 
-        double lambda = 1.0;
-        // if (numVehicles_Warehouse != 1)
+        // int custInd = 0;
+        // while (custInd < numCustomers)
         // {
-        //     lambda = 0.9;
+        //     bool customer_assigned = false;
+
+        //     for (int w : sorted_warehouses_by_distance[custInd])
+        //     {
+        //         if (customer_assigned)
+        //             break;
+
+        //         if (remainingStorageCapacityWarehouse[w] - consumeRate[custInd] >= 0.0 && remainingVehicleCapacityWarehouse[w] - consumeRate[custInd] >= 0.0)
+        //         {
+        //             remainingStorageCapacityWarehouse[w] -= consumeRate[custInd];
+        //             remainingVehicleCapacityWarehouse[w] -= consumeRate[custInd];
+        //             customers_assigned_to_warehouse[w].push_back(custInd);
+        //             warehouse_assigned_to_customer[custInd] = w;
+        //             customer_assigned = true;
+        //             custInd++;
+        //             break;
+        //         }
+        //     }
         // }
 
-        vector<double> remainingVehicleCapacityWarehouse(numWarehouses, lambda * numVehicles_Warehouse * vehicleCapacity_Warehouse);
+        // for (int s = 0; s < numScenarios; ++s)
+        // {
+        //     for (int t = 0; t < numPeriods; ++t)
+        //     {
+        //         for (int w = 0; w < numWarehouses; ++w)
+        //         {
+        //             cout << "Customers assigned to warehouse " << w << " in scenario " << s << " period " << t << ": [";
+        //             for (int i = 0; i < numCustomers; ++i)
+        //             {
+        //                 if (customers_assigned_to_warehouse[s][t][w][i] == 1)
+        //                 {
+        //                     cout << i + numWarehouses << " ";
+        //                 }
+        //             }
+        //             cout << "]" << endl;
+        //         }
 
-        int retInd = 0;
-        while (retInd < numRetailers)
-        {
-            bool retailer_assigned = false;
-
-            for (int w : sorted_warehouses_by_distance[retInd])
-            {
-                if (retailer_assigned)
-                    break;
-
-                if (remainingStorageCapacityWarehouse[w] - consumeRate[retInd] >= 0.0 && remainingVehicleCapacityWarehouse[w] - consumeRate[retInd] >= 0.0)
-                {
-                    remainingStorageCapacityWarehouse[w] -= consumeRate[retInd];
-                    remainingVehicleCapacityWarehouse[w] -= consumeRate[retInd];
-                    retailers_assigned_to_warehouse[w].push_back(retInd);
-                    warehouse_assigned_to_retailer[retInd] = w;
-                    retailer_assigned = true;
-                    retInd++;
-                    break;
-                }
-            }
-        }
-
-        for (int w = 0; w < numWarehouses; ++w) {
-            cout << "Retailers assigned to warehouse " << w << ": [";
-            bool first = true;
-            for (int retInd : retailers_assigned_to_warehouse[w]) {
-                if (!first) {
-                    cout << " ";
-                }
-                cout << retInd;
-                first = false;
-            }
-            cout << "]" << endl;
-        }
-
-        cout << "Retailers assigned to warehouses successfully" << endl;
+        //         cout << "Customers assigned to warehouses successfully" << endl;
+        //     }
+        // }
     }
     catch (const std::exception &e)
     {
-        cerr << "Error occurred while assigning retailers to warehouses: " << e.what() << endl;
+        cerr << "Error occurred while assigning customers to warehouses: " << e.what() << endl;
     }
 }
 
@@ -679,17 +650,20 @@ void ParameterSetting::generateAllRoutes()
             routeMatrix.push_back(subset);
         }
 
-        for (const auto &route : routeMatrix)
-        {
-            for (int value : route)
-            {
-                cout << value << " ";
-            }
-            cout << endl;
-        }
+        // for (const auto &route : routeMatrix)
+        // {
+        //     for (int value : route)
+        //     {
+        //         cout << value << " ";
+        //     }
+        //     cout << endl;
+        // }
 
+        cout << "Generating all routes..." << endl;
         solveTSPForRoutes();
 
+        cout << "\n"
+             << endl;
         int ind = 1;
         for (const auto &route : optimalRoutes)
         {
@@ -738,7 +712,7 @@ void ParameterSetting::solveTSPForRoutes()
                         break;
                     }
                 }
-                cout << "route cost:" << routeCost << endl;
+                // cout << "route cost:" << routeCost << endl;
                 optRoute.push_back(0);
 
                 optimalRoutes.push_back(optRoute);
@@ -785,17 +759,17 @@ void ParameterSetting::solveTSPForRoutes()
                 }
 
                 optimalRoutes.push_back(mappedSolution);
-                routeCosts.push_back(tsp.getResult().objValue);
+                routeCosts.push_back(tsp.getObjValue());
 
                 // Print the mapped solution
-                cout << "TSP solution for route: ";
-                for (int node : mappedSolution)
-                {
-                    cout << node << " ";
-                }
-                cout << endl;
-                cout << "route cost:" << tsp.getResult().objValue << endl;
-                cout << "\n";
+                // cout << "TSP solution for route: ";
+                // for (int node : mappedSolution)
+                // {
+                //     cout << node << " ";
+                // }
+                // cout << endl;
+                // cout << "route cost:" << tsp.getResult().objValue << endl;
+                // cout << "\n";
             }
         }
     }
@@ -811,14 +785,14 @@ vector<vector<int>> ParameterSetting::getSortedWarehousesByDistance() const
     return sorted_warehouses_by_distance;
 }
 
-vector<vector<int>> ParameterSetting::getRetailersAssignedToWarehouse() const
+vector<vector<vector<vector<int>>>> ParameterSetting::getCustomersAssignedToWarehouse() const
 {
-    return retailers_assigned_to_warehouse;
+    return customers_assigned_to_warehouse;
 }
 
-vector<int> ParameterSetting::getWarehouseAssignedToRetailer() const
+vector<vector<vector<int>>> ParameterSetting::getWarehouseAssignedToCustomer() const
 {
-    return warehouse_assigned_to_retailer;
+    return warehouse_assigned_to_customer;
 }
 
 vector<vector<int>> ParameterSetting::getRouteMatrix() const
@@ -834,4 +808,282 @@ vector<vector<int>> ParameterSetting::getOptimalRoutes() const
 vector<double> ParameterSetting::getRouteCosts() const
 {
     return routeCosts;
+}
+
+SolutionWarmStart ParameterSetting::readSolutionWarmStart()
+{
+    cout << "Reading Solution For Warm Start..." << endl;
+     string solutionFileName = "../Results/Solutions/Hybrid-ILS/" + probabilityFunction + "/Sol_S2EPRPAR_HHA_" + probabilityFunction + "_" + instance + "_S" + std::to_string(numScenarios)  + "_UR" + std::to_string(static_cast<int>(uncertaintyRange * 100)) + "%_PC" + std::to_string(static_cast<int>(unmetDemandPenaltyCoeff)) + ".txt";
+
+    SolutionWarmStart warmstart;
+
+    std::ifstream file(solutionFileName);
+    if (file.is_open())
+    {
+        int intValue;
+        double doubleValue;
+        string strValue;
+
+        // Read Parameters
+        file >> intValue; // numNodes_Total;
+        file >> intValue; // numWarehouses;
+        file >> intValue; // numCustomers;
+        file >> intValue; // numVehicles_Plant;
+        file >> intValue; // numVehicles_Warehouse;
+        file >> intValue; // numPeriods;
+        file >> intValue; // numScenarios;
+
+        file >> doubleValue; // uncertaintyRange;
+        file >> strValue;    // ProbabilityFunction;
+        file >> doubleValue; // unmetDemandPenaltyCoeff;
+
+        file >> doubleValue; // unitProdCost;
+        file >> doubleValue; // setupCost;
+        file >> doubleValue; // prodCapacity;
+        file >> doubleValue; // vehicleCapacity_Plant;
+        file >> doubleValue; // vehicleCapacity_Warehouse;
+
+        file >> doubleValue; // Plant X Coordinates
+        file >> doubleValue; // Plant Y Coordinates
+
+        for (int w = 0; w < numWarehouses; w++)
+        {
+            file >> doubleValue; // Warehouse X Coordinates
+        }
+        for (int w = 0; w < numWarehouses; w++)
+        {
+            file >> doubleValue; // Warehouse Y Coordinates
+        }
+        for (int i = 0; i < numCustomers; i++)
+        {
+            file >> doubleValue; // Customers X Coordinates
+        }
+        for (int i = 0; i < numCustomers; i++)
+        {
+            file >> doubleValue; // Customers Y Coordinates
+        }
+
+        file >> doubleValue; // unit holding cost plant
+        for (int w = 0; w < numWarehouses; w++)
+        {
+            file >> doubleValue; // holding cost warehouse
+        }
+        for (int i = 0; i < numCustomers; i++)
+        {
+            file >> doubleValue; // holding cost customer
+        }
+
+        file >> doubleValue; // storage capacity plant
+        for (int w = 0; w < numWarehouses; w++)
+        {
+            file >> doubleValue; // storage capacity warehouse
+        }
+        for (int i = 0; i < numCustomers; i++)
+        {
+            file >> doubleValue; // storage capacity customer
+        }
+
+        file >> doubleValue; // initial inventory plant
+        for (int w = 0; w < numWarehouses; w++)
+        {
+            file >> doubleValue; // initial inventory warehouse
+        }
+        for (int i = 0; i < numCustomers; i++)
+        {
+            file >> doubleValue; // initial inventory customer
+        }
+
+        for (int i = 0; i < numCustomers; i++)
+        {
+            file >> doubleValue; // unmet demand penalty
+        }
+
+        for (int i = 0; i < numCustomers; i++)
+        {
+            file >> doubleValue; // consume Rate
+        }
+
+        for (int s = 0; s < numScenarios; s++)
+        {
+            for (int t = 0; t < numPeriods; t++)
+            {
+                for (int i = 0; i < numCustomers; i++)
+                {
+                    file >> doubleValue;
+                }
+            }
+        }
+
+        for (int s = 0; s < numScenarios; s++)
+        {
+            file >> doubleValue; // probability
+        }
+
+        for (int i = 0; i < numNodes_FirstEchelon; i++)
+        {
+            for (int j = 0; j < numNodes_FirstEchelon; j++)
+            {
+                file >> doubleValue; // Transportation Cost - First Echelon
+            }
+        }
+
+        for (int i = 0; i < numNodes_SecondEchelon; i++)
+        {
+            for (int j = 0; j < numNodes_SecondEchelon; j++)
+            {
+                file >> doubleValue; // Transportation Cost - Second Echelon
+            }
+        }
+        cout << "Warmstart file read successfully." << endl;
+        // Read Solutions
+        warmstart.productionSetup_WarmStart.resize(numPeriods);
+        warmstart.routesPlantToWarehouse_WarmStart.resize(numPeriods, vector<vector<int>>(numVehicles_Plant, vector<int>()));
+        warmstart.routesWarehouseToCustomer_WarmStart.resize(numScenarios, vector<vector<vector<vector<int>>>>(numWarehouses, vector<vector<vector<int>>>(numPeriods, vector<vector<int>>(numVehicles_Warehouse, vector<int>()))));
+        warmstart.customerAssignmentToWarehouse_WarmStart.resize(numScenarios, vector<vector<vector<int>>>(numPeriods, vector<vector<int>>(numWarehouses, vector<int>(numCustomers))));
+
+        // Read Solutions
+        for (int s = 0; s < numScenarios; s++)
+        {
+            for (int t = 0; t < numPeriods; t++)
+            {
+                for (int w = 0; w < numWarehouses; w++)
+                {
+                    for (int i = 0; i < numCustomers; i++)
+                    {
+                        file >> warmstart.customerAssignmentToWarehouse_WarmStart[s][t][w][i];
+                    }
+                }
+            }
+        }
+
+        for (int t = 0; t < numPeriods; t++)
+        {
+            file >> warmstart.productionSetup_WarmStart[t];
+        }
+
+        for (int t = 0; t < numPeriods; t++)
+        {
+            file >> doubleValue;
+        }
+
+        for (int t = 0; t < numPeriods; t++)
+        {
+            file >> doubleValue;
+        }
+
+        for (int w = 0; w < numWarehouses; w++)
+        {
+            for (int t = 0; t < numPeriods; t++)
+            {
+                for (int s = 0; s < numScenarios; s++)
+                {
+                    file >> doubleValue;
+                }
+            }
+        }
+
+        for (int i = 0; i < numCustomers; i++)
+        {
+            for (int t = 0; t < numPeriods; t++)
+            {
+                for (int s = 0; s < numScenarios; s++)
+                {
+                    file >> doubleValue;
+                }
+            }
+        }
+
+        for (int i = 0; i < numCustomers; i++)
+        {
+            for (int t = 0; t < numPeriods; t++)
+            {
+                for (int s = 0; s < numScenarios; s++)
+                {
+                    file >> doubleValue;
+                }
+            }
+        }
+
+        string line_One;
+        while (std::getline(file, line_One))
+        {
+            if (line_One == "endRoutesPlantToWarehouse")
+                break;
+
+            std::istringstream iss(line_One);
+            int t_index, k_index;
+            char colon;
+            if (!(iss >> t_index >> k_index >> colon) || colon != ':')
+            {
+                cerr << "Error parsing line: " << line_One << std::endl;
+                continue;
+            }
+
+            int node;
+            vector<int> route;
+            while (iss >> node)
+            {
+                route.push_back(node);
+            }
+
+            // Assign the route to the appropriate vehicle
+            warmstart.routesPlantToWarehouse_WarmStart[t_index][k_index] = route;
+        }
+
+        for (int w = 0; w < numWarehouses; w++)
+        {
+            for (int t = 0; t < numPeriods; t++)
+            {
+                file >> doubleValue;
+            }
+        }
+
+        string line_Two;
+        while (std::getline(file, line_Two))
+        {
+            if (line_Two == "endRoutesWarehouseToCustomer")
+                break;
+
+            std::istringstream iss(line_Two);
+            int s_index, w_index, t_index, k_index;
+            char colon;
+            if (!(iss >> s_index >> w_index >> t_index >> k_index >> colon) || colon != ':')
+            {
+                cerr << "Error parsing line: " << line_Two << std::endl;
+                continue;
+            }
+
+            int node;
+            vector<int> route;
+            while (iss >> node)
+            {
+                route.push_back(node);
+            }
+
+            // Assign the route to the appropriate vehicle
+            warmstart.routesWarehouseToCustomer_WarmStart[s_index][w_index][t_index][k_index] = route;
+        }
+
+        for (int i = 0; i < numCustomers; i++)
+        {
+            for (int t = 0; t < numPeriods; t++)
+            {
+                for (int s = 0; s < numScenarios; s++)
+                {
+                    file >> doubleValue;
+                }
+            }
+        }
+
+        file.close();
+
+        cout << "File loaded successfully." << endl;
+        return warmstart;
+    }
+    else
+    {
+        cerr << "No Warmstart solution was found!!" << endl;
+        warmstart.clear();
+        return warmstart;
+    }
 }

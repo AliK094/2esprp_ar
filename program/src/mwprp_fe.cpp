@@ -1,11 +1,9 @@
 #include "MWPRP_FE.h"
 
-MWPRP_FE::MWPRP_FE(const ParameterSetting &parameters, const vector<vector<vector<double>>>& warehouseInventory_Previous, const vector<vector<vector<double>>> &dualValues_WarehouseInventoryLB)
+MWPRP_FE::MWPRP_FE(const ParameterSetting &parameters)
 	: params(parameters),
 	  THRESHOLD(1e-2),
-	  warehouseInventory_PreviousIter(warehouseInventory_Previous),
-	  dualValues_WarehouseInventoryLB(dualValues_WarehouseInventoryLB),
-	  save_lpFile(true),
+	  save_lpFile(false),
 	  save_mpsResultFile(false)
 {
 	routeMatrix_FirstEchelon = params.getRouteMatrix();
@@ -13,7 +11,25 @@ MWPRP_FE::MWPRP_FE(const ParameterSetting &parameters, const vector<vector<vecto
 	optimalRoutes_FirstEchelon = params.getOptimalRoutes();
 	routeCosts_FirstEchelon = params.getRouteCosts();
 
-	auto retailersAssignedToWarehouse = params.getRetailersAssignedToWarehouse();
+	CATW = params.getCustomersAssignedToWarehouse();
+	vector<vector<vector<double>>> actualDemandCustomers(params.numCustomers, vector<vector<double>>(params.numPeriods, vector<double>(params.numScenarios, 0.0)));
+	vector<double> remainingInitInv_Custs = params.initialInventory_Customer;
+	for (int s = 0; s < params.numScenarios; ++s)
+	{
+		for (int t = 0; t < params.numPeriods; ++t)
+		{
+			for (int i = 0; i < params.numCustomers; ++i)
+			{
+				actualDemandCustomers[i][t][s] = params.demand[i][t][s];
+				if (remainingInitInv_Custs[i] > 0.0)
+				{
+					actualDemandCustomers[i][t][s] = std::max(0.0, params.demand[i][t][s] - remainingInitInv_Custs[i]);
+					remainingInitInv_Custs[i] -= std::min(params.demand[i][t][s], remainingInitInv_Custs[i]);
+				}
+			}
+		}
+	}
+
 	demand_warehouse.resize(params.numWarehouses, vector<vector<double>>(params.numPeriods, vector<double>(params.numScenarios, 0.0)));
 	for (int s = 0; s < params.numScenarios; ++s)
 	{
@@ -21,23 +37,36 @@ MWPRP_FE::MWPRP_FE(const ParameterSetting &parameters, const vector<vector<vecto
 		{
 			for (int w = 0; w < params.numWarehouses; ++w)
 			{
-				for (int retailer : retailersAssignedToWarehouse[w])
+				for (int i = 0; i < params.numCustomers; ++i)
 				{
-
-					demand_warehouse[w][t][s] += params.demand[retailer][t][s];
+					if (CATW[s][t][w][i] == 1)
+					{
+						demand_warehouse[w][t][s] += actualDemandCustomers[i][t][s];
+					}
 				}
 			}
 		}
 	}
 
-	approximatedUnmetDemandPenalty_warehouse.resize(params.numWarehouses, 0.0);
-	for (int w = 0; w < params.numWarehouses; ++w)
+	approximatedUnmetDemandPenalty_warehouse.resize(params.numWarehouses, vector<vector<double>>(params.numScenarios, vector<double>(params.numPeriods, 0.0)));
+	for (int s = 0; s < params.numScenarios; ++s)
 	{
-		for (int i : retailersAssignedToWarehouse[w]){
-
-			approximatedUnmetDemandPenalty_warehouse[w] += params.unmetDemandPenalty[i];
+		for (int t = 0; t < params.numPeriods; ++t)
+		{
+			for (int w = 0; w < params.numWarehouses; ++w)
+			{
+				double numAssCustomers = 0.0;
+				for (int i = 0; i < params.numCustomers; ++i)
+				{
+					if (CATW[s][t][w][i] == 1)
+					{
+						approximatedUnmetDemandPenalty_warehouse[w][s][t] += params.unmetDemandPenalty[i];
+						numAssCustomers += 1.0;
+					}
+				}
+				approximatedUnmetDemandPenalty_warehouse[w][s][t] /= numAssCustomers;
+			}
 		}
-		approximatedUnmetDemandPenalty_warehouse[w] /= retailersAssignedToWarehouse[w].size();
 	}
 }
 
@@ -53,7 +82,7 @@ bool MWPRP_FE::Solve()
 
 		// Set CPLEX Parameters: (DISPLAY LEVEL(0,1,2,3,4), OPTIMALITY GAP, RUN TIME (SECS), THREADS, MEMORY (MB))
 		CplexParameterManager parameterManager(cplex);
-		parameterManager.setParameters(4, 1e-6, 600, 8, 16000);
+		parameterManager.setParameters(1, 1e-6, 600, 8, 16000);
 		cplex.setParam(IloCplex::Param::Emphasis::MIP, 2);
 
 		DefineVariables(env, model);
@@ -70,7 +99,7 @@ bool MWPRP_FE::Solve()
 		if (save_lpFile)
 		{
 			string directory = "../cplexFiles/lpModel/";
-			string lpFileName = directory + "MWPRP_FE_NW" + std::to_string(params.numWarehouses) + "_NR" + std::to_string(params.numRetailers) + "_KP" + std::to_string(params.numVehicles_Plant) + "_KW" + std::to_string(params.numVehicles_Warehouse) + "_T" + std::to_string(params.numPeriods) + "_S" + std::to_string(params.numScenarios) + "_Ins" + params.instance.c_str() + ".lp";
+			string lpFileName = directory + "MWPRP_FE_NW" + std::to_string(params.numWarehouses) + "_NR" + std::to_string(params.numCustomers) + "_KP" + std::to_string(params.numVehicles_Plant) + "_KW" + std::to_string(params.numVehicles_Warehouse) + "_T" + std::to_string(params.numPeriods) + "_S" + std::to_string(params.numScenarios) + "_Ins" + params.instance.c_str() + ".lp";
 
 			// Export the model to an LP file
 			cplex.exportModel(lpFileName.c_str());
@@ -79,35 +108,25 @@ bool MWPRP_FE::Solve()
 		// Extract model
 		cplex.extract(model);
 
-		// Start From a Warm Start Solution if any is given
-		// cplex.setParam(IloCplex::Param::MIP::Limits::RepairTries, 1e6);
-		// Solution warmstart;
-		// const string solFrom = "IMH";
-		// params.loadWarmstart(solFrom, warmstart);
-		// if (!warmstart.empty())
-		// {
-		// 	DefineWarmStartSolution(env, cplex, warmstart);
-		// }
-		// else
-		// {
-		// 	cout << "Couldn't Find A Solution For Warmstart" << endl;
-		// }
-
 		// Solve the model
 		cplex.solve();
 
+		string status;
+		double objValue;
+		double optimalityGap;
+		double lowerBound;
 		if (cplex.getStatus() == IloAlgorithm::Optimal)
 		{
-			result.status = "Optimal";
-			result.objValue = cplex.getObjValue();
-			cout << "Optimal solution found with objective value: " << std::fixed << std::setprecision(1) << result.objValue << endl;
-			result.optimalityGap = cplex.getMIPRelativeGap() * 100;
-			result.lowerBound = cplex.getBestObjValue();
+			status = "Optimal";
+			objValue = cplex.getObjValue();
+			cout << "Optimal solution found with objective value: " << std::fixed << std::setprecision(1) << objValue << endl;
+			optimalityGap = cplex.getMIPRelativeGap() * 100;
+			lowerBound = cplex.getBestObjValue();
 
 			if (save_mpsResultFile)
 			{
 				string directory = "../cplexFiles/solVal/";
-				string solFileName = directory + "MWPRP_FE_NW" + std::to_string(params.numWarehouses) + "_NR" + std::to_string(params.numRetailers) + "_KP" + std::to_string(params.numVehicles_Plant) + "_KW" + std::to_string(params.numVehicles_Warehouse) + "_T" + std::to_string(params.numPeriods) + "_S" + std::to_string(params.numScenarios) + "_Ins" + params.instance.c_str();
+				string solFileName = directory + "MWPRP_FE_NW" + std::to_string(params.numWarehouses) + "_NR" + std::to_string(params.numCustomers) + "_KP" + std::to_string(params.numVehicles_Plant) + "_KW" + std::to_string(params.numVehicles_Warehouse) + "_T" + std::to_string(params.numPeriods) + "_S" + std::to_string(params.numScenarios) + "_Ins" + params.instance.c_str();
 
 				// Export the model to an LP file
 				cplex.writeSolution(solFileName.c_str());
@@ -115,18 +134,18 @@ bool MWPRP_FE::Solve()
 		}
 		else if (cplex.getStatus() == IloAlgorithm::Feasible)
 		{
-			result.status = "Incumbent";
-			result.objValue = cplex.getObjValue();
-			cout << "Incumbent solution found with objective value: " << std::fixed << std::setprecision(1) << result.objValue << endl;
-			result.optimalityGap = cplex.getMIPRelativeGap() * 100;
-			cout << "Optimality gap: " << result.optimalityGap << "%" << endl;
-			result.lowerBound = cplex.getBestObjValue();
-			cout << "Lower bound: " << result.lowerBound << endl;
+			status = "Incumbent";
+			objValue = cplex.getObjValue();
+			cout << "Incumbent solution found with objective value: " << std::fixed << std::setprecision(1) << objValue << endl;
+			optimalityGap = cplex.getMIPRelativeGap() * 100;
+			cout << "Optimality gap: " << optimalityGap << "%" << endl;
+			lowerBound = cplex.getBestObjValue();
+			cout << "Lower bound: " << lowerBound << endl;
 
 			if (save_mpsResultFile)
 			{
 				string directory = "../cplexFiles/solVal/";
-				string solFileName = directory + "MWPRP_FE_NW" + std::to_string(params.numWarehouses) + "_NR" + std::to_string(params.numRetailers) + "_KP" + std::to_string(params.numVehicles_Plant) + "_KW" + std::to_string(params.numVehicles_Warehouse) + "_T" + std::to_string(params.numPeriods) + "_S" + std::to_string(params.numScenarios) + "_Ins" + params.instance.c_str();
+				string solFileName = directory + "MWPRP_FE_NW" + std::to_string(params.numWarehouses) + "_NR" + std::to_string(params.numCustomers) + "_KP" + std::to_string(params.numVehicles_Plant) + "_KW" + std::to_string(params.numVehicles_Warehouse) + "_T" + std::to_string(params.numPeriods) + "_S" + std::to_string(params.numScenarios) + "_Ins" + params.instance.c_str();
 
 				// Export the model to an LP file
 				cplex.writeSolution(solFileName.c_str());
@@ -134,7 +153,7 @@ bool MWPRP_FE::Solve()
 		}
 		else if (cplex.getStatus() == IloAlgorithm::Infeasible)
 		{
-			result.status = "Infeasible";
+			status = "Infeasible";
 			cout << "Problem is infeasible" << endl;
 
 			IloConstraintArray conflictConstraints(env);
@@ -156,25 +175,26 @@ bool MWPRP_FE::Solve()
 		}
 		else
 		{
-			result.status = "Undefined";
-			cout << "Solver terminated with status: " << result.status << endl;
+			status = "Undefined";
+			cout << "Solver terminated with status: " << status << endl;
 		}
 
 		auto currentTime = std::chrono::high_resolution_clock::now();
-		result.CPUtime = std::chrono::duration_cast<std::chrono::duration<double>>(currentTime - startTime).count();
-		cout << "Timer (seconds): " << std::fixed << std::setprecision(4) << result.CPUtime << endl;
+		double CPUtime = std::chrono::duration_cast<std::chrono::duration<double>>(currentTime - startTime).count();
+		cout << "Timer (seconds): " << std::fixed << std::setprecision(4) << CPUtime << endl;
 
-		if (result.status == "Optimal" || result.status == "Incumbent")
+		if (status == "Optimal" || status == "Incumbent")
 		{
 			// Retrieve the solution
 			RetrieveSolutions(cplex);
 			// Display the solution
 			DisplayProductionSetupVars();
 			DisplayProductionQuantVars();
-			DisplayPlantInventoryVars();
+			// DisplayPlantInventoryVars();
 			DisplayWarehouseInventoryVars();
 			DisplayFirstEchelonRouteVars();
 			DisplayDeliveryQuantityToWarehousesVars();
+			CalculateCostsForEachPart();
 		}
 
 		// if (!params.saveSolution(algorithm, solution))
@@ -192,14 +212,14 @@ bool MWPRP_FE::Solve()
 	catch (const IloException &e)
 	{
 		cerr << "Error: " << e << endl;
-		return result.success = false;
+		return false;
 	}
 	catch (const std::runtime_error &e)
 	{
 		cerr << "Runtime Error: " << e.what() << endl;
-		return result.success = false;
+		return false;
 	}
-	return result.success = true;
+	return true;
 }
 
 void MWPRP_FE::DefineVariables(IloEnv &env, IloModel &model)
@@ -314,31 +334,7 @@ void MWPRP_FE::DefineObjectiveFunction(IloEnv &env, IloModel &model)
 			for (int w = 0; w < params.numWarehouses; ++w)
 			{
 				obj += params.probability[s] * params.unitHoldingCost_Warehouse[w] * I_warehouse[w][t][s];
-				obj += params.probability[s] * approximatedUnmetDemandPenalty_warehouse[w] * params.unitHoldingCost_Warehouse[w] * b_warehouse[w][t][s];
-			}
-		}
-
-		for (int s = 0; s < params.numScenarios; ++s)
-		{
-			for (int t = 0; t < params.numPeriods; ++t)
-			{
-				for (int w = 0; w < params.numWarehouses; ++w)
-				{
-					if (t == 0){
-						obj += params.probability[s] * dualValues_WarehouseInventoryLB[w][t][s] * (params.initialInventory_Warehouse[w]);
-					}
-					else {
-						obj += params.probability[s] * dualValues_WarehouseInventoryLB[w][t][s] * (I_warehouse[w][t-1][s]);
-					}
-					
-					for (int routeInd = 0; routeInd < numRoutes_FirstEchelon; ++routeInd)
-					{
-						obj += params.probability[s] * dualValues_WarehouseInventoryLB[w][t][s] * q[routeInd][w][t];
-					}
-
-					obj -= 10 * params.probability[s] * dualValues_WarehouseInventoryLB[w][t][s] * warehouseInventory_PreviousIter[w][t][s];
-					
-				}
+				obj += params.probability[s] * approximatedUnmetDemandPenalty_warehouse[w][s][t] * b_warehouse[w][t][s];
 			}
 		}
 	}
@@ -517,7 +513,7 @@ void MWPRP_FE::DefineConstraints(IloEnv &env, IloModel &model)
 	// ---------------------------------------------------------------------------------------------------------------------------
 	/*
 		Define Vehicle Capacity Constraints (From Plant to Warehouse):
-			sum(w in W) a[r][w] * q[r][w][t] <= params.vehicleCapacity_Plant * o[r][t] 		for all r in R, t in T
+			sum(w in W) q[r][w][t] <= params.vehicleCapacity_Plant * o[r][t] 		for all r in R, t in T
 	*/
 	for (int t = 0; t < params.numPeriods; ++t)
 	{
@@ -563,29 +559,35 @@ void MWPRP_FE::RetrieveSolutions(IloCplex &cplex)
 {
 	// Retrieve solution
 	// initilize variables
-	sol.productionSetup.assign(params.numPeriods, 0);
-	sol.productionQuantity.assign(params.numPeriods, 0.0);
-	sol.plantInventory.assign(params.numPeriods, 0.0);
-	sol.warehouseInventory.assign(params.numWarehouses, vector<vector<double>>(params.numPeriods, vector<double>(params.numScenarios, 0.0)));
-	sol.retailerInventory.assign(params.numRetailers, vector<vector<double>>(params.numPeriods, vector<double>(params.numScenarios, 0.0)));
-	sol.deliveryQuantityToWarehouse.assign(params.numWarehouses, vector<double>(params.numPeriods, 0.0));
-	sol.routePlantToWarehouse.resize(params.numPeriods);
+	solFE.productionSetup.assign(params.numPeriods, 0);
+	solFE.productionQuantity.assign(params.numPeriods, 0.0);
+	solFE.plantInventory.assign(params.numPeriods, 0.0);
+	solFE.deliveryQuantityToWarehouse.assign(params.numWarehouses, vector<double>(params.numPeriods, 0.0));
+	solFE.routesPlantToWarehouse.assign(params.numPeriods, vector<vector<int>>(params.numVehicles_Plant, vector<int>()));
+
+	warehouseInventory.assign(params.numWarehouses, vector<vector<double>>(params.numPeriods, vector<double>(params.numScenarios, 0.0)));
 
 	selectedRoute.assign(numRoutes_FirstEchelon, vector<int>(params.numPeriods, 0));
 
 	// Get solution values of decision variables
 	for (int t = 0; t < params.numPeriods; ++t)
 	{
-		sol.productionSetup[t] = cplex.getIntValue(y[t]);
-		sol.productionQuantity[t] = cplex.getValue(p[t]);
-		sol.plantInventory[t] = cplex.getValue(I_plant[t]);
+		solFE.productionSetup[t] = cplex.getIntValue(y[t]);
+		solFE.productionQuantity[t] = cplex.getValue(p[t]);
+		solFE.plantInventory[t] = cplex.getValue(I_plant[t]);
 
+		int vehInd = 0;
 		for (int routeInd = 0; routeInd < numRoutes_FirstEchelon; ++routeInd)
 		{
 			selectedRoute[routeInd][t] = cplex.getIntValue(o[routeInd][t]);
 			if (selectedRoute[routeInd][t] == 1)
 			{
-				sol.routePlantToWarehouse[t].push_back(optimalRoutes_FirstEchelon[routeInd]);
+				for (int node : optimalRoutes_FirstEchelon[routeInd])
+				{
+					solFE.routesPlantToWarehouse[t][vehInd].push_back(node);
+				}
+				vehInd++;
+				// solFE.routesPlantToWarehouse[t][routeInd] = optimalRoutes_FirstEchelon[routeInd];
 			}
 		}
 
@@ -593,12 +595,12 @@ void MWPRP_FE::RetrieveSolutions(IloCplex &cplex)
 		{
 			for (int routeInd = 0; routeInd < numRoutes_FirstEchelon; ++routeInd)
 			{
-				sol.deliveryQuantityToWarehouse[w][t] += cplex.getValue(q[routeInd][w][t]);
+				solFE.deliveryQuantityToWarehouse[w][t] += cplex.getValue(q[routeInd][w][t]);
 			}
 
 			for (int s = 0; s < params.numScenarios; ++s)
 			{
-				sol.warehouseInventory[w][t][s] = cplex.getValue(I_warehouse[w][t][s]);
+				warehouseInventory[w][t][s] = cplex.getValue(I_warehouse[w][t][s]);
 			}
 		}
 	}
@@ -606,17 +608,18 @@ void MWPRP_FE::RetrieveSolutions(IloCplex &cplex)
 
 void MWPRP_FE::CalculateCostsForEachPart()
 {
+	double holdingCostWarehouse_Avg;
 	for (int t = 0; t < params.numPeriods; ++t)
 	{
-		sol.setupCost += params.setupCost * sol.productionSetup[t];
-		sol.productionCost += params.unitProdCost * sol.productionQuantity[t];
-		sol.holdingCostPlant += params.unitHoldingCost_Plant * sol.plantInventory[t];
+		solFE.setupCost += params.setupCost * solFE.productionSetup[t];
+		solFE.productionCost += params.unitProdCost * solFE.productionQuantity[t];
+		solFE.holdingCostPlant += params.unitHoldingCost_Plant * solFE.plantInventory[t];
 
 		for (int routeInd = 0; routeInd < numRoutes_FirstEchelon; ++routeInd)
 		{
 			if (selectedRoute[routeInd][t] == 1)
 			{
-				sol.transportationCostPlantToWarehouse += routeCosts_FirstEchelon[routeInd];
+				solFE.transportationCostPlantToWarehouse += routeCosts_FirstEchelon[routeInd];
 			}
 		}
 
@@ -624,19 +627,26 @@ void MWPRP_FE::CalculateCostsForEachPart()
 		{
 			for (int w = 0; w < params.numWarehouses; ++w)
 			{
-				sol.holdingCostWarehouse_Avg += params.probability[s] * params.unitHoldingCost_Warehouse[w] * sol.warehouseInventory[w][t][s];
+				holdingCostWarehouse_Avg += params.probability[s] * params.unitHoldingCost_Warehouse[w] * warehouseInventory[w][t][s];
 			}
 		}
 	}
+	double totalCost_FE = solFE.setupCost + solFE.productionCost + solFE.holdingCostPlant + solFE.transportationCostPlantToWarehouse;
+
+	cout << "Setup Cost: " << solFE.setupCost << endl;
+	cout << "Production Cost: " << solFE.productionCost << endl;
+	cout << "Holding Cost Plant: " << solFE.holdingCostPlant << endl;
+	cout << "Transportation Cost Plant to Warehouse: " << solFE.transportationCostPlantToWarehouse << endl;
+	cout << "Total Cost_FE (MW-PRP): " << totalCost_FE << endl;
 }
 
 void MWPRP_FE::DisplayProductionSetupVars()
 {
 	for (int t = 0; t < params.numPeriods; ++t)
 	{
-		if (sol.productionSetup[t] == 1)
+		if (solFE.productionSetup[t] == 1)
 		{
-			cout << "y[" << t + 1 << "] = " << sol.productionSetup[t] << endl;
+			cout << "y[" << t + 1 << "] = " << solFE.productionSetup[t] << endl;
 		}
 	}
 }
@@ -645,9 +655,9 @@ void MWPRP_FE::DisplayProductionQuantVars()
 {
 	for (int t = 0; t < params.numPeriods; ++t)
 	{
-		if (sol.productionQuantity[t] > THRESHOLD)
+		if (solFE.productionQuantity[t] > THRESHOLD)
 		{
-			cout << "p[" << t + 1 << "] = " << std::setprecision(0) << std::fixed << sol.productionQuantity[t] << endl;
+			cout << "p[" << t + 1 << "] = " << std::setprecision(0) << std::fixed << solFE.productionQuantity[t] << endl;
 		}
 	}
 }
@@ -656,9 +666,9 @@ void MWPRP_FE::DisplayPlantInventoryVars()
 {
 	for (int t = 0; t < params.numPeriods; ++t)
 	{
-		if (sol.plantInventory[t] > THRESHOLD)
+		if (solFE.plantInventory[t] > THRESHOLD)
 		{
-			cout << "I_plant[" << t + 1 << "] = " << std::setprecision(0) << std::fixed << sol.plantInventory[t] << endl;
+			cout << "I_plant[" << t + 1 << "] = " << std::setprecision(0) << std::fixed << solFE.plantInventory[t] << endl;
 		}
 	}
 }
@@ -671,9 +681,9 @@ void MWPRP_FE::DisplayWarehouseInventoryVars()
 		{
 			for (int w = 0; w < params.numWarehouses; ++w)
 			{
-				if (sol.warehouseInventory[w][t][s] > THRESHOLD)
+				if (warehouseInventory[w][t][s] > THRESHOLD)
 				{
-					cout << "I_warehouse[" << w + 1 << "][" << t + 1 << "][" << s + 1 << "] = " << std::setprecision(0) << std::fixed << sol.warehouseInventory[w][t][s] << endl;
+					cout << "I_warehouse[" << w + 1 << "][" << t + 1 << "][" << s + 1 << "] = " << std::setprecision(0) << std::fixed << warehouseInventory[w][t][s] << endl;
 				}
 			}
 		}
@@ -696,11 +706,12 @@ void MWPRP_FE::DisplayFirstEchelonRouteVars()
 	for (int t = 0; t < params.numPeriods; ++t)
 	{
 		int routeInd = 1;
-		for (const auto &route : sol.routePlantToWarehouse[t])
+		for (const auto &route : solFE.routesPlantToWarehouse[t])
 		{
-			cout << "Period: " << t + 1 << ", Route: " << routeInd << " : ";
+
 			if (!route.empty())
 			{
+				cout << "Period: " << t + 1 << ", Route: " << routeInd << " : ";
 				for (auto it = route.begin(); it != route.end() - 1; ++it)
 				{
 					cout << *it << " -> ";
@@ -718,130 +729,10 @@ void MWPRP_FE::DisplayDeliveryQuantityToWarehousesVars()
 	{
 		for (int w = 0; w < params.numWarehouses; ++w)
 		{
-			if (sol.deliveryQuantityToWarehouse[w][t] > THRESHOLD)
+			if (solFE.deliveryQuantityToWarehouse[w][t] > THRESHOLD)
 			{
-				cout << "q[" << w + 1 << "][" << t + 1 << "] = " << sol.deliveryQuantityToWarehouse[w][t] << endl;
+				cout << "q[" << w + 1 << "][" << t + 1 << "] = " << solFE.deliveryQuantityToWarehouse[w][t] << endl;
 			}
 		}
 	}
 }
-
-// void PRPSL_BC::DefineWarmStartSolution(IloEnv &env, IloCplex &cplex, const Solution &warmStart)
-// {
-// 	IloNumVarArray startVar(env);
-// 	IloNumArray startVal(env);
-// 	for (int t = 0; t < params.numPeriods; ++t)
-// 	{
-// 		startVar.add(y[t]);
-// 		startVal.add(warmStart.productionSetup[t]);
-// 	}
-
-// 	for (int s = 0; s < params.numScenarios; ++s)
-// 	{
-// 		for (int t = 0; t < params.numPeriods; ++t)
-// 		{
-// 			startVar.add(p[t][s]);
-// 			startVal.add(warmStart.productionQuantity[t][s]);
-// 		}
-// 	}
-
-// 	for (int s = 0; s < params.numScenarios; ++s)
-// 	{
-// 		for (int t = 0; t < params.numPeriods; ++t)
-// 		{
-// 			for (int nodeIndex = 0; nodeIndex < params.numNodes; ++nodeIndex)
-// 			{
-// 				startVar.add(I[nodeIndex][t][s]);
-// 				startVal.add(warmStart.inventory[nodeIndex][t][s]);
-// 			}
-// 		}
-// 	}
-
-// 	for (int s = 0; s < params.numScenarios; ++s)
-// 	{
-// 		for (int t = 0; t < params.numPeriods; ++t)
-// 		{
-// 			for (int nodeIndex = 1; nodeIndex < params.numNodes; ++nodeIndex)
-// 			{
-// 				startVar.add(b[nodeIndex][t][s]);
-// 				startVal.add(warmStart.backlog[nodeIndex][t][s]);
-// 			}
-// 		}
-// 	}
-
-// 	for (int s = 0; s < params.numScenarios; ++s)
-// 	{
-// 		for (int t = 0; t < params.numPeriods; ++t)
-// 		{
-// 			for (int k = 0; k < params.numVehicles; k++)
-// 			{
-// 				for (int nodeIndex = 0; nodeIndex < params.numNodes; ++nodeIndex)
-// 				{
-// 					startVar.add(z[nodeIndex][k][t][s]);
-// 					startVal.add(warmStart.nodeVisit[nodeIndex][k][t][s]);
-// 				}
-// 			}
-// 		}
-// 	}
-
-// 	for (int s = 0; s < params.numScenarios; ++s)
-// 	{
-// 		for (int t = 0; t < params.numPeriods; ++t)
-// 		{
-// 			for (int k = 0; k < params.numVehicles; k++)
-// 			{
-// 				for (int nodeIndex = 0; nodeIndex < params.numNodes; ++nodeIndex)
-// 				{
-// 					startVar.add(q[nodeIndex][k][t][s]);
-// 					startVal.add(warmStart.delivery[nodeIndex][k][t][s]);
-// 				}
-// 			}
-// 		}
-// 	}
-
-// 	for (int s = 0; s < params.numScenarios; ++s)
-// 	{
-// 		for (int t = 0; t < params.numPeriods; ++t)
-// 		{
-// 			for (int k = 0; k < params.numVehicles; k++)
-// 			{
-// 				for (int edgeIndex = 0; edgeIndex < params.numEdges; edgeIndex++)
-// 				{
-// 					startVar.add(x[edgeIndex][k][t][s]);
-// 					startVal.add(warmStart.edgeVisit[edgeIndex][k][t][s]);
-// 				}
-// 			}
-// 		}
-// 	}
-
-// 	if (params.SLtype == "alpha")
-// 	{
-// 		for (int s = 0; s < params.numScenarios; ++s)
-// 		{
-// 			for (int t = 0; t < params.numPeriods; ++t)
-// 			{
-// 				for (int nodeIndex = 1; nodeIndex < params.numNodes; ++nodeIndex)
-// 				{
-// 					startVar.add(o[nodeIndex][t][s]);
-// 					startVal.add(warmStart.alphaAux[nodeIndex][t][s]);
-// 				}
-// 			}
-// 		}
-// 	}
-// 	else if (params.SLtype == "beta")
-// 	{
-// 		for (int s = 0; s < params.numScenarios; ++s)
-// 		{
-// 			for (int t = 0; t < params.numPeriods; ++t)
-// 			{
-// 				for (int nodeIndex = 1; nodeIndex < params.numNodes; ++nodeIndex)
-// 				{
-// 					startVar.add(bo[nodeIndex][t][s]);
-// 					startVal.add(warmStart.backorder[nodeIndex][t][s]);
-// 				}
-// 			}
-// 		}
-// 	}
-// 	cplex.addMIPStart(startVar, startVal, IloCplex::MIPStartEffort::MIPStartRepair);
-// 	startVal.end();
-// 	startVar.end();
