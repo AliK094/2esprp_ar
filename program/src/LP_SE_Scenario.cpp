@@ -27,8 +27,10 @@ string LP_SE_Scenario::solve()
 	DefineConstraints(env, model);
 
 	/* Assure linear mappings between the presolved and original models */
-	cplex.setParam(IloCplex::Param::Threads, 4);
+	cplex.setParam(IloCplex::Param::Threads, 1);
 	cplex.setParam(IloCplex::Param::Preprocessing::Presolve, IloFalse);
+
+	cplex.setOut(env.getNullStream());
 
 	if (save_lpFile)
 	{
@@ -42,7 +44,7 @@ string LP_SE_Scenario::solve()
 	// Extract model
 	cplex.extract(model);
 
-	cout << "\nSolving LP_SE_Scenario..." << endl; 
+	// cout << "Solving LP_SE_Scenario...\n" << endl; 
 	// Solve the model
 	cplex.solve();
 
@@ -53,7 +55,7 @@ string LP_SE_Scenario::solve()
 	{
 		status = "Optimal";
 		objValue = cplex.getObjValue();
-		cout << "Optimal solution found with objective value: " << std::fixed << std::setprecision(1) << objValue << endl;
+		// cout << "Optimal solution found with objective value: " << std::fixed << std::setprecision(1) << objValue << endl;
 
 		if (save_mpsResultFile)
 		{
@@ -83,13 +85,14 @@ string LP_SE_Scenario::solve()
 
 	auto currentTime = std::chrono::high_resolution_clock::now();
 	auto totalCPUTime = std::chrono::duration_cast<std::chrono::duration<double>>(currentTime - startTime).count();
-	cout << "Timer (seconds): " << std::fixed << std::setprecision(3) << totalCPUTime << endl;
+	// cout << "Timer (seconds): " << std::fixed << std::setprecision(3) << totalCPUTime << endl;
 
 	if (status == "Optimal" || status == "Incumbent")
 	{
-		cout << "Retrieving solutions..." << endl;
+		// cout << "Retrieving solutions..." << endl;
 		// Retrieve the solution
 		RetrieveSolutions(cplex);
+		CalculateObjValue_Scenario();
 		// Display the solution
 		// DisplayProductionSetupVars();
 		// DisplayProductionQuantVars();
@@ -100,7 +103,7 @@ string LP_SE_Scenario::solve()
 		// DisplayCustomerInventoryVars();
 		// DisplayCustomerUnmetDemandVars();
 		// DisplayDeliveryQuantityToCustomersVars();
-		CalculateObjValue_Scenario();
+		
 	}
 
 	env.end();
@@ -742,22 +745,22 @@ void LP_SE_Scenario::CalculateObjValue_Scenario()
 	}
 
 	double objValue_FE = sol_FE_scenario_temp.setupCost + sol_FE_scenario_temp.productionCost + sol_FE_scenario_temp.holdingCostPlant + sol_FE_scenario_temp.transportationCostPlantToWarehouse;
-	cout << "Setup Cost : " << sol_FE_scenario_temp.setupCost << endl;
-	cout << "Production Cost : " << sol_FE_scenario_temp.productionCost << endl;
-	cout << "Holding Cost Plant : " << sol_FE_scenario_temp.holdingCostPlant << endl;
-	cout << "Transportation Cost Plant to Warehouse : " << sol_FE_scenario_temp.transportationCostPlantToWarehouse << endl;
+	// cout << "Setup Cost : " << sol_FE_scenario_temp.setupCost << endl;
+	// cout << "Production Cost : " << sol_FE_scenario_temp.productionCost << endl;
+	// cout << "Holding Cost Plant : " << sol_FE_scenario_temp.holdingCostPlant << endl;
+	// cout << "Transportation Cost Plant to Warehouse : " << sol_FE_scenario_temp.transportationCostPlantToWarehouse << endl;
 
 	double objValue_SE = sol_SE_scenario_temp.holdingCostWarehouse_Scenario + sol_SE_scenario_temp.holdingCostCustomer_Scenario + sol_SE_scenario_temp.costOfUnmetDemand_Scenario + sol_SE_scenario_temp.transportationCostWarehouseToCustomer_Scenario;
-	cout << "Holding Cost Warehouse : " << sol_SE_scenario_temp.holdingCostWarehouse_Scenario << endl;
-	cout << "Holding Cost Customer : " << sol_SE_scenario_temp.holdingCostCustomer_Scenario << endl;
-	cout << "Cost of Unmet Demand : " << sol_SE_scenario_temp.costOfUnmetDemand_Scenario << endl;
-	cout << "Transportation Cost Warehouse to Customer : " << sol_SE_scenario_temp.transportationCostWarehouseToCustomer_Scenario << endl;
+	// cout << "Holding Cost Warehouse : " << sol_SE_scenario_temp.holdingCostWarehouse_Scenario << endl;
+	// cout << "Holding Cost Customer : " << sol_SE_scenario_temp.holdingCostCustomer_Scenario << endl;
+	// cout << "Cost of Unmet Demand : " << sol_SE_scenario_temp.costOfUnmetDemand_Scenario << endl;
+	// cout << "Transportation Cost Warehouse to Customer : " << sol_SE_scenario_temp.transportationCostWarehouseToCustomer_Scenario << endl;
 	
 	objVal_Scenario = objValue_FE + objValue_SE;
 
-	cout << "\nObjective value FE : " << objValue_FE << endl;
-	cout << "Objective value (ILS) SE : " << objValue_SE << endl;
-	cout << "Objective value (ILS) Total : " << objVal_Scenario << endl;
+	// cout << "\nObjective value FE : " << objValue_FE << endl;
+	// cout << "Objective value (ILS) SE : " << objValue_SE << endl;
+	// cout << "Objective value (ILS) Total : " << objVal_Scenario << endl;
 }
 
 void LP_SE_Scenario::DisplayProductionSetupVars()

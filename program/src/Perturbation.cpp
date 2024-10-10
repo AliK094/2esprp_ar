@@ -4,7 +4,7 @@ Perturbation::Perturbation(const int s, const ParameterSetting &parameters, cons
 	: scenario(s), params(parameters), sol_FE_temp(sol_FE), sol_SE_temp_scenario(sol_SE_scenario), rng(std::random_device{}())
 {
 	// ----------------------------------------------------------------------------------------------------------
-	cout << "\nInitializing Perturbation for scenario " << scenario << endl;
+	// cout << "\nInitializing Perturbation for scenario " << scenario << endl;
 	// ----------------------------------------------------------------------------------------------------------
 }
 
@@ -18,13 +18,13 @@ bool Perturbation::run()
 	// --------------------------------------------------------------------------------------------------------------------------
 	while (perturbIteration < max_perturb)
 	{
-		cout << "Perturbation...: " << endl;
+		// cout << "Perturbation...: " << endl;
 
 		sol_SE_scenario_feasible = sol_SE_temp_scenario;
 		int index = rand() % perturbOperators.size();
 
-		printAllRoutes();
-		cout << "\n";
+		// printAllRoutes();
+		// cout << "\n";
 
 		// Execute the operator
 		if (!perturbOperators[index]())
@@ -67,7 +67,7 @@ vector<std::function<bool()>> Perturbation::setPerturbOperators()
 // Random Shift Perturbation
 bool Perturbation::randomShift(int v)
 {
-	cout << "\nRandom Shift Perturbation" << endl;
+	// cout << "\nRandom Shift Perturbation" << endl;
 
 	// Collect all eligible periods
 	vector<int> periods(params.numPeriods);
@@ -171,8 +171,8 @@ bool Perturbation::randomShift(int v)
 					for (const int insertPos : eligibleInsertPositions)
 					{
 						// Print old routes
-						printRoute(sourceWarehouse, t, sourceVehicle, sourceRoute, "Original Source Route");
-						printRoute(destWarehouse, t, destVehicle, destRoute, "Original Dest Route");
+						// printRoute(sourceWarehouse, t, sourceVehicle, sourceRoute, "Original Source Route");
+						// printRoute(destWarehouse, t, destVehicle, destRoute, "Original Dest Route");
 
 						// Perform the shift: remove from source and insert into destination
 						sourceRoute.erase(sourceRoute.begin() + startPos, sourceRoute.begin() + endPos);
@@ -209,13 +209,13 @@ bool Perturbation::randomShift(int v)
 						}
 
 						// Log the shift operation
-						cout << "Shifted " << v << " customer(s) from warehouse " << sourceWarehouse + 1 
-							 << " route " << sourceVehicle + 1 << " to warehouse " << destWarehouse + 1 
-							 << " route " << destVehicle + 1 << " in period " << t + 1 << endl;
+						// cout << "Shifted " << v << " customer(s) from warehouse " << sourceWarehouse + 1 
+						// 	 << " route " << sourceVehicle + 1 << " to warehouse " << destWarehouse + 1 
+						// 	 << " route " << destVehicle + 1 << " in period " << t + 1 << endl;
 
 						// Print updated routes
-						printRoute(sourceWarehouse, t, sourceVehicle, sourceRoute, "Updated Source Route");
-						printRoute(destWarehouse, t, destVehicle, destRoute, "Updated Dest Route");
+						// printRoute(sourceWarehouse, t, sourceVehicle, sourceRoute, "Updated Source Route");
+						// printRoute(destWarehouse, t, destVehicle, destRoute, "Updated Dest Route");
 
 						return true;
 					} // End of insertPos loop
@@ -224,13 +224,13 @@ bool Perturbation::randomShift(int v)
 		} // End of sourceVehicle loop
 	} // End of period loop
 
-	cerr << "Random Insertion Perturbation failed" << endl;
+	// cerr << "Random Insertion Perturbation failed" << endl;
 	return false;
 }
 
 bool Perturbation::randomSwap(int v1, int v2)
 {
-	cout << "\nRnadom Swap Perturbation" << endl;
+	// cout << "\nRnadom Swap Perturbation" << endl;
 
 	// Collect all eligible periods
 	vector<int> periods(params.numPeriods);
@@ -307,8 +307,8 @@ bool Perturbation::randomSwap(int v1, int v2)
 				}
 
 				// Print original routes
-				printRoute(sourceWarehouse, t, sourceVehicle, sourceRoute, "Original Source route");
-				printRoute(destWarehouse, t, destVehicle, destRoute, "Original Dest route");
+				// printRoute(sourceWarehouse, t, sourceVehicle, sourceRoute, "Original Source route");
+				// printRoute(destWarehouse, t, destVehicle, destRoute, "Original Dest route");
 
 				// Define distributions for selecting swap positions
 				std::uniform_int_distribution<int> source_pos_dist(1, static_cast<int>(sourceRoute.size()) - v1 - 1);
@@ -350,26 +350,26 @@ bool Perturbation::randomSwap(int v1, int v2)
 				}
 
 				// Log the swap operation
-				cout << "Swapped " << v1 << " customer(s) from warehouse " << sourceWarehouse + 1
-						<< " route " << sourceVehicle + 1 << " with " << v2 << " customer(s) from warehouse " << destWarehouse + 1
-						<< " route " << destVehicle + 1 << " in period " << t + 1 << endl;
+				// cout << "Swapped " << v1 << " customer(s) from warehouse " << sourceWarehouse + 1
+				// 		<< " route " << sourceVehicle + 1 << " with " << v2 << " customer(s) from warehouse " << destWarehouse + 1
+				// 		<< " route " << destVehicle + 1 << " in period " << t + 1 << endl;
 
 				// Print updated routes
-				printRoute(sourceWarehouse, t, sourceVehicle, sourceRoute, "Updated Source route");
-				printRoute(destWarehouse, t, destVehicle, destRoute, "Updated Dest route");
+				// printRoute(sourceWarehouse, t, sourceVehicle, sourceRoute, "Updated Source route");
+				// printRoute(destWarehouse, t, destVehicle, destRoute, "Updated Dest route");
 
 				return true;
 			} // End of destVehicle loop
 		} // End of sourceVehicle loop
 	} // End of period loop
 
-	cerr << "Random Swap Perturbation Failed" << endl;
+	// cerr << "Random Swap Perturbation Failed" << endl;
 	return false;
 }
 
 bool Perturbation::randomInsertion()
 {
-	cout << "\nRandom Insertion Perturbation" << endl;
+	// cout << "\nRandom Insertion Perturbation" << endl;
 
 	// Collect and shuffle periods
 	vector<int> periods(params.numPeriods);
@@ -413,7 +413,7 @@ bool Perturbation::randomInsertion()
 				}
 
 				// Output the route details
-				printRoute(w, t, rtIndex, route, "Old Route");
+				// printRoute(w, t, rtIndex, route, "Old Route");
 				rtIndex++;
 			}
 		}
@@ -503,7 +503,7 @@ bool Perturbation::randomInsertion()
 
 		if (!inserted)
 		{
-			cout << "Failed to insert unvisited node." << endl;
+			// cout << "Failed to insert unvisited node." << endl;
 			return false;
 		}
 
@@ -518,23 +518,23 @@ bool Perturbation::randomInsertion()
 		int rtIndex = 0;
 		for (auto &route : sol_SE_scenario_feasible.routesWarehouseToCustomer_Scenario[selectedWarehouse][t])
 		{
-			printRoute(selectedWarehouse, t, rtIndex, route, "Updated Route");
+			// printRoute(selectedWarehouse, t, rtIndex, route, "Updated Route");
 			rtIndex++;
 		}
 
-		cout << "Inserted unvisited node " << unvisitedNode << " at period " << t + 1 << " in warehouse " << selectedWarehouse + 1 << " with minimum cost." << endl;
+		// cout << "Inserted unvisited node " << unvisitedNode << " at period " << t + 1 << " in warehouse " << selectedWarehouse + 1 << " with minimum cost." << endl;
 
 		// Return true if an insertion was successfully made
 		return true;
 	}
 
-	cerr << "Random Insertion Perturbation failed." << endl;
+	// cerr << "Random Insertion Perturbation failed." << endl;
 	return false;
 }
 
 bool Perturbation::randomRemoval()
 {
-	cout << "\nRandom Removal Perturbation" << endl;
+	// cout << "\nRandom Removal Perturbation" << endl;
 
 	int t = rand() % params.numPeriods; // Randomly choose a period
 	
@@ -547,7 +547,7 @@ bool Perturbation::randomRemoval()
 	int rtIndex = 0;
 	for (auto &route : sol_SE_scenario_feasible.routesWarehouseToCustomer_Scenario[selectedWarehouse][t])
 	{
-		printRoute(selectedWarehouse, t, rtIndex, route, "Old Route");
+		// printRoute(selectedWarehouse, t, rtIndex, route, "Old Route");
 
 		rtIndex++;
 	}
@@ -564,7 +564,7 @@ bool Perturbation::randomRemoval()
 	// If no suitable routes are found, return false
 	if (candidateRoutes.empty())
 	{
-		cout << "No suitable routes with removable nodes found." << endl;
+		// cout << "No suitable routes with removable nodes found." << endl;
 		return false;
 	}
 
@@ -585,14 +585,14 @@ bool Perturbation::randomRemoval()
 	rtIndex = 0;
 	for (auto &route : sol_SE_scenario_feasible.routesWarehouseToCustomer_Scenario[selectedWarehouse][t])
 	{
-		printRoute(selectedWarehouse, t, rtIndex, route, "New Route");
+		// printRoute(selectedWarehouse, t, rtIndex, route, "New Route");
 
 		rtIndex++;
 	}
 
 	// Log the operation
-	cout << "Removed customer " << removedCustomer << " from period " << t + 1 
-		 << ", warehouse " << selectedWarehouse + 1 << ", route " << routeIndex + 1 << endl;
+	// cout << "Removed customer " << removedCustomer << " from period " << t + 1 
+	// 	 << ", warehouse " << selectedWarehouse + 1 << ", route " << routeIndex + 1 << endl;
 
 	return true;
 }

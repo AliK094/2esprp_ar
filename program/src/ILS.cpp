@@ -9,7 +9,7 @@ ILS_SIRP::ILS_SIRP(const ParameterSetting &parameters, const SolutionFirstEchelo
 	srand(static_cast<unsigned int>(time(NULL)));
 	// ----------------------------------------------------------------------------------------------------------
 	Tolerance = 1e-6;
-	cout << "\nILS_SIRP...\n"
+	cout << "\nILS_SIRP..."
 		 << endl;
 }
 
@@ -56,47 +56,6 @@ bool ILS_SIRP::run()
 		return false;
 	}
 
-	// for (int s = 0; s < params.numScenarios; ++s)
-	// {
-	// 	for (int w = 0; w < params.numWarehouses; ++w)
-	// 	{
-	// 		for (int t = 0; t < params.numPeriods; ++t)
-	// 		{
-	// 			for (int k = 0; k < params.numVehicles_Warehouse; ++k)
-	// 			{
-	// 				if (!sol_temp.routesWarehouseToCustomer[s][w][t][k].empty())
-	// 				{
-	// 					cout << "route[" << s + 1 << "][" << w + 1 << "][" << t + 1 << "][" << k + 1 << "] : [";
-	// 					for (auto it = sol_temp.routesWarehouseToCustomer[s][w][t][k].begin(); it != sol_temp.routesWarehouseToCustomer[s][w][t][k].end(); ++it)
-	// 					{
-	// 						if (it != sol_temp.routesWarehouseToCustomer[s][w][t][k].begin())
-	// 						{
-	// 							cout << " -> ";
-	// 						}
-	// 						cout << *it;
-	// 					}
-	// 					cout << "]" << endl;
-	// 				}
-	// 			}
-	// 		}
-	// 	}
-	// }
-
-	// for (int s = 0; s < params.numScenarios; ++s)
-	// {
-	// 	for (int t = 0; t < params.numPeriods; ++t)
-	// 	{
-	// 		for (int w = 0; w < params.numWarehouses; ++w)
-	// 		{
-	// 			for (int i = 0; i < params.numCustomers; ++i)
-	// 			{
-	// 				cout << sol_SE_temp.customerAssignmentToWarehouse[s][t][w][i] << " ";
-	// 			}
-	// 			cout << endl;
-	// 		}
-	// 	}
-	// }
-
 	if (!checkSolutionFeasiblity(sol_FE_temp, sol_SE_temp))
 	{
 		cerr << "Initial solution is not feasible" << endl;
@@ -107,18 +66,18 @@ bool ILS_SIRP::run()
 	sol_SE_incumbent = sol_SE_temp;
 	result_incumbent = result_temp;
 
-	cout << "Objective Function Value of First Echelon (Initial Solution): " << std::setprecision(1) << std::fixed << result_incumbent.objValue_firstEchelon << endl;
-	cout << "Objective Function Value of Second Echelon (Initial Solution): " << std::setprecision(1) << std::fixed << result_incumbent.objValue_secondEchelon << endl;
-	cout << "Objective Function Value of Total (Initial Solution): " << std::setprecision(1) << std::fixed << result_incumbent.objValue_Total << endl;
+	// cout << "Objective Function Value of First Echelon (Initial Solution): " << std::setprecision(1) << std::fixed << result_incumbent.objValue_firstEchelon << endl;
+	// cout << "Objective Function Value of Second Echelon (Initial Solution): " << std::setprecision(1) << std::fixed << result_incumbent.objValue_secondEchelon << endl;
+	// cout << "Objective Function Value of Total (Initial Solution): " << std::setprecision(1) << std::fixed << result_incumbent.objValue_Total << endl;
 
 	
 	// Define the number of threads you want to use
 	int numThreads = std::thread::hardware_concurrency(); // Use the number of available CPU cores
-	cout << "Available CPU cores: " << numThreads << endl;
+	// cout << "\nAvailable CPU cores: " << numThreads << endl;
 
 	std::atomic<bool> stopProcessing(false); 
 	vector<std::thread> threads;
-
+	cout << "\nStart to run ILS..." << endl;
 	for (int s = 0; s < params.numScenarios; ++s) {
 		threads.emplace_back([&, s]() {
 			// Check if processing should continue
@@ -147,7 +106,7 @@ bool ILS_SIRP::run()
 				{
 					ScenarioSolutionSecondEchelon sol_SE_temp_Scenario = sol_SE_incumbent_Scenario;
 
-					cout << "\nIteration (ILS) for Scenario " << s + 1 << " Iteration : " << numIterILS + 1 << endl;
+					// cout << "\nIteration (ILS) for Scenario " << s + 1 << " Iteration : " << numIterILS + 1 << endl;
 					if (numIterILS > 0)
 					{
 						/*
@@ -177,24 +136,24 @@ bool ILS_SIRP::run()
 						best_objValue_Scenario = objval_scenario_new;
 						sol_SE_incumbent_Scenario = ls.getSolutionSE_Scenario();
 
-						cout << "\n\nA better Objective Function Value For Scenario " << s + 1 << " : " << std::setprecision(1) << std::fixed << best_objValue_Scenario << endl;
+						// cout << "A better Objective Function Value For Scenario " << s + 1 << " : " << std::setprecision(1) << std::fixed << best_objValue_Scenario << endl;
 					}
 					else {
-						cout << "\n\nNo better Objective Function Value For Scenario " << s + 1 << " : " << std::setprecision(1) << std::fixed << best_objValue_Scenario << endl;
+						// cout << "No better Objective Function Value For Scenario " << s + 1 << " : " << std::setprecision(1) << std::fixed << best_objValue_Scenario << endl;
 					}
 
 					numIterILS++;
 
 					auto currentTime_ILS_Scenario = std::chrono::high_resolution_clock::now();
 					elapsedTime_ILS_Scenario = std::chrono::duration_cast<std::chrono::duration<double>>(currentTime_ILS_Scenario - startTime_ILS_Scenario).count();
-					cout << "TIME for Scenario: " << s << " : " << std::setprecision(3) << std::fixed << elapsedTime_ILS_Scenario << endl;
+					// cout << "TIME for Scenario: " << s << " : " << std::setprecision(3) << std::fixed << elapsedTime_ILS_Scenario << endl;
 				}
 
 				// Update the incumbent solution
 				sol_SE_incumbent.routesWarehouseToCustomer[s] = sol_SE_incumbent_Scenario.routesWarehouseToCustomer_Scenario;
 				sol_SE_incumbent.customerAssignmentToWarehouse[s] = sol_SE_incumbent_Scenario.customerAssignmentToWarehouse_Scenario;
 
-				cout << "\n\nBest Objective Function Value For Scenario " << s + 1 << ": " << std::setprecision(1) << std::fixed << best_objValue_Scenario << endl;
+				// cout << "\n\nBest Objective Function Value For Scenario " << s + 1 << ": " << std::setprecision(1) << std::fixed << best_objValue_Scenario << endl;
 				// for (int s = 0; s < params.numScenarios; ++s)
 				// {
 				// 	for (int w = 0; w < params.numWarehouses; ++w)
@@ -252,31 +211,31 @@ bool ILS_SIRP::run()
 	result_incumbent = result_temp;
 
 
-	for (int s = 0; s < params.numScenarios; ++s)
-	{
-		for (int w = 0; w < params.numWarehouses; ++w)
-		{
-			for (int t = 0; t < params.numPeriods; ++t)
-			{
-				for (int k = 0; k < params.numVehicles_Warehouse; ++k)
-				{
-					if (!sol_SE_incumbent.routesWarehouseToCustomer[s][w][t][k].empty())
-					{
-						cout << "route[" << s + 1 << "][" << w + 1 << "][" << t + 1 << "][" << k + 1 << "] : [";
-						for (auto it = sol_SE_incumbent.routesWarehouseToCustomer[s][w][t][k].begin(); it != sol_SE_incumbent.routesWarehouseToCustomer[s][w][t][k].end(); ++it)
-						{
-							if (it != sol_SE_incumbent.routesWarehouseToCustomer[s][w][t][k].begin())
-							{
-								cout << " -> ";
-							}
-							cout << *it;
-						}
-						cout << "]" << endl;
-					}
-				}
-			}
-		}
-	}
+	// for (int s = 0; s < params.numScenarios; ++s)
+	// {
+	// 	for (int w = 0; w < params.numWarehouses; ++w)
+	// 	{
+	// 		for (int t = 0; t < params.numPeriods; ++t)
+	// 		{
+	// 			for (int k = 0; k < params.numVehicles_Warehouse; ++k)
+	// 			{
+	// 				if (!sol_SE_incumbent.routesWarehouseToCustomer[s][w][t][k].empty())
+	// 				{
+	// 					cout << "route[" << s + 1 << "][" << w + 1 << "][" << t + 1 << "][" << k + 1 << "] : [";
+	// 					for (auto it = sol_SE_incumbent.routesWarehouseToCustomer[s][w][t][k].begin(); it != sol_SE_incumbent.routesWarehouseToCustomer[s][w][t][k].end(); ++it)
+	// 					{
+	// 						if (it != sol_SE_incumbent.routesWarehouseToCustomer[s][w][t][k].begin())
+	// 						{
+	// 							cout << " -> ";
+	// 						}
+	// 						cout << *it;
+	// 					}
+	// 					cout << "]" << endl;
+	// 				}
+	// 			}
+	// 		}
+	// 	}
+	// }
 
 	cout << "Best Objective Function Value: " << std::setprecision(1) << std::fixed << result_incumbent.objValue_Total << endl;
 
@@ -284,8 +243,6 @@ bool ILS_SIRP::run()
 	elapsedTime_ILS = std::chrono::duration_cast<std::chrono::duration<double>>(currentTime_ILS - startTime_ILS).count();
 	cout << "Total TIME ILS (Second Echelon): " << std::setprecision(3) << std::fixed << elapsedTime_ILS << endl;
 	result_incumbent.totalCPUTime = elapsedTime_ILS;
-
-	cout << "\n\n\n" << endl;
 
 	return true;
 }

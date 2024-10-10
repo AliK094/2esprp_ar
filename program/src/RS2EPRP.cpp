@@ -26,7 +26,7 @@ bool RS2EPRP::Solve()
 
 		// Set CPLEX Parameters: (DISPLAY LEVEL(0,1,2,3,4), OPTIMALITY GAP, RUN TIME (SECS), THREADS, MEMORY (MB))
 		CplexParameterManager parameterManager(cplex);
-		parameterManager.setParameters(4, 1e-2, 120, 8, 32000);
+		parameterManager.setParameters(4, 1e-2, 120, 20, 32000);
 		cplex.setParam(IloCplex::Param::Emphasis::MIP, 2);
 
 		DefineVariables(env, model);

@@ -15,7 +15,7 @@ int main(int argc, char *argv[])
 		return EXIT_FAILURE;
 	}
 
-	cout << "\n\n\nSolve The Stochastic Two-Echelon PRP with Adaptive Routing. " << endl;
+	cout << "\n\nSolve The Stochastic Two-Echelon PRP with Adaptive Routing. " << endl;
 
 	ParameterSetting params(argc, argv);
 	if (!params.setParameters())

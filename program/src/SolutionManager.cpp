@@ -12,12 +12,12 @@ void SolutionManager::saveSolution(const SolutionFirstEchelon &solFE, const Solu
     if (Algorithm == "Hybrid-ILS")
     {
         cout << "Saving solution for " << Algorithm << endl;
-        resultsFileName = "../Results/Solutions/" + Algorithm + "/" + params.probabilityFunction.c_str() + "/Sol_S2EPRPAR_HHA_" + params.probabilityFunction.c_str() + "_" + params.instance.c_str() + "_S" + std::to_string(params.numScenarios)  + "_UR" + std::to_string(static_cast<int>(params.uncertaintyRange * 100)) + "%_PC" + std::to_string(static_cast<int>(params.unmetDemandPenaltyCoeff)) + ".txt";
+        resultsFileName = "../Results/Solutions/" + Algorithm + "/" + params.probabilityFunction.c_str() + "/S" + std::to_string(params.numScenarios) + "/Sol_S2EPRPAR_HHA_" + params.probabilityFunction.c_str() + "_" + params.instance.c_str() + "_S" + std::to_string(params.numScenarios)  + "_UR" + std::to_string(static_cast<int>(params.uncertaintyRange * 100)) + "%_PC" + std::to_string(static_cast<int>(params.unmetDemandPenaltyCoeff)) + ".txt";
     }
     else if (Algorithm == "BC")
     {
         cout << "Saving solution for " << Algorithm << endl;
-        resultsFileName = "../Results/Solutions/" + Algorithm + "/" + params.probabilityFunction.c_str() + "/Sol_S2EPRPAR_BC_" +  params.probabilityFunction.c_str() + "_" + params.instance.c_str() + "_S" + std::to_string(params.numScenarios)  + "_UR" + std::to_string(static_cast<int>(params.uncertaintyRange * 100)) + "%_PC" + std::to_string(static_cast<int>(params.unmetDemandPenaltyCoeff)) + ".txt";
+        resultsFileName = "../Results/Solutions/" + Algorithm + "/" + params.probabilityFunction.c_str() + "/S" + std::to_string(params.numScenarios) + "/Sol_S2EPRPAR_BC_" +  params.probabilityFunction.c_str() + "_" + params.instance.c_str() + "_S" + std::to_string(params.numScenarios)  + "_UR" + std::to_string(static_cast<int>(params.uncertaintyRange * 100)) + "%_PC" + std::to_string(static_cast<int>(params.unmetDemandPenaltyCoeff)) + ".txt";
     }
     // }  else if (strcmp(Algorithm, "FR_BC") == 0){
     // 	snprintf(resultsFileName, sizeof(resultsFileName), "../Results/Solutions/FR_BC/%s/%s/S%d/ep%.2lf/Solution_FR_BC_%s_%s_%s_N%d_K%d_T%d_S%d_UR%.2lf_SL%.2lf.txt",
@@ -343,12 +343,12 @@ bool SolutionManager::checkFeasibility()
     if (Algorithm == "Hybrid-ILS")
     {
         cout << "Checking feasibility for " << Algorithm << endl;
-        resultsFileName = "../Results/Solutions/" + Algorithm + "/" + params.probabilityFunction.c_str() + "/Sol_S2EPRPAR_HHA_" + params.probabilityFunction.c_str() + "_" + params.instance.c_str() + "_S" + std::to_string(params.numScenarios)  + "_UR" + std::to_string(static_cast<int>(params.uncertaintyRange * 100)) + "%_PC" + std::to_string(static_cast<int>(params.unmetDemandPenaltyCoeff)) + ".txt";
+        resultsFileName = "../Results/Solutions/" + Algorithm + "/" + params.probabilityFunction.c_str() + "/S" + std::to_string(params.numScenarios) + "/Sol_S2EPRPAR_HHA_" + params.probabilityFunction.c_str() + "_" + params.instance.c_str() + "_S" + std::to_string(params.numScenarios)  + "_UR" + std::to_string(static_cast<int>(params.uncertaintyRange * 100)) + "%_PC" + std::to_string(static_cast<int>(params.unmetDemandPenaltyCoeff)) + ".txt";
     }
     else if (Algorithm == "BC")
     {
         cout << "Checking feasibility for " << Algorithm << endl;
-        resultsFileName = "../Results/Solutions/" + Algorithm + "/" + params.probabilityFunction.c_str() + "/Sol_S2EPRPAR_BC_" + params.probabilityFunction.c_str() + "_" + params.instance.c_str() + "_S" + std::to_string(params.numScenarios)  + "_UR" + std::to_string(static_cast<int>(params.uncertaintyRange * 100)) + "%_PC" + std::to_string(static_cast<int>(params.unmetDemandPenaltyCoeff)) + ".txt";
+        resultsFileName = "../Results/Solutions/" + Algorithm + "/" + params.probabilityFunction.c_str() + "/S" + std::to_string(params.numScenarios) + "/Sol_S2EPRPAR_BC_" + params.probabilityFunction.c_str() + "_" + params.instance.c_str() + "_S" + std::to_string(params.numScenarios)  + "_UR" + std::to_string(static_cast<int>(params.uncertaintyRange * 100)) + "%_PC" + std::to_string(static_cast<int>(params.unmetDemandPenaltyCoeff)) + ".txt";
     }
 
     cout << "Check the solution feasibility using Python" << endl;

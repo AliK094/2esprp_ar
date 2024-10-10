@@ -133,7 +133,7 @@ bool ParameterSetting::setParameters()
         assign_customers_to_warehouse();
 
         printParameters();
-        saveInstance();
+        // saveInstance();
 
         generateAllRoutes();
     }
@@ -691,7 +691,7 @@ void ParameterSetting::solveTSPForRoutes()
         {
             // Count the number of 1s in the route
             int numOnes = std::count(route.begin(), route.end(), 1);
-            cout << "route size:" << numOnes - 1 << endl;
+            // cout << "route size:" << numOnes - 1 << endl;
 
             if (numOnes < 3)
             {
@@ -813,7 +813,7 @@ vector<double> ParameterSetting::getRouteCosts() const
 SolutionWarmStart ParameterSetting::readSolutionWarmStart()
 {
     cout << "Reading Solution For Warm Start..." << endl;
-     string solutionFileName = "../Results/Solutions/Hybrid-ILS/" + probabilityFunction + "/Sol_S2EPRPAR_HHA_" + probabilityFunction + "_" + instance + "_S" + std::to_string(numScenarios)  + "_UR" + std::to_string(static_cast<int>(uncertaintyRange * 100)) + "%_PC" + std::to_string(static_cast<int>(unmetDemandPenaltyCoeff)) + ".txt";
+     string solutionFileName = "../Results/Solutions/Hybrid-ILS/" + probabilityFunction + "/S" + std::to_string(numScenarios) + "/Sol_S2EPRPAR_HHA_" + probabilityFunction + "_" + instance + "_S" + std::to_string(numScenarios)  + "_UR" + std::to_string(static_cast<int>(uncertaintyRange * 100)) + "%_PC" + std::to_string(static_cast<int>(unmetDemandPenaltyCoeff)) + ".txt";
 
     SolutionWarmStart warmstart;
 

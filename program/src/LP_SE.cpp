@@ -25,8 +25,9 @@ string LP_SE::solve()
 	DefineConstraints(env, model);
 
 	/* Assure linear mappings between the presolved and original models */
-	cplex.setParam(IloCplex::Param::Threads, 4);
+	cplex.setParam(IloCplex::Param::Threads, 1);
 	cplex.setParam(IloCplex::Param::Preprocessing::Presolve, IloFalse);
+	cplex.setOut(env.getNullStream());
 
 	if (save_lpFile)
 	{
@@ -40,7 +41,7 @@ string LP_SE::solve()
 	// Extract model
 	cplex.extract(model);
 
-	cout << "\n\nSolving LP_SE..." << endl; 
+	cout << "\nSolving LP_SE..." << endl; 
 	// Solve the model
 	cplex.solve();
 
@@ -51,7 +52,7 @@ string LP_SE::solve()
 	{
 		status = "Optimal";
 		objValue = cplex.getObjValue();
-		cout << "Optimal solution found with objective value: " << std::fixed << std::setprecision(1) << objValue << endl;
+		// cout << "Optimal solution found with objective value: " << std::fixed << std::setprecision(1) << objValue << endl;
 
 		if (save_mpsResultFile)
 		{
@@ -85,9 +86,10 @@ string LP_SE::solve()
 
 	if (status == "Optimal" || status == "Incumbent")
 	{
-		cout << "Retrieving solutions..." << endl;
+		// cout << "Retrieving solutions..." << endl;
 		// Retrieve the solution
 		RetrieveSolutions(cplex);
+		CalculateCostsForEachPart();
 		// Display the solution
 		// DisplayProductionSetupVars();
 		// DisplayProductionQuantVars();
@@ -99,7 +101,6 @@ string LP_SE::solve()
 		// DisplayCustomerUnmetDemandVars();
 		// DisplayDeliveryQuantityToCustomersVars();
 		// DisplayRoutesWarehouseToCustomersVars();
-		CalculateCostsForEachPart();
 		// cout << "\n\n\n\n" << endl;
 	}
 

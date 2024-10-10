@@ -8,7 +8,8 @@ Algorithms::Algorithms(const string solutionAlgorithm, const ParameterSetting &p
 
 bool Algorithms::solve_S2EPRP_BC()
 {
-	cout << "\n\n\nStart Solving The Problem With Branch-and-Cut." << endl;
+	cout << "Start Solving The Problem With Branch-and-Cut." << endl;
+	cout << "-------------------------------------------------------------------" << endl;
 	SolutionWarmStart warmStartSolution = params.readSolutionWarmStart();
 
 	// Branch and Cut
@@ -43,6 +44,7 @@ bool Algorithms::solve_S2EPRP_HILS()
 	result_incumbent.totalCPUTime = 0.0;
 
 	auto elapsedTime = 0.0;
+	auto currentTime = std::chrono::high_resolution_clock::now();
 	auto startTime = std::chrono::high_resolution_clock::now();
 
 	// -----------------------------------------------------------------------------------------------------------------
@@ -64,12 +66,15 @@ bool Algorithms::solve_S2EPRP_HILS()
 	printSolution();
 
 	// Handle unmet demand and optimize routes
+	double timeLimit = 7200.0;
 	const int maxIteration = 20;
 
-	for (int iter = 1; iter <= maxIteration; ++iter)
+	int iter = 0;
+	while (iter < maxIteration && elapsedTime < timeLimit)
 	{
-		cout << "\n-----------------------------------------------------------------" << endl;
-		cout << "\nSolving The Problem With Hybrid-ILS. Iteration: " << iter << endl;
+		cout << "-----------------------------------------------------------------" << endl;
+		cout << "Solving The Problem With Hybrid-ILS. Iteration: " << iter + 1 << endl;
+		cout << "-----------------------------------------------------------------" << endl;
 
 		sol_FE = sol_FE_incumbent;
 		sol_SE = sol_SE_incumbent;
@@ -89,14 +94,19 @@ bool Algorithms::solve_S2EPRP_HILS()
 		}
 
 		update_incumbent(sol_FE, sol_SE, result_temp);
+		printSolution();
+
+		currentTime = std::chrono::high_resolution_clock::now();
+		elapsedTime = std::chrono::duration_cast<std::chrono::duration<double>>(currentTime - startTime).count();
+		cout << "Computation Time (Hybrid-ILS) after iteration: " << iter + 1 << " = " << elapsedTime << " seconds" << endl;
 	}
 
-	auto currentTime = std::chrono::high_resolution_clock::now();
-	elapsedTime = std::chrono::duration_cast<std::chrono::duration<double>>(currentTime - startTime).count();
+	
 	result_incumbent.totalCPUTime = elapsedTime;
+	cout << "\nTotal Computation Time (Hybrid-ILS): " << result_incumbent.totalCPUTime << " seconds" << endl;
 
-	cout << "Total Computation Time (Hybrid-ILS): " << result_incumbent.totalCPUTime << " seconds" << endl;
-
+	cout << "Final Phase is finished." << endl;
+	cout << "-------------------------------------------------------------------" << endl;
 	organizeSolution();
 	printSolution();
 
@@ -391,7 +401,7 @@ bool Algorithms::solveRestrictedProblemAndFinalize(SolutionFirstEchelon &sol_FE,
 
 void Algorithms::printSolution()
 {
-	cout << "\n-------------------------------------------------------------------" << endl;
+	cout << "-------------------------------------------------------------------" << endl;
 	cout << "Best Solution:" << endl;
 	cout << "Setup Cost : " << sol_FE_incumbent.setupCost << endl;
 	cout << "Production Cost : " << sol_FE_incumbent.productionCost << endl;
