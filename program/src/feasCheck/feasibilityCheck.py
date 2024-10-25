@@ -1,7 +1,6 @@
 """
 In this Problem we aim to check the results obtained from the heuristic algorithm to check the feasibility of the results
 """
-from ast import Num
 import numpy as np
 import sys
 
@@ -9,6 +8,7 @@ def feasibilityCheck(file):
     # ----------------------------------------------------------------------------
     # Initializization
     # ----------------------------------------------------------------------------
+    
     violated_constraints = []
     # We first need to open the data file and assign values
     with open(file, 'r') as fp:

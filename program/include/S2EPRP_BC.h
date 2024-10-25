@@ -4,7 +4,7 @@
 #include "ParameterSetting.h"
 #include "VariableManager.h"
 #include "CplexParameterManager.h"
-#include "BCCallbackManager.h"
+#include "StochBCCallbackManager.h"
 
 class S2EPRP_BC
 {

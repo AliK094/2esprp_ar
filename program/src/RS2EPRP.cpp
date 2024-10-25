@@ -26,7 +26,11 @@ bool RS2EPRP::Solve()
 
 		// Set CPLEX Parameters: (DISPLAY LEVEL(0,1,2,3,4), OPTIMALITY GAP, RUN TIME (SECS), THREADS, MEMORY (MB))
 		CplexParameterManager parameterManager(cplex);
-		parameterManager.setParameters(4, 1e-2, 120, 8, 32000);
+<<<<<<< HEAD
+		parameterManager.setParameters(2, 1e-2, 120, 20, 32000);
+=======
+		parameterManager.setParameters(4, 1e-2, 120, 20, 32000);
+>>>>>>> 3ba477c (Remove .o files and update .gitignore)
 		cplex.setParam(IloCplex::Param::Emphasis::MIP, 2);
 
 		DefineVariables(env, model);
@@ -146,8 +150,8 @@ bool RS2EPRP::Solve()
 			// Retrieve the solution
 			RetrieveSolutions(cplex);
 			// Display the solution
-			// DisplayProductionSetupVars();
-			// DisplayProductionQuantVars();
+			DisplayProductionSetupVars();
+			DisplayProductionQuantVars();
 			// DisplayPlantInventoryVars();
 			// DisplayWarehouseInventoryVars();
 			// DisplayFirstEchelonRouteVars();
@@ -678,7 +682,8 @@ void RS2EPRP::DefineConstraints(IloEnv &env, IloModel &model)
 							}
 						}
 					}
-					else{
+					else
+					{
 						for (int i = 0; i < params.numCustomers; ++i)
 						{
 							int customerIndex = i + params.numWarehouses;
@@ -693,7 +698,6 @@ void RS2EPRP::DefineConstraints(IloEnv &env, IloModel &model)
 							model.add(customerVisitConstraint).setName(constraintName.c_str());
 						}
 					}
-
 				}
 			}
 		}

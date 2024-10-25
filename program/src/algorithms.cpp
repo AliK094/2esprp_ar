@@ -8,7 +8,12 @@ Algorithms::Algorithms(const string solutionAlgorithm, const ParameterSetting &p
 
 bool Algorithms::solve_S2EPRP_BC()
 {
-	cout << "\n\n\nStart Solving The Problem With Branch-and-Cut." << endl;
+<<<<<<< HEAD
+	cout << "Start Solving The Stochastic Two-Echelon Production Routing Problem With Adaptive Routing Using Branch-and-Cut Algorithm." << endl;
+=======
+	cout << "Start Solving The Problem With Branch-and-Cut." << endl;
+>>>>>>> 3ba477c (Remove .o files and update .gitignore)
+	cout << "-------------------------------------------------------------------" << endl;
 	SolutionWarmStart warmStartSolution = params.readSolutionWarmStart();
 
 	// Branch and Cut
@@ -32,17 +37,18 @@ bool Algorithms::solve_S2EPRP_BC()
 
 bool Algorithms::solve_S2EPRP_HILS()
 {
-	cout << "Start Solving The Problem With Hybrid-ILS..." << endl;
+	cout << "Start Solving The Stochastic Two-Echelon Production Routing Problem With Hybrid-ILS." << endl;
 	cout << "-------------------------------------------------------------------" << endl;
 
 	SolutionFirstEchelon sol_FE;
 	SolutionSecondEchelon sol_SE;
-    Result result_temp;
+	Result result_temp;
 
 	result_incumbent.objValue_Total = std::numeric_limits<double>::max();
 	result_incumbent.totalCPUTime = 0.0;
 
 	auto elapsedTime = 0.0;
+	auto currentTime = std::chrono::high_resolution_clock::now();
 	auto startTime = std::chrono::high_resolution_clock::now();
 
 	// -----------------------------------------------------------------------------------------------------------------
@@ -64,12 +70,15 @@ bool Algorithms::solve_S2EPRP_HILS()
 	printSolution();
 
 	// Handle unmet demand and optimize routes
+	double timeLimit = 7200.0;
 	const int maxIteration = 20;
 
-	for (int iter = 1; iter <= maxIteration; ++iter)
+	int iter = 0;
+	while (iter < maxIteration && elapsedTime < timeLimit)
 	{
-		cout << "\n-----------------------------------------------------------------" << endl;
-		cout << "\nSolving The Problem With Hybrid-ILS. Iteration: " << iter << endl;
+		cout << "-----------------------------------------------------------------" << endl;
+		cout << "Solving The Problem With Hybrid-ILS. Iteration: " << iter + 1 << endl;
+		cout << "-----------------------------------------------------------------" << endl;
 
 		sol_FE = sol_FE_incumbent;
 		sol_SE = sol_SE_incumbent;
@@ -89,14 +98,25 @@ bool Algorithms::solve_S2EPRP_HILS()
 		}
 
 		update_incumbent(sol_FE, sol_SE, result_temp);
+		printSolution();
+
+		currentTime = std::chrono::high_resolution_clock::now();
+		elapsedTime = std::chrono::duration_cast<std::chrono::duration<double>>(currentTime - startTime).count();
+		cout << "Computation Time (Hybrid-ILS) after iteration: " << iter + 1 << " = " << elapsedTime << " seconds" << endl;
+<<<<<<< HEAD
+		iter++;
 	}
 
-	auto currentTime = std::chrono::high_resolution_clock::now();
-	elapsedTime = std::chrono::duration_cast<std::chrono::duration<double>>(currentTime - startTime).count();
+=======
+	}
+
+	
+>>>>>>> 3ba477c (Remove .o files and update .gitignore)
 	result_incumbent.totalCPUTime = elapsedTime;
+	cout << "\nTotal Computation Time (Hybrid-ILS): " << result_incumbent.totalCPUTime << " seconds" << endl;
 
-	cout << "Total Computation Time (Hybrid-ILS): " << result_incumbent.totalCPUTime << " seconds" << endl;
-
+	cout << "Final Phase is finished." << endl;
+	cout << "-------------------------------------------------------------------" << endl;
 	organizeSolution();
 	printSolution();
 
@@ -105,6 +125,29 @@ bool Algorithms::solve_S2EPRP_HILS()
 	solMgr_ILS.saveSolution(sol_FE_incumbent, sol_SE_incumbent);
 	solMgr_ILS.checkFeasibility();
 	solMgr_ILS.saveResultSummary(sol_FE_incumbent, sol_SE_incumbent, result_incumbent);
+
+	return true;
+}
+
+bool Algorithms::solve_EV()
+{
+	cout << "Start Solving The Expected Value (EV) Problem For the S2EPRP." << endl;
+	cout << "-------------------------------------------------------------------" << endl;
+
+	// Solve the EV problem using the Branch-and-Cut
+	EV_BC ev_bc(params);
+	if (!ev_bc.Solve())
+	{
+		return EXIT_FAILURE;
+	}
+	sol_FE_incumbent_EV = ev_bc.getSolutionFE();
+	sol_SE_incumbent_EV = ev_bc.getSolutionSE();
+	result_incumbent_EV = ev_bc.getResult();
+
+	// Save the solution and check feasibility
+	SolutionManager solMgr_ILS(params, solAlg);
+	solMgr_ILS.saveSolutionEV(sol_FE_incumbent, sol_SE_incumbent);
+	solMgr_ILS.checkFeasibilityEV();
 
 	return true;
 }
@@ -344,7 +387,7 @@ void Algorithms::removeCustomerFromCurrentRoute(SolutionSecondEchelon &sol_SE, i
 			{
 				route.clear();
 			}
-			
+
 			break;
 		}
 	}
@@ -370,7 +413,7 @@ std::pair<int, double> Algorithms::minInsertionCost(const vector<int> &routesPer
 	return std::make_pair(minInsertionPos, minInsertionCost);
 }
 
-bool Algorithms::solveRestrictedProblemAndFinalize(SolutionFirstEchelon &sol_FE,SolutionSecondEchelon &sol_SE)
+bool Algorithms::solveRestrictedProblemAndFinalize(SolutionFirstEchelon &sol_FE, SolutionSecondEchelon &sol_SE)
 {
 	SolutionWarmStart sol_WarmStart;
 	sol_WarmStart.customerAssignmentToWarehouse_WarmStart = sol_SE.customerAssignmentToWarehouse;
@@ -391,7 +434,7 @@ bool Algorithms::solveRestrictedProblemAndFinalize(SolutionFirstEchelon &sol_FE,
 
 void Algorithms::printSolution()
 {
-	cout << "\n-------------------------------------------------------------------" << endl;
+	cout << "-------------------------------------------------------------------" << endl;
 	cout << "Best Solution:" << endl;
 	cout << "Setup Cost : " << sol_FE_incumbent.setupCost << endl;
 	cout << "Production Cost : " << sol_FE_incumbent.productionCost << endl;
@@ -404,31 +447,32 @@ void Algorithms::printSolution()
 
 	cout << "\nObjective value (ILS) Total : " << result_incumbent.objValue_Total << endl;
 
-	cout << "\nRoutes (Warehouse To Customer):" << endl;
-	for (int s = 0; s < params.numScenarios; ++s)
-	{
-		for (int w = 0; w < params.numWarehouses; ++w)
-		{
-			for (int t = 0; t < params.numPeriods; ++t)
-			{
-				for (int k = 0; k < params.numVehicles_Warehouse; ++k)
-				{
-					if (!sol_SE_incumbent.routesWarehouseToCustomer[s][w][t][k].empty()){
-						cout << "route[" << s + 1 << "][" << w + 1 << "][" << t + 1 << "][" << k + 1 << "] : [";
-						for (auto it = sol_SE_incumbent.routesWarehouseToCustomer[s][w][t][k].begin(); it != sol_SE_incumbent.routesWarehouseToCustomer[s][w][t][k].end(); ++it)
-						{
-							if (it != sol_SE_incumbent.routesWarehouseToCustomer[s][w][t][k].begin())
-							{
-								cout << " -> ";
-							}
-							cout << *it;
-						}
-						cout << "]" << endl;
-					}
-				}
-			}
-		}
-	}
+	// cout << "\nRoutes (Warehouse To Customer):" << endl;
+	// for (int s = 0; s < params.numScenarios; ++s)
+	// {
+	// 	for (int w = 0; w < params.numWarehouses; ++w)
+	// 	{
+	// 		for (int t = 0; t < params.numPeriods; ++t)
+	// 		{
+	// 			for (int k = 0; k < params.numVehicles_Warehouse; ++k)
+	// 			{
+	// 				if (!sol_SE_incumbent.routesWarehouseToCustomer[s][w][t][k].empty())
+	// 				{
+	// 					cout << "route[" << s + 1 << "][" << w + 1 << "][" << t + 1 << "][" << k + 1 << "] : [";
+	// 					for (auto it = sol_SE_incumbent.routesWarehouseToCustomer[s][w][t][k].begin(); it != sol_SE_incumbent.routesWarehouseToCustomer[s][w][t][k].end(); ++it)
+	// 					{
+	// 						if (it != sol_SE_incumbent.routesWarehouseToCustomer[s][w][t][k].begin())
+	// 						{
+	// 							cout << " -> ";
+	// 						}
+	// 						cout << *it;
+	// 					}
+	// 					cout << "]" << endl;
+	// 				}
+	// 			}
+	// 		}
+	// 	}
+	// }
 }
 
 void Algorithms::organizeSolution()
@@ -460,15 +504,16 @@ void Algorithms::organizeSolution()
 
 				// Step 2: Sort vehicles by total delivery quantity (highest quantity first)
 				std::sort(vehicleDeliveryQuantities.begin(), vehicleDeliveryQuantities.end(),
-					[](const std::pair<int, double> &a, const std::pair<int, double> &b) {
-						return a.second > b.second; // Sort in descending order of delivery quantity
-					});
+						  [](const std::pair<int, double> &a, const std::pair<int, double> &b)
+						  {
+							  return a.second > b.second; // Sort in descending order of delivery quantity
+						  });
 
 				// Step 3: Reorganize the solution based on the sorted vehicle indices
 				std::vector<std::vector<int>> sortedRoutes;
 				for (int sorted_k = 0; sorted_k < params.numVehicles_Warehouse; ++sorted_k)
 				{
-					int original_k = vehicleDeliveryQuantities[sorted_k].first; // Get the original vehicle index
+					int original_k = vehicleDeliveryQuantities[sorted_k].first;								 // Get the original vehicle index
 					sortedRoutes.push_back(sol_SE_incumbent.routesWarehouseToCustomer[s][w][t][original_k]); // Copy the sorted route
 				}
 
@@ -481,5 +526,3 @@ void Algorithms::organizeSolution()
 		}
 	}
 }
-
-				

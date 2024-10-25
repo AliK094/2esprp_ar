@@ -4,13 +4,13 @@ LocalSearch::LocalSearch(const int s, const ParameterSetting &parameters, const 
 	: scenario(s), params(parameters), sol_FE_temp(sol_FE), sol_SE_temp_scenario(sol_SE_scenario), objVal_Scenario(objVal_Scenario), rng(std::random_device{}())
 {
 	// ----------------------------------------------------------------------------------------------------------
-	cout << "\nLocal Search for scenario " << scenario + 1 << endl;
+	// cout << "\nLocal Search for scenario " << scenario + 1 << endl;
 	// ----------------------------------------------------------------------------------------------------------
 }
 
 void LocalSearch::RVND()
 {
-	cout << "\nCurrent Objective Value : " << objVal_Scenario << endl;
+	// cout << "\nCurrent Objective Value : " << objVal_Scenario << endl;
 
 	// Initialize the operators
 	vector<std::function<bool()>> operators;
@@ -27,7 +27,7 @@ void LocalSearch::RVND()
 	// We can make it a multistart RVND by applying maxIterRVND times
 	while (iter < maxIterRVND)
 	{
-		cout << "\nRVND Iteration : " << iter + 1 << endl;
+		// cout << "\nRVND Iteration : " << iter + 1 << endl;
 		operators = setOperators();
 
 		sol_SE_best_scenario_currStart = sol_SE_temp_scenario;
@@ -65,7 +65,7 @@ void LocalSearch::RVND()
 	}
 
 	// printAllRoutes();
-	cout << "\nBest Objective Value : " << objVal_best_scenario << endl;
+	// cout << "\nBest Objective Value : " << objVal_best_scenario << endl;
 }
 
 vector<std::function<bool()>> LocalSearch::setOperators()
@@ -105,7 +105,7 @@ vector<std::function<bool()>> LocalSearch::setOperators()
 // Or-Opt Operator
 bool LocalSearch::OrOpt(int v)
 {
-	cout << "\nOr-Opt(" << v << ")" << endl;
+	// cout << "\nOr-Opt(" << v << ")" << endl;
 
 	// Select a random warehouse
 	std::uniform_int_distribution<int> warehouse_dist(0, static_cast<int>(params.numWarehouses) - 1);
@@ -146,7 +146,7 @@ bool LocalSearch::OrOpt(int v)
 
 		if (route.size() >= static_cast<size_t>(v + 3))
 		{
-			printRoute(warehouse, t, k, route, "Old Route");
+			// printRoute(warehouse, t, k, route, "Old Route");
 
 			routeFound = true;
 			selectedPeriod = t;
@@ -158,7 +158,7 @@ bool LocalSearch::OrOpt(int v)
 
 	if (!routeFound)
 	{
-		cerr << "Could not find a route with " << v + 3 << " nodes" << endl;
+		// cerr << "Could not find a route with " << v + 3 << " nodes" << endl;
 		return false;
 	}
 
@@ -181,14 +181,14 @@ bool LocalSearch::OrOpt(int v)
 	selectedRoute.erase(selectedRoute.begin() + startPos, selectedRoute.begin() + startPos + v);
 	selectedRoute.insert(selectedRoute.begin() + newPos, segment.begin(), segment.end());
 
-	cout << "Moved " << v << " customer(s) from position " << startPos
-		 << " to position " << newPos << " in route " << selectedVehicle + 1 << endl;
+	// cout << "Moved " << v << " customer(s) from position " << startPos
+	// 	 << " to position " << newPos << " in route " << selectedVehicle + 1 << endl;
 
 	// Update the route in the feasible solution
 	sol_SE_scenario_feasible.routesWarehouseToCustomer_Scenario[warehouse][selectedPeriod][selectedVehicle] = selectedRoute;
 
 	// Print the updated route
-	printRoute(warehouse, selectedPeriod, selectedVehicle, selectedRoute, "Updated Route");
+	// printRoute(warehouse, selectedPeriod, selectedVehicle, selectedRoute, "Updated Route");
 
 	// Attempt to solve the LP with the updated route
 	if (!solveLP_Scenario())
@@ -202,7 +202,7 @@ bool LocalSearch::OrOpt(int v)
 // Shift Operator
 bool LocalSearch::Shift(int v)
 {
-	cout << "\nShift(" << v << ")" << endl;
+	// cout << "\nShift(" << v << ")" << endl;
 
 	// Collect all eligible periods
 	vector<int> periods(params.numPeriods);
@@ -310,8 +310,8 @@ bool LocalSearch::Shift(int v)
 					for (const int insertPos : eligibleInsertPositions)
 					{
 						// Print old routes
-						printRoute(sourceWarehouse, t, sourceVehicle, sourceRoute, "Original Source Route");
-						printRoute(destWarehouse, t, destVehicle, destRoute, "Original Dest Route");
+						// printRoute(sourceWarehouse, t, sourceVehicle, sourceRoute, "Original Source Route");
+						// printRoute(destWarehouse, t, destVehicle, destRoute, "Original Dest Route");
 
 						// Perform the shift: remove from source and insert into destination
 						sourceRoute.erase(sourceRoute.begin() + startPos, sourceRoute.begin() + endPos);
@@ -348,13 +348,13 @@ bool LocalSearch::Shift(int v)
 						}
 
 						// Log the shift operation
-						cout << "Shifted " << v << " customer(s) from warehouse " << sourceWarehouse + 1 
-							 << " route " << sourceVehicle + 1 << " to warehouse " << destWarehouse + 1 
-							 << " route " << destVehicle + 1 << " in period " << t + 1 << endl;
+						// cout << "Shifted " << v << " customer(s) from warehouse " << sourceWarehouse + 1 
+						// 	 << " route " << sourceVehicle + 1 << " to warehouse " << destWarehouse + 1 
+						// 	 << " route " << destVehicle + 1 << " in period " << t + 1 << endl;
 
 						// Print updated routes
-						printRoute(sourceWarehouse, t, sourceVehicle, sourceRoute, "Updated Source Route");
-						printRoute(destWarehouse, t, destVehicle, destRoute, "Updated Dest Route");
+						// printRoute(sourceWarehouse, t, sourceVehicle, sourceRoute, "Updated Source Route");
+						// printRoute(destWarehouse, t, destVehicle, destRoute, "Updated Dest Route");
 
 						// Attempt to solve the LP with the updated routes
 						if (solveLP_Scenario())
@@ -372,14 +372,14 @@ bool LocalSearch::Shift(int v)
 	} // End of period loop
 
 	// If no valid shift found that improves the solution
-	cerr << "No valid shift found that improves the solution." << endl;
+	// cerr << "No valid shift found that improves the solution." << endl;
 	return false;
 }
 
 // Swap Operator
 bool LocalSearch::Swap(int v1, int v2)
 {
-	cout << "\nSwap(" << v1 << ", " << v2 << ")" << endl;
+	// cout << "\nSwap(" << v1 << ", " << v2 << ")" << endl;
 
 	// Collect all eligible periods
 	vector<int> periods(params.numPeriods);
@@ -456,8 +456,8 @@ bool LocalSearch::Swap(int v1, int v2)
 				}
 
 				// Print original routes
-				printRoute(sourceWarehouse, t, sourceVehicle, sourceRoute, "Original Source route");
-				printRoute(destWarehouse, t, destVehicle, destRoute, "Original Dest route");
+				// printRoute(sourceWarehouse, t, sourceVehicle, sourceRoute, "Original Source route");
+				// printRoute(destWarehouse, t, destVehicle, destRoute, "Original Dest route");
 
 				// Define distributions for selecting swap positions
 				std::uniform_int_distribution<int> source_pos_dist(1, static_cast<int>(sourceRoute.size()) - v1 - 1);
@@ -499,13 +499,13 @@ bool LocalSearch::Swap(int v1, int v2)
 				}
 
 				// Log the swap operation
-				cout << "Swapped " << v1 << " customer(s) from warehouse " << sourceWarehouse + 1
-						<< " route " << sourceVehicle + 1 << " with " << v2 << " customer(s) from warehouse " << destWarehouse + 1
-						<< " route " << destVehicle + 1 << " in period " << t + 1 << endl;
+				// cout << "Swapped " << v1 << " customer(s) from warehouse " << sourceWarehouse + 1
+				// 		<< " route " << sourceVehicle + 1 << " with " << v2 << " customer(s) from warehouse " << destWarehouse + 1
+				// 		<< " route " << destVehicle + 1 << " in period " << t + 1 << endl;
 
 				// Print updated routes
-				printRoute(sourceWarehouse, t, sourceVehicle, sourceRoute, "Updated Source route");
-				printRoute(destWarehouse, t, destVehicle, destRoute, "Updated Dest route");
+				// printRoute(sourceWarehouse, t, sourceVehicle, sourceRoute, "Updated Source route");
+				// printRoute(destWarehouse, t, destVehicle, destRoute, "Updated Dest route");
 
 				// Attempt to solve the LP with the updated routes
 				if (solveLP_Scenario())
@@ -522,14 +522,14 @@ bool LocalSearch::Swap(int v1, int v2)
 	} // End of period loop
 
 	// If no valid swap found that improves the solution
-	cerr << "Failed to find a valid swap that improves the solution." << endl;
+	// cerr << "Failed to find a valid swap that improves the solution." << endl;
 	return false;
 }
 
 // Insert Operator
 bool LocalSearch::Insert()
 {
-	cout << "\nInsert" << endl;
+	// cout << "\nInsert" << endl;
 
 	// Collect and shuffle periods
 	vector<int> periods(params.numPeriods);
@@ -573,7 +573,7 @@ bool LocalSearch::Insert()
 				}
 
 				// Output the route details
-				printRoute(w, t, rtIndex, route, "Old Route");
+				// printRoute(w, t, rtIndex, route, "Old Route");
 				rtIndex++;
 			}
 		}
@@ -663,7 +663,7 @@ bool LocalSearch::Insert()
 
 		if (!inserted)
 		{
-			cout << "Failed to insert unvisited node." << endl;
+			// cout << "Failed to insert unvisited node." << endl;
 			return false;
 		}
 
@@ -678,11 +678,11 @@ bool LocalSearch::Insert()
 		int rtIndex = 0;
 		for (auto &route : sol_SE_scenario_feasible.routesWarehouseToCustomer_Scenario[selectedWarehouse][t])
 		{
-			printRoute(selectedWarehouse, t, rtIndex, route, "Updated Route");
+			// printRoute(selectedWarehouse, t, rtIndex, route, "Updated Route");
 			rtIndex++;
 		}
 
-		cout << "Inserted unvisited node " << unvisitedNode << " at period " << t + 1 << " in warehouse " << selectedWarehouse + 1 << " with minimum cost." << endl;
+		// cout << "Inserted unvisited node " << unvisitedNode << " at period " << t + 1 << " in warehouse " << selectedWarehouse + 1 << " with minimum cost." << endl;
 
 		// Solve the linear program to check for improvement
 		if (!solveLP_Scenario())
@@ -696,14 +696,14 @@ bool LocalSearch::Insert()
 	}
 
 	// If no insertion was made after checking all periods
-	cout << "No suitable insertion found in any period." << endl;
+	// cout << "No suitable insertion found in any period." << endl;
 	return false;
 }
 
 // Remove Operator
 bool LocalSearch::Remove()
 {
-	cout << "\nRemove" << endl;
+	// cout << "\nRemove" << endl;
 
 	int t = rand() % params.numPeriods; // Randomly choose a period
 	
@@ -733,7 +733,7 @@ bool LocalSearch::Remove()
 	// If no suitable routes are found, return false
 	if (candidateRoutes.empty())
 	{
-		cout << "No suitable routes with removable nodes found." << endl;
+		// cout << "No suitable routes with removable nodes found." << endl;
 		return false;
 	}
 
@@ -760,8 +760,8 @@ bool LocalSearch::Remove()
 	// }
 
 	// Log the operation
-	cout << "Removed customer " << removedCustomer << " from period " << t + 1 
-		 << ", warehouse " << selectedWarehouse + 1 << ", route " << routeIndex + 1 << endl;
+	// cout << "Removed customer " << removedCustomer << " from period " << t + 1 
+	// 	 << ", warehouse " << selectedWarehouse + 1 << ", route " << routeIndex + 1 << endl;
 
 	if (!solveLP_Scenario())
 	{
@@ -775,7 +775,7 @@ bool LocalSearch::Remove()
 // Merge Operator
 bool LocalSearch::Merge()
 {
-	cout << "\nMerge" << endl;
+	// cout << "\nMerge" << endl;
 
 	// Shuffle periods for random selection
 	vector<int> periods(params.numPeriods);
@@ -831,7 +831,7 @@ bool LocalSearch::Merge()
 
 	if (eligibleCustomers.empty())
 	{
-		cout << "No eligible customers found for merging." << endl;
+		// cout << "No eligible customers found for merging." << endl;
 		return false;
 	}
 
@@ -852,7 +852,7 @@ bool LocalSearch::Merge()
 	// Ensure the customer appears in at least two periods
 	if (uniquePeriodsVec.size() < 2)
 	{
-		cout << "Error: Customer does not appear in two different periods." << endl;
+		// cout << "Error: Customer does not appear in two different periods." << endl;
 		return false;
 	}
 
@@ -893,7 +893,7 @@ bool LocalSearch::Merge()
 
 	if (mergeFromRouteIndex == -1 || mergeFromWarehouse == -1)
 	{
-		cout << "Error: Could not find selected customer in mergeFrom period." << endl;
+		// cout << "Error: Could not find selected customer in mergeFrom period." << endl;
 		return false;
 	}
 
@@ -921,18 +921,18 @@ bool LocalSearch::Merge()
 
 	if (mergeToRouteIndex == -1 || mergeToWarehouse == -1)
 	{
-		cout << "Error: Could not find selected customer in mergeTo period." << endl;
+		// cout << "Error: Could not find selected customer in mergeTo period." << endl;
 		return false;
 	}
 
 	// Print routes before merge
-	printRoute(mergeFromWarehouse, mergeFromPeriod, mergeFromRouteIndex, sol_SE_scenario_feasible.routesWarehouseToCustomer_Scenario[mergeFromWarehouse][mergeFromPeriod][mergeFromRouteIndex], "Old Route (Merge From)");
-	printRoute(mergeToWarehouse, mergeToPeriod, mergeToRouteIndex, sol_SE_scenario_feasible.routesWarehouseToCustomer_Scenario[mergeToWarehouse][mergeToPeriod][mergeToRouteIndex], "Old Route (Merge To)");
+	// printRoute(mergeFromWarehouse, mergeFromPeriod, mergeFromRouteIndex, sol_SE_scenario_feasible.routesWarehouseToCustomer_Scenario[mergeFromWarehouse][mergeFromPeriod][mergeFromRouteIndex], "Old Route (Merge From)");
+	// printRoute(mergeToWarehouse, mergeToPeriod, mergeToRouteIndex, sol_SE_scenario_feasible.routesWarehouseToCustomer_Scenario[mergeToWarehouse][mergeToPeriod][mergeToRouteIndex], "Old Route (Merge To)");
 
-	cout << "Merging customer " << selectedCustomer + 1 << " from period " << mergeFromPeriod + 1
-		 << " and warehouse " << mergeFromWarehouse + 1
-		 << " to period " << mergeToPeriod + 1
-		 << " and warehouse " << mergeToWarehouse + 1 << endl;
+	// cout << "Merging customer " << selectedCustomer + 1 << " from period " << mergeFromPeriod + 1
+	// 	 << " and warehouse " << mergeFromWarehouse + 1
+	// 	 << " to period " << mergeToPeriod + 1
+	// 	 << " and warehouse " << mergeToWarehouse + 1 << endl;
 
 	// Remove customer from mergeFrom period
 	auto &fromRoute = sol_SE_scenario_feasible.routesWarehouseToCustomer_Scenario[mergeFromWarehouse][mergeFromPeriod][mergeFromRouteIndex];
@@ -952,8 +952,8 @@ bool LocalSearch::Merge()
 	// }
 
 	// Output new routes after the merge
-	printRoute(mergeFromWarehouse, mergeFromPeriod, mergeFromRouteIndex, fromRoute, "New Route (Merge From)");
-	printRoute(mergeToWarehouse, mergeToPeriod, mergeToRouteIndex, sol_SE_scenario_feasible.routesWarehouseToCustomer_Scenario[mergeToWarehouse][mergeToPeriod][mergeToRouteIndex], "New Route (Merge To)");
+	// printRoute(mergeFromWarehouse, mergeFromPeriod, mergeFromRouteIndex, fromRoute, "New Route (Merge From)");
+	// printRoute(mergeToWarehouse, mergeToPeriod, mergeToRouteIndex, sol_SE_scenario_feasible.routesWarehouseToCustomer_Scenario[mergeToWarehouse][mergeToPeriod][mergeToRouteIndex], "New Route (Merge To)");
 
 	// Solve LP after merge to check for improvement
 	if (!solveLP_Scenario())
@@ -967,7 +967,7 @@ bool LocalSearch::Merge()
 // Transfer Operator
 bool LocalSearch::Transfer()
 {
-    cout << "\nTransfer" << endl;
+    // cout << "\nTransfer" << endl;
 
     // Step 1: Shuffle periods for random selection
     vector<int> periods(params.numPeriods);
@@ -979,7 +979,7 @@ bool LocalSearch::Transfer()
     int randomCustomerIndex = rand() % params.numCustomers;
     int customer = randomCustomerIndex + params.numWarehouses;
 
-    cout << "Selected Customer: " << customer << endl;
+    // cout << "Selected Customer: " << customer << endl;
 
     vector<std::pair<int, int>> visitedPeriodsWarehouses;
     vector<int> unvisitedPeriods;
@@ -1014,14 +1014,14 @@ bool LocalSearch::Transfer()
     // Step 3: If the customer is not visited in any periods, skip transfer
     if (visitedPeriodsWarehouses.empty())
     {
-        cout << "Customer " << customer << " is not visited in any periods." << endl;
+        // cout << "Customer " << customer << " is not visited in any periods." << endl;
         return false;
     }
 
     // If customer is visited in all periods, skip transfer
     else if (unvisitedPeriods.empty())
     {
-        cout << "Customer " << customer << " is visited in all periods." << endl;
+        // cout << "Customer " << customer << " is visited in all periods." << endl;
         return false;
     }
 
@@ -1047,12 +1047,12 @@ bool LocalSearch::Transfer()
         }
     }
 
-    cout << "Customer " << customer << " removed from periods: ";
-    for (auto &entry : visitedPeriodsWarehouses)
-    {
-        cout << entry.first + 1 << " ";
-    }
-    cout << endl;
+    // cout << "Customer " << customer << " removed from periods: ";
+    // for (auto &entry : visitedPeriodsWarehouses)
+    // {
+    //     cout << entry.first + 1 << " ";
+    // }
+    // cout << endl;
 
     // Step 5: Randomly select a warehouse for insertion and try to insert the customer into all unvisited periods
     std::uniform_int_distribution<int> warehouseDist(0, params.numWarehouses - 1);
@@ -1130,12 +1130,12 @@ bool LocalSearch::Transfer()
         }
     }
 
-    cout << "Customer " << customer << " inserted into periods: ";
-    for (int periodToInsert : unvisitedPeriods)
-    {
-        cout << periodToInsert + 1 << " ";
-    }
-    cout << endl;
+    // cout << "Customer " << customer << " inserted into periods: ";
+    // for (int periodToInsert : unvisitedPeriods)
+    // {
+    //     cout << periodToInsert + 1 << " ";
+    // }
+    // cout << endl;
 
     // Solve the linear program to check for improvement
     if (solveLP_Scenario())
@@ -1149,7 +1149,7 @@ bool LocalSearch::Transfer()
 // Remove/Insert Operator
 bool LocalSearch::Remove_Insert()
 {
-    cout << "\nRemove/Insert" << endl;
+    // cout << "\nRemove/Insert" << endl;
 
     // Step 1: Shuffle periods to introduce randomness
     vector<int> periods(params.numPeriods);
@@ -1191,7 +1191,7 @@ bool LocalSearch::Remove_Insert()
     // If no valid period is found with customers, return false
     if (fromPeriod == -1 || selectedCustomerWarehouse.first == -1)
     {
-        cout << "No periods with customers found." << endl;
+        // cout << "No periods with customers found." << endl;
         return false;
     }
 
@@ -1227,7 +1227,7 @@ bool LocalSearch::Remove_Insert()
 
     if (targetPeriods.empty())
     {
-        cout << "No eligible periods to move the customer to." << endl;
+        // cout << "No eligible periods to move the customer to." << endl;
         return false;
     }
 
@@ -1320,7 +1320,7 @@ bool LocalSearch::Remove_Insert()
         sol_SE_scenario_feasible.customerAssignmentToWarehouse_Scenario[toPeriod][warehouseToInsert][selectedCustomer - params.numWarehouses] = 1;
     }
 
-    cout << "Moved customer " << selectedCustomer << " from period " << fromPeriod + 1 << " to period " << toPeriod + 1 << " in warehouse " << warehouseToInsert + 1 << "." << endl;
+    // cout << "Moved customer " << selectedCustomer << " from period " << fromPeriod + 1 << " to period " << toPeriod + 1 << " in warehouse " << warehouseToInsert + 1 << "." << endl;
 
     // Step 8: Solve the LP to check for improvements
     if (solveLP_Scenario())
@@ -1338,15 +1338,15 @@ bool LocalSearch::solveLP_Scenario()
 	string status = lpse_scenario.solve();
 	if (status != "Optimal")
 	{
-		cerr << "LP solver failed with status: " << status << endl;
+		// cerr << "LP solver failed with status: " << status << endl;
 		return false;
 	}
 	
 	objVal_feasible_scenario = lpse_scenario.getObjVal_Scenario();
 
 	// Log the objective values for comparison
-	cout << "\nBest objective value (Current Iteration): " << objVal_best_scenario_currStart << endl;
-	cout << "New objective value after operation: " << objVal_feasible_scenario << endl;
+	// cout << "\nBest objective value (Current Iteration): " << objVal_best_scenario_currStart << endl;
+	// cout << "New objective value after operation: " << objVal_feasible_scenario << endl;
 
 	// Define the improvement threshold
 	const double improvementThreshold = 1e-2;
@@ -1354,16 +1354,16 @@ bool LocalSearch::solveLP_Scenario()
 	// Determine if the new solution is significantly better than the best known
 	if (objVal_feasible_scenario < objVal_best_scenario_currStart - improvementThreshold)
 	{
-		cout << "A better solution found!\n"
-			 << endl;
+		// cout << "A better solution found!\n"
+		// 	 << endl;
 
 		// Update the best known solution
 		sol_SE_best_scenario_currStart = lpse_scenario.getSolutionSE_Scenario();
 		objVal_best_scenario_currStart = lpse_scenario.getObjVal_Scenario();
 		return true;
 	}
-	cout << "No improvement found.\n"
-		 << endl;
+	// cout << "No improvement found.\n"
+	// 	 << endl;
 
 	// No improvement found
 	return false;

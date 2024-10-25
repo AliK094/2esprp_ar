@@ -133,7 +133,7 @@ bool ParameterSetting::setParameters()
         assign_customers_to_warehouse();
 
         printParameters();
-        saveInstance();
+        // saveInstance();
 
         generateAllRoutes();
     }
@@ -555,8 +555,14 @@ void ParameterSetting::assign_customers_to_warehouse()
 {
     try
     {
-        customers_assigned_to_warehouse.resize(numScenarios, vector<vector<vector<int>>>(numPeriods, vector<vector<int>>(numWarehouses, vector<int>(numCustomers, -1))));
-        warehouse_assigned_to_customer.resize(numScenarios, vector<vector<int>>(numPeriods, vector<int>(numCustomers, -1)));
+        customers_assigned_to_warehouse.resize(numScenarios,
+                        vector<vector<vector<int>>>(numPeriods,
+                                vector<vector<int>>(numWarehouses,
+                                            vector<int>(numCustomers, -1))));
+
+        warehouse_assigned_to_customer.resize(numScenarios,
+                               vector<vector<int>>(numPeriods,
+                                        vector<int>(numCustomers, -1)));
 
         for (int s = 0; s < numScenarios; ++s)
         {
@@ -580,47 +586,72 @@ void ParameterSetting::assign_customers_to_warehouse()
             }
         }
 
-        // int custInd = 0;
-        // while (custInd < numCustomers)
+        // vector<std::pair<int, double>> customer_costRatio; // Pair of customer ID and penalty cost
+        // for (int i = 0; i < numCustomers; ++i)
         // {
-        //     bool customer_assigned = false;
+        //     customer_costRatio.emplace_back(i, unmetDemandPenalty[i]);
+        // }
+        // // Sort based on the penalty cost (second element of the pair) in descending order
+        // std::sort(customer_costRatio.begin(), customer_costRatio.end(),
+        //           [](const std::pair<int, double> &a, const std::pair<int, double> &b)
+        //           {
+        //               return a.second > b.second;
+        //           });
 
-        //     for (int w : sorted_warehouses_by_distance[custInd])
-        //     {
-        //         if (customer_assigned)
-        //             break;
-
-        //         if (remainingStorageCapacityWarehouse[w] - consumeRate[custInd] >= 0.0 && remainingVehicleCapacityWarehouse[w] - consumeRate[custInd] >= 0.0)
-        //         {
-        //             remainingStorageCapacityWarehouse[w] -= consumeRate[custInd];
-        //             remainingVehicleCapacityWarehouse[w] -= consumeRate[custInd];
-        //             customers_assigned_to_warehouse[w].push_back(custInd);
-        //             warehouse_assigned_to_customer[custInd] = w;
-        //             customer_assigned = true;
-        //             custInd++;
-        //             break;
-        //         }
-        //     }
+        // // Store sorted customer IDs in a new vector
+        // vector<int> sorted_customer_costRatio;
+        // for (const auto &pair : customer_costRatio)
+        // {
+        //     sorted_customer_costRatio.push_back(pair.first);
         // }
 
+        // const double adjustmentFactor = 0.9;
         // for (int s = 0; s < numScenarios; ++s)
         // {
         //     for (int t = 0; t < numPeriods; ++t)
         //     {
+        //         vector<double> remainingStorageCapacityWarehouse(numWarehouses, 0.0);
+        //         vector<double> remainingVehicleCapacityWarehouse(numWarehouses, 0.0);
         //         for (int w = 0; w < numWarehouses; ++w)
         //         {
-        //             cout << "Customers assigned to warehouse " << w << " in scenario " << s << " period " << t << ": [";
-        //             for (int i = 0; i < numCustomers; ++i)
-        //             {
-        //                 if (customers_assigned_to_warehouse[s][t][w][i] == 1)
-        //                 {
-        //                     cout << i + numWarehouses << " ";
-        //                 }
-        //             }
-        //             cout << "]" << endl;
+        //             remainingStorageCapacityWarehouse[w] = storageCapacity_Warehouse[w];
+        //             remainingVehicleCapacityWarehouse[w] = adjustmentFactor * numVehicles_Warehouse * vehicleCapacity_Warehouse;
         //         }
 
-        //         cout << "Customers assigned to warehouses successfully" << endl;
+        //         for (int custInd : sorted_customer_costRatio)
+        //         {
+        //             int assigned_ware = -1;
+        //             for (int wareInd : sorted_warehouses_by_distance[custInd])
+        //             {
+        //                 if (remainingStorageCapacityWarehouse[wareInd] - demand[custInd][t][s] >= 0.0 &&
+        //                     remainingVehicleCapacityWarehouse[wareInd] - demand[custInd][t][s] >= 0.0)
+        //                 {
+        //                     remainingStorageCapacityWarehouse[wareInd] -= demand[custInd][t][s];
+        //                     remainingVehicleCapacityWarehouse[wareInd] -= demand[custInd][t][s];
+        //                     assigned_ware = wareInd;
+        //                     break;
+        //                 }
+        //             }
+        //             if (assigned_ware != -1)
+        //             {
+        //                 customers_assigned_to_warehouse[s][t][assigned_ware][custInd] = 1;
+        //                 warehouse_assigned_to_customer[s][t][custInd] = assigned_ware;
+        //             }
+        //             else
+        //             {
+        //                 assigned_ware = sorted_warehouses_by_distance[custInd][0];
+        //                 customers_assigned_to_warehouse[s][t][assigned_ware][custInd] = 1;
+        //                 warehouse_assigned_to_customer[s][t][custInd] = assigned_ware;
+        //             }
+
+        //             for (int w = 0; w < numWarehouses; ++w)
+        //             {
+        //                 if (w != assigned_ware)
+        //                 {
+        //                     customers_assigned_to_warehouse[s][t][w][custInd] = 0;
+        //                 }
+        //             }
+        //         }
         //     }
         // }
     }
@@ -662,8 +693,8 @@ void ParameterSetting::generateAllRoutes()
         cout << "Generating all routes..." << endl;
         solveTSPForRoutes();
 
-        cout << "\n"
-             << endl;
+        // cout << "\n"
+        //      << endl;
         int ind = 1;
         for (const auto &route : optimalRoutes)
         {
@@ -691,7 +722,7 @@ void ParameterSetting::solveTSPForRoutes()
         {
             // Count the number of 1s in the route
             int numOnes = std::count(route.begin(), route.end(), 1);
-            cout << "route size:" << numOnes - 1 << endl;
+            // cout << "route size:" << numOnes - 1 << endl;
 
             if (numOnes < 3)
             {
@@ -760,16 +791,6 @@ void ParameterSetting::solveTSPForRoutes()
 
                 optimalRoutes.push_back(mappedSolution);
                 routeCosts.push_back(tsp.getObjValue());
-
-                // Print the mapped solution
-                // cout << "TSP solution for route: ";
-                // for (int node : mappedSolution)
-                // {
-                //     cout << node << " ";
-                // }
-                // cout << endl;
-                // cout << "route cost:" << tsp.getResult().objValue << endl;
-                // cout << "\n";
             }
         }
     }
@@ -779,41 +800,14 @@ void ParameterSetting::solveTSPForRoutes()
     }
 }
 
-// Getters
-vector<vector<int>> ParameterSetting::getSortedWarehousesByDistance() const
-{
-    return sorted_warehouses_by_distance;
-}
-
-vector<vector<vector<vector<int>>>> ParameterSetting::getCustomersAssignedToWarehouse() const
-{
-    return customers_assigned_to_warehouse;
-}
-
-vector<vector<vector<int>>> ParameterSetting::getWarehouseAssignedToCustomer() const
-{
-    return warehouse_assigned_to_customer;
-}
-
-vector<vector<int>> ParameterSetting::getRouteMatrix() const
-{
-    return routeMatrix;
-}
-
-vector<vector<int>> ParameterSetting::getOptimalRoutes() const
-{
-    return optimalRoutes;
-}
-
-vector<double> ParameterSetting::getRouteCosts() const
-{
-    return routeCosts;
-}
-
 SolutionWarmStart ParameterSetting::readSolutionWarmStart()
 {
     cout << "Reading Solution For Warm Start..." << endl;
-     string solutionFileName = "../Results/Solutions/Hybrid-ILS/" + probabilityFunction + "/Sol_S2EPRPAR_HHA_" + probabilityFunction + "_" + instance + "_S" + std::to_string(numScenarios)  + "_UR" + std::to_string(static_cast<int>(uncertaintyRange * 100)) + "%_PC" + std::to_string(static_cast<int>(unmetDemandPenaltyCoeff)) + ".txt";
+<<<<<<< HEAD
+    string solutionFileName = "../Results/Solutions/Hybrid-ILS/" + probabilityFunction + "/S" + std::to_string(numScenarios) + "/Sol_S2EPRPAR_HHA_" + probabilityFunction + "_" + instance + "_S" + std::to_string(numScenarios) + "_UR" + std::to_string(static_cast<int>(uncertaintyRange * 100)) + "%_PC" + std::to_string(static_cast<int>(unmetDemandPenaltyCoeff)) + ".txt";
+=======
+     string solutionFileName = "../Results/Solutions/Hybrid-ILS/" + probabilityFunction + "/S" + std::to_string(numScenarios) + "/Sol_S2EPRPAR_HHA_" + probabilityFunction + "_" + instance + "_S" + std::to_string(numScenarios)  + "_UR" + std::to_string(static_cast<int>(uncertaintyRange * 100)) + "%_PC" + std::to_string(static_cast<int>(unmetDemandPenaltyCoeff)) + ".txt";
+>>>>>>> 3ba477c (Remove .o files and update .gitignore)
 
     SolutionWarmStart warmstart;
 
@@ -1086,4 +1080,35 @@ SolutionWarmStart ParameterSetting::readSolutionWarmStart()
         warmstart.clear();
         return warmstart;
     }
+}
+
+// Getters
+vector<vector<int>> ParameterSetting::getSortedWarehousesByDistance() const
+{
+    return sorted_warehouses_by_distance;
+}
+
+vector<vector<vector<vector<int>>>> ParameterSetting::getCustomersAssignedToWarehouse() const
+{
+    return customers_assigned_to_warehouse;
+}
+
+vector<vector<vector<int>>> ParameterSetting::getWarehouseAssignedToCustomer() const
+{
+    return warehouse_assigned_to_customer;
+}
+
+vector<vector<int>> ParameterSetting::getRouteMatrix() const
+{
+    return routeMatrix;
+}
+
+vector<vector<int>> ParameterSetting::getOptimalRoutes() const
+{
+    return optimalRoutes;
+}
+
+vector<double> ParameterSetting::getRouteCosts() const
+{
+    return routeCosts;
 }

@@ -8,9 +8,10 @@ LP_SE::LP_SE(const ParameterSetting &parameters,
 	  sol_FE(solFE),
 	  sol_SE(solSE),
 	  THRESHOLD(1e-2),
-	  save_lpFile(true),
-	  save_mpsResultFile(true)
-{}
+	  save_lpFile(false),
+	  save_mpsResultFile(false)
+{
+}
 
 string LP_SE::solve()
 {
@@ -25,8 +26,13 @@ string LP_SE::solve()
 	DefineConstraints(env, model);
 
 	/* Assure linear mappings between the presolved and original models */
-	cplex.setParam(IloCplex::Param::Threads, 4);
+	cplex.setParam(IloCplex::Param::Threads, 1);
 	cplex.setParam(IloCplex::Param::Preprocessing::Presolve, IloFalse);
+	cplex.setOut(env.getNullStream());
+<<<<<<< HEAD
+	cplex.setWarning(env.getNullStream());
+=======
+>>>>>>> 3ba477c (Remove .o files and update .gitignore)
 
 	if (save_lpFile)
 	{
@@ -40,7 +46,11 @@ string LP_SE::solve()
 	// Extract model
 	cplex.extract(model);
 
-	cout << "\n\nSolving LP_SE..." << endl; 
+<<<<<<< HEAD
+	cout << "\nSolving LP_SE..." << endl;
+=======
+	cout << "\nSolving LP_SE..." << endl; 
+>>>>>>> 3ba477c (Remove .o files and update .gitignore)
 	// Solve the model
 	cplex.solve();
 
@@ -51,7 +61,7 @@ string LP_SE::solve()
 	{
 		status = "Optimal";
 		objValue = cplex.getObjValue();
-		cout << "Optimal solution found with objective value: " << std::fixed << std::setprecision(1) << objValue << endl;
+		// cout << "Optimal solution found with objective value: " << std::fixed << std::setprecision(1) << objValue << endl;
 
 		if (save_mpsResultFile)
 		{
@@ -85,9 +95,10 @@ string LP_SE::solve()
 
 	if (status == "Optimal" || status == "Incumbent")
 	{
-		cout << "Retrieving solutions..." << endl;
+		// cout << "Retrieving solutions..." << endl;
 		// Retrieve the solution
 		RetrieveSolutions(cplex);
+		CalculateCostsForEachPart();
 		// Display the solution
 		// DisplayProductionSetupVars();
 		// DisplayProductionQuantVars();
@@ -99,7 +110,6 @@ string LP_SE::solve()
 		// DisplayCustomerUnmetDemandVars();
 		// DisplayDeliveryQuantityToCustomersVars();
 		// DisplayRoutesWarehouseToCustomersVars();
-		CalculateCostsForEachPart();
 		// cout << "\n\n\n\n" << endl;
 	}
 
@@ -495,18 +505,16 @@ void LP_SE::DefineConstraints(IloEnv &env, IloModel &model)
 
 						IloConstraint WarehouseDelivery(expr <= 0);
 						expr.end();
-					
+
 						model.add(WarehouseDelivery).setName(constraintName.c_str());
 					}
 					else
 					{
 						IloConstraint WarehouseDelivery(expr == 0);
 						expr.end();
-					
+
 						model.add(WarehouseDelivery).setName(constraintName.c_str());
 					}
-
-					
 				}
 			}
 			else
@@ -523,7 +531,6 @@ void LP_SE::DefineConstraints(IloEnv &env, IloModel &model)
 
 					model.add(WarehouseDelivery).setName(constraintName.c_str());
 				}
-
 			}
 		}
 	}
@@ -581,7 +588,7 @@ void LP_SE::DefineConstraints(IloEnv &env, IloModel &model)
 							// cout << "Customer " << customerIndex << " is visited in route for scenario " << s + 1 << ", warehouse " << w + 1 << ", period " << t + 1 << ", vehicle " << k + 1 << endl;
 
 							expr -= params.DeliveryUB_perCustomer[i][t][s];
-							IloConstraint customerVisitConstraint(expr <= 0.0);							
+							IloConstraint customerVisitConstraint(expr <= 0.0);
 						}
 						else
 						{
@@ -640,7 +647,7 @@ void LP_SE::RetrieveSolutions(IloCplex &cplex)
 	sol_SE_temp.customerInventory.assign(params.numCustomers, vector<vector<double>>(params.numPeriods, vector<double>(params.numScenarios, 0.0)));
 	sol_SE_temp.customerUnmetDemand.assign(params.numCustomers, vector<vector<double>>(params.numPeriods, vector<double>(params.numScenarios, 0.0)));
 	sol_FE_temp.deliveryQuantityToWarehouse.assign(params.numWarehouses, vector<double>(params.numPeriods, 0.0));
-	sol_SE_temp.deliveryQuantityToCustomer.assign(params.numCustomers, vector<vector<double>>(params.numPeriods, vector<double>(params.numScenarios, 0.0)));	
+	sol_SE_temp.deliveryQuantityToCustomer.assign(params.numCustomers, vector<vector<double>>(params.numPeriods, vector<double>(params.numScenarios, 0.0)));
 
 	vector<vector<vector<double>>> deliveryQuantityToWarehouse_temp(params.numWarehouses, vector<vector<double>>(params.numPeriods, vector<double>(params.numScenarios, 0.0)));
 
@@ -735,16 +742,16 @@ void LP_SE::CalculateCostsForEachPart()
 	cout << "Holding Cost Plant : " << sol_FE_temp.holdingCostPlant << endl;
 	cout << "Transportation Cost Plant to Warehouse : " << sol_FE_temp.transportationCostPlantToWarehouse << endl;
 
-	result.objValue_secondEchelon = sol_SE_temp.holdingCostWarehouse_Avg + 
-							sol_SE_temp.holdingCostCustomer_Avg + 
-							sol_SE_temp.costOfUnmetDemand_Avg + 
-							sol_SE_temp.transportationCostWarehouseToCustomer_Avg;
+	result.objValue_secondEchelon = sol_SE_temp.holdingCostWarehouse_Avg +
+									sol_SE_temp.holdingCostCustomer_Avg +
+									sol_SE_temp.costOfUnmetDemand_Avg +
+									sol_SE_temp.transportationCostWarehouseToCustomer_Avg;
 
 	cout << "Holding Cost Warehouse : " << sol_SE_temp.holdingCostWarehouse_Avg << endl;
 	cout << "Holding Cost Customer : " << sol_SE_temp.holdingCostCustomer_Avg << endl;
 	cout << "Cost of Unmet Demand : " << sol_SE_temp.costOfUnmetDemand_Avg << endl;
 	cout << "Transportation Cost Warehouse to Customer : " << sol_SE_temp.transportationCostWarehouseToCustomer_Avg << endl;
-	
+
 	result.objValue_Total = result.objValue_firstEchelon + result.objValue_secondEchelon;
 
 	cout << "\nObjective value FE : " << result.objValue_firstEchelon << endl;
