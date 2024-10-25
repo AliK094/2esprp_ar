@@ -803,7 +803,11 @@ void ParameterSetting::solveTSPForRoutes()
 SolutionWarmStart ParameterSetting::readSolutionWarmStart()
 {
     cout << "Reading Solution For Warm Start..." << endl;
+<<<<<<< HEAD
     string solutionFileName = "../Results/Solutions/Hybrid-ILS/" + probabilityFunction + "/S" + std::to_string(numScenarios) + "/Sol_S2EPRPAR_HHA_" + probabilityFunction + "_" + instance + "_S" + std::to_string(numScenarios) + "_UR" + std::to_string(static_cast<int>(uncertaintyRange * 100)) + "%_PC" + std::to_string(static_cast<int>(unmetDemandPenaltyCoeff)) + ".txt";
+=======
+     string solutionFileName = "../Results/Solutions/Hybrid-ILS/" + probabilityFunction + "/S" + std::to_string(numScenarios) + "/Sol_S2EPRPAR_HHA_" + probabilityFunction + "_" + instance + "_S" + std::to_string(numScenarios)  + "_UR" + std::to_string(static_cast<int>(uncertaintyRange * 100)) + "%_PC" + std::to_string(static_cast<int>(unmetDemandPenaltyCoeff)) + ".txt";
+>>>>>>> 3ba477c (Remove .o files and update .gitignore)
 
     SolutionWarmStart warmstart;
 

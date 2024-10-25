@@ -8,7 +8,11 @@ Algorithms::Algorithms(const string solutionAlgorithm, const ParameterSetting &p
 
 bool Algorithms::solve_S2EPRP_BC()
 {
+<<<<<<< HEAD
 	cout << "Start Solving The Stochastic Two-Echelon Production Routing Problem With Adaptive Routing Using Branch-and-Cut Algorithm." << endl;
+=======
+	cout << "Start Solving The Problem With Branch-and-Cut." << endl;
+>>>>>>> 3ba477c (Remove .o files and update .gitignore)
 	cout << "-------------------------------------------------------------------" << endl;
 	SolutionWarmStart warmStartSolution = params.readSolutionWarmStart();
 
@@ -99,9 +103,15 @@ bool Algorithms::solve_S2EPRP_HILS()
 		currentTime = std::chrono::high_resolution_clock::now();
 		elapsedTime = std::chrono::duration_cast<std::chrono::duration<double>>(currentTime - startTime).count();
 		cout << "Computation Time (Hybrid-ILS) after iteration: " << iter + 1 << " = " << elapsedTime << " seconds" << endl;
+<<<<<<< HEAD
 		iter++;
 	}
 
+=======
+	}
+
+	
+>>>>>>> 3ba477c (Remove .o files and update .gitignore)
 	result_incumbent.totalCPUTime = elapsedTime;
 	cout << "\nTotal Computation Time (Hybrid-ILS): " << result_incumbent.totalCPUTime << " seconds" << endl;
 

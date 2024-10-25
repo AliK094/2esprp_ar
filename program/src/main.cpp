@@ -16,8 +16,12 @@ int main(int argc, char *argv[])
 	// Check if scenario index is provided
     int scenarioIndex = (argc == 14) ? std::stoi(argv[13]) : -1;  // Default to -1 if not provided
 
+<<<<<<< HEAD
 	// Read the required parameters
     string solutionAlgorithm = argv[1];
+=======
+	cout << "\n\nSolve The Stochastic Two-Echelon PRP with Adaptive Routing. " << endl;
+>>>>>>> 3ba477c (Remove .o files and update .gitignore)
 
     ParameterSetting params(argc, argv);
     if (!params.setParameters())

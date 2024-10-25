@@ -29,7 +29,10 @@ string LP_SE::solve()
 	cplex.setParam(IloCplex::Param::Threads, 1);
 	cplex.setParam(IloCplex::Param::Preprocessing::Presolve, IloFalse);
 	cplex.setOut(env.getNullStream());
+<<<<<<< HEAD
 	cplex.setWarning(env.getNullStream());
+=======
+>>>>>>> 3ba477c (Remove .o files and update .gitignore)
 
 	if (save_lpFile)
 	{
@@ -43,7 +46,11 @@ string LP_SE::solve()
 	// Extract model
 	cplex.extract(model);
 
+<<<<<<< HEAD
 	cout << "\nSolving LP_SE..." << endl;
+=======
+	cout << "\nSolving LP_SE..." << endl; 
+>>>>>>> 3ba477c (Remove .o files and update .gitignore)
 	// Solve the model
 	cplex.solve();
 

@@ -31,7 +31,10 @@ string LP_SE_Scenario::solve()
 	cplex.setParam(IloCplex::Param::Preprocessing::Presolve, IloFalse);
 
 	cplex.setOut(env.getNullStream());
+<<<<<<< HEAD
 	cplex.setWarning(env.getNullStream());
+=======
+>>>>>>> 3ba477c (Remove .o files and update .gitignore)
 
 	if (save_lpFile)
 	{
