@@ -27,5 +27,6 @@ run/
 *.tmp
 # Ignore build directory
 program/build/
+program/bin/
 program/main/
 
