@@ -1,4 +1,4 @@
-#include "BCCallbackManager.h"
+#include "StochBCCallbackManager.h"
 
 SEC_S2EPRP::SEC_S2EPRP(
     IloEnv &env,

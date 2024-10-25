@@ -82,7 +82,7 @@ bool MWPRP_FE::Solve()
 
 		// Set CPLEX Parameters: (DISPLAY LEVEL(0,1,2,3,4), OPTIMALITY GAP, RUN TIME (SECS), THREADS, MEMORY (MB))
 		CplexParameterManager parameterManager(cplex);
-		parameterManager.setParameters(1, 1e-6, 600, 20, 32000);
+		parameterManager.setParameters(3, 1e-2, 600, 20, 32000);
 		cplex.setParam(IloCplex::Param::Emphasis::MIP, 2);
 
 		DefineVariables(env, model);

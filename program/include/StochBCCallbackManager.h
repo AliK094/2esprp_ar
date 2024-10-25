@@ -1,5 +1,5 @@
-#ifndef BCCALLBACK_H
-#define BCCALLBACK_H
+#ifndef StochBCCALLBACK_H
+#define StochBCCALLBACK_H
 
 #include "ParameterSetting.h"
 extern "C" {
@@ -45,4 +45,4 @@ private:
     void AddSubtourEliminationCut(const int k = -1, const int t = -1, const int s = -1);
 };
 
-#endif // BCCALLBACK_H
+#endif // StochBCCALLBACK_H

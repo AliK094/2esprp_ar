@@ -1338,7 +1338,7 @@ bool LocalSearch::solveLP_Scenario()
 	string status = lpse_scenario.solve();
 	if (status != "Optimal")
 	{
-		cerr << "LP solver failed with status: " << status << endl;
+		// cerr << "LP solver failed with status: " << status << endl;
 		return false;
 	}
 	

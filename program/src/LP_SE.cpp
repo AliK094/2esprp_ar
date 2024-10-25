@@ -8,9 +8,10 @@ LP_SE::LP_SE(const ParameterSetting &parameters,
 	  sol_FE(solFE),
 	  sol_SE(solSE),
 	  THRESHOLD(1e-2),
-	  save_lpFile(true),
-	  save_mpsResultFile(true)
-{}
+	  save_lpFile(false),
+	  save_mpsResultFile(false)
+{
+}
 
 string LP_SE::solve()
 {
@@ -28,6 +29,7 @@ string LP_SE::solve()
 	cplex.setParam(IloCplex::Param::Threads, 1);
 	cplex.setParam(IloCplex::Param::Preprocessing::Presolve, IloFalse);
 	cplex.setOut(env.getNullStream());
+	cplex.setWarning(env.getNullStream());
 
 	if (save_lpFile)
 	{
@@ -41,7 +43,7 @@ string LP_SE::solve()
 	// Extract model
 	cplex.extract(model);
 
-	cout << "\nSolving LP_SE..." << endl; 
+	cout << "\nSolving LP_SE..." << endl;
 	// Solve the model
 	cplex.solve();
 
@@ -496,18 +498,16 @@ void LP_SE::DefineConstraints(IloEnv &env, IloModel &model)
 
 						IloConstraint WarehouseDelivery(expr <= 0);
 						expr.end();
-					
+
 						model.add(WarehouseDelivery).setName(constraintName.c_str());
 					}
 					else
 					{
 						IloConstraint WarehouseDelivery(expr == 0);
 						expr.end();
-					
+
 						model.add(WarehouseDelivery).setName(constraintName.c_str());
 					}
-
-					
 				}
 			}
 			else
@@ -524,7 +524,6 @@ void LP_SE::DefineConstraints(IloEnv &env, IloModel &model)
 
 					model.add(WarehouseDelivery).setName(constraintName.c_str());
 				}
-
 			}
 		}
 	}
@@ -582,7 +581,7 @@ void LP_SE::DefineConstraints(IloEnv &env, IloModel &model)
 							// cout << "Customer " << customerIndex << " is visited in route for scenario " << s + 1 << ", warehouse " << w + 1 << ", period " << t + 1 << ", vehicle " << k + 1 << endl;
 
 							expr -= params.DeliveryUB_perCustomer[i][t][s];
-							IloConstraint customerVisitConstraint(expr <= 0.0);							
+							IloConstraint customerVisitConstraint(expr <= 0.0);
 						}
 						else
 						{
@@ -641,7 +640,7 @@ void LP_SE::RetrieveSolutions(IloCplex &cplex)
 	sol_SE_temp.customerInventory.assign(params.numCustomers, vector<vector<double>>(params.numPeriods, vector<double>(params.numScenarios, 0.0)));
 	sol_SE_temp.customerUnmetDemand.assign(params.numCustomers, vector<vector<double>>(params.numPeriods, vector<double>(params.numScenarios, 0.0)));
 	sol_FE_temp.deliveryQuantityToWarehouse.assign(params.numWarehouses, vector<double>(params.numPeriods, 0.0));
-	sol_SE_temp.deliveryQuantityToCustomer.assign(params.numCustomers, vector<vector<double>>(params.numPeriods, vector<double>(params.numScenarios, 0.0)));	
+	sol_SE_temp.deliveryQuantityToCustomer.assign(params.numCustomers, vector<vector<double>>(params.numPeriods, vector<double>(params.numScenarios, 0.0)));
 
 	vector<vector<vector<double>>> deliveryQuantityToWarehouse_temp(params.numWarehouses, vector<vector<double>>(params.numPeriods, vector<double>(params.numScenarios, 0.0)));
 
@@ -736,16 +735,16 @@ void LP_SE::CalculateCostsForEachPart()
 	cout << "Holding Cost Plant : " << sol_FE_temp.holdingCostPlant << endl;
 	cout << "Transportation Cost Plant to Warehouse : " << sol_FE_temp.transportationCostPlantToWarehouse << endl;
 
-	result.objValue_secondEchelon = sol_SE_temp.holdingCostWarehouse_Avg + 
-							sol_SE_temp.holdingCostCustomer_Avg + 
-							sol_SE_temp.costOfUnmetDemand_Avg + 
-							sol_SE_temp.transportationCostWarehouseToCustomer_Avg;
+	result.objValue_secondEchelon = sol_SE_temp.holdingCostWarehouse_Avg +
+									sol_SE_temp.holdingCostCustomer_Avg +
+									sol_SE_temp.costOfUnmetDemand_Avg +
+									sol_SE_temp.transportationCostWarehouseToCustomer_Avg;
 
 	cout << "Holding Cost Warehouse : " << sol_SE_temp.holdingCostWarehouse_Avg << endl;
 	cout << "Holding Cost Customer : " << sol_SE_temp.holdingCostCustomer_Avg << endl;
 	cout << "Cost of Unmet Demand : " << sol_SE_temp.costOfUnmetDemand_Avg << endl;
 	cout << "Transportation Cost Warehouse to Customer : " << sol_SE_temp.transportationCostWarehouseToCustomer_Avg << endl;
-	
+
 	result.objValue_Total = result.objValue_firstEchelon + result.objValue_secondEchelon;
 
 	cout << "\nObjective value FE : " << result.objValue_firstEchelon << endl;

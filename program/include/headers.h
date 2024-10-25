@@ -2,6 +2,8 @@
 #define HEADERS_H
 
 #include <iostream>
+#include <fstream>
+#include <filesystem>
 #include <vector>
 #include <string>
 #include <cmath>
@@ -15,6 +17,8 @@ using std::endl;
 using std::string;
 using std::vector;
 using std::tuple;
+
+namespace fs = std::filesystem;
 
 
 // Define a constant for unknown values
@@ -215,6 +219,32 @@ struct SolutionWarmStart
         routesPlantToWarehouse_WarmStart.clear();
         routesWarehouseToCustomer_WarmStart.clear();
         customerAssignmentToWarehouse_WarmStart.clear();
+    }
+};
+
+struct SolutionWarmStart_EV
+{
+    vector<int> productionSetup_WarmStart_EV;
+    vector<vector<vector<int>>> routesPlantToWarehouse_WarmStart_EV;
+    vector<vector<vector<vector<vector<int>>>>> routesWarehouseToCustomer_WarmStart_EV;
+    vector<vector<vector<vector<int>>>> customerAssignmentToWarehouse_WarmStart_EV;
+
+    // Check if the solution is empty
+    bool empty() const
+    {
+        return productionSetup_WarmStart_EV.empty() &&
+               routesPlantToWarehouse_WarmStart_EV.empty() &&
+               routesWarehouseToCustomer_WarmStart_EV.empty() &&
+               customerAssignmentToWarehouse_WarmStart_EV.empty();
+    }
+
+    void clear()
+    {
+        // Clear all vectors
+        productionSetup_WarmStart_EV.clear();
+        routesPlantToWarehouse_WarmStart_EV.clear();
+        routesWarehouseToCustomer_WarmStart_EV.clear();
+        customerAssignmentToWarehouse_WarmStart_EV.clear();
     }
 };
 

@@ -31,6 +31,7 @@ string LP_SE_Scenario::solve()
 	cplex.setParam(IloCplex::Param::Preprocessing::Presolve, IloFalse);
 
 	cplex.setOut(env.getNullStream());
+	cplex.setWarning(env.getNullStream());
 
 	if (save_lpFile)
 	{
@@ -69,7 +70,7 @@ string LP_SE_Scenario::solve()
 	else if (cplex.getStatus() == IloAlgorithm::Infeasible)
 	{
 		status = "Infeasible";
-		cout << "Problem is infeasible" << endl;
+		// cout << "Problem is infeasible" << endl;
 
 		string directory = "../cplexFiles/lpModel/";
 		string lpFileName = directory + "LPSE_NW" + std::to_string(params.numWarehouses) + "_NR" + std::to_string(params.numCustomers) + "_KP" + std::to_string(params.numVehicles_Plant) + "_KW" + std::to_string(params.numVehicles_Warehouse) + "_T" + std::to_string(params.numPeriods) + "_S" + std::to_string(params.numScenarios) + "_Ins" + params.instance.c_str() + ".lp";
@@ -80,7 +81,7 @@ string LP_SE_Scenario::solve()
 	else
 	{
 		status = "Undefined";
-		cout << "Solver terminated with status: " << status << endl;
+		// cout << "Solver terminated with status: " << status << endl;
 	}
 
 	auto currentTime = std::chrono::high_resolution_clock::now();
