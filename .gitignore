@@ -28,6 +28,6 @@ run/
 # Ignore build directory
 program/build/
 program/bin/*
-!bin/.gitkeep
+!program/bin/.gitkeep
 program/main/
 
