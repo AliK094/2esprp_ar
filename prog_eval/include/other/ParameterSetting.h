@@ -1,8 +1,9 @@
-#ifndef ParameterSetting_H
-#define ParameterSetting_H
+#ifndef PARAMETERSETTING_H
+#define PARAMETERSETTING_H
 
 #include "headers.h"
 #include "TSP.h"
+#include <fstream>
 #include <stdexcept>
 #include <limits>
 #include <cassert>
@@ -98,13 +99,16 @@ public:
     vector<vector<double>> DeliveryUB;
 private:
     void initializeIndices();
-    bool generateData();
     bool readDataFromFile();
-    void read2ESPRPlDatasetInfo(std::ifstream &file);
-
+    void readOriginalDatasetInfo(std::ifstream &file);
     bool monteCarloSimulation();
     void generateScenarioDemands(int scenario, int period);
     void checkDemandsDistribution() const;
+    void adjustInitialInventory();
+    void calculateProductionCapacity();
+    void setWarehouseParameters();
+    void calculateVehicleCapacities();
+    void updateStorageCapacityForCustomers();
     void calculateTransportationCost_FirstEchelon();
     void calculateTransportationCost_SecondEchelon();
     void calculateDeliveryUB();
@@ -119,7 +123,7 @@ private:
     void solveTSPForRoutes();
 
     // Distribution functions
-    double uniformDistribution(double min, double max, unsigned long int seed = 0);
+    double uniformDistribution(double min, double max, unsigned long int seed);
     double normalDistribution(double mean, double sd, unsigned int seed);
     double gammaDistribution(double mean, double sd, unsigned int seed);
 

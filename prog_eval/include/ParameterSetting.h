@@ -3,6 +3,7 @@
 
 #include "headers.h"
 #include "TSP.h"
+#include <fstream>
 #include <stdexcept>
 #include <limits>
 #include <cassert>

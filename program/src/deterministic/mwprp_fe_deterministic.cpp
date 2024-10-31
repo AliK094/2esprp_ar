@@ -1,0 +1,784 @@
+#include "MWPRP_FE_Deterministic.h"
+
+MWPRP_FE_Deterministic::MWPRP_FE_Deterministic(const ParameterSetting &parameters, const vector<vector<int>> &deterministicDemand, bool shortageAllowed)
+	: params(parameters),
+	  demand(deterministicDemand),
+	  THRESHOLD(1e-2),
+	  shortageAllowed(shortageAllowed),
+	  save_lpFile(false),
+	  save_mpsResultFile(false)
+{
+	routeMatrix_FirstEchelon = params.getRouteMatrix();
+	numRoutes_FirstEchelon = routeMatrix_FirstEchelon.size();
+	optimalRoutes_FirstEchelon = params.getOptimalRoutes();
+	routeCosts_FirstEchelon = params.getRouteCosts();
+
+	vector<vector<int>> sorted_warehouses_by_distance = params.getSortedWarehousesByDistance();
+	CATW.assign(params.numPeriods, vector<vector<int>>(params.numWarehouses, vector<int>(params.numCustomers, -1)));
+	for (int t = 0; t < numPeriods; ++t)
+	{
+		for (int w = 0; w < numWarehouses; ++w)
+		{
+			for (int i = 0; i < numCustomers; ++i)
+			{
+				if (w == sorted_warehouses_by_distance[i][0])
+				{
+					CATW[t][w][i] = 1;
+				}
+				else
+				{
+					CATW[t][w][i] = 0;
+				}
+			}
+		}
+	}
+
+	vector<vector<double>> actualDemandCustomers(params.numCustomers, vector<double>(params.numPeriods, 0.0));
+	vector<double> remainingInitInv_Custs = params.initialInventory_Customer;
+
+	for (int t = 0; t < params.numPeriods; ++t)
+	{
+		for (int i = 0; i < params.numCustomers; ++i)
+		{
+			actualDemandCustomers[i][t] = demand[i][t];
+			if (remainingInitInv_Custs[i] > 0.0)
+			{
+				actualDemandCustomers[i][t] = std::max(0.0, demand[i][t] - remainingInitInv_Custs[i]);
+				remainingInitInv_Custs[i] -= std::min(demand[i][t], remainingInitInv_Custs[i]);
+			}
+		}
+	}
+
+	demand_warehouse.resize(params.numWarehouses, ector<double>(params.numPeriods, 0.0));
+	for (int t = 0; t < params.numPeriods; ++t)
+	{
+		for (int w = 0; w < params.numWarehouses; ++w)
+		{
+			for (int i = 0; i < params.numCustomers; ++i)
+			{
+				if (CATW[t][w][i] == 1)
+				{
+					demand_warehouse[w][t] += actualDemandCustomers[i][t];
+				}
+			}
+		}
+	}
+
+	approximatedUnmetDemandPenalty_warehouse.resize(params.numWarehouses, vector<double>(params.numPeriods, 0.0));
+	for (int t = 0; t < params.numPeriods; ++t)
+	{
+		for (int w = 0; w < params.numWarehouses; ++w)
+		{
+			double numAssCustomers = 0.0;
+			for (int i = 0; i < params.numCustomers; ++i)
+			{
+				if (CATW[t][w][i] == 1)
+				{
+					approximatedUnmetDemandPenalty_warehouse[w][t] += params.unmetDemandPenalty[i];
+					numAssCustomers += 1.0;
+				}
+			}
+			approximatedUnmetDemandPenalty_warehouse[w][t] /= numAssCustomers;
+		}
+	}
+}
+
+bool MWPRP_FE_Deterministic::Solve()
+{
+	try
+	{
+		IloEnv env;
+		IloModel model(env);
+		IloCplex cplex(model);
+
+		auto startTime = std::chrono::high_resolution_clock::now();
+
+		// Set CPLEX Parameters: (DISPLAY LEVEL(0,1,2,3,4), OPTIMALITY GAP, RUN TIME (SECS), THREADS, MEMORY (MB))
+		CplexParameterManager parameterManager(cplex);
+
+		parameterManager.setParameters(1, 1e-6, 600, 20, 32000);
+
+		cplex.setParam(IloCplex::Param::Emphasis::MIP, 2);
+
+		DefineVariables(env, model);
+		DefineObjectiveFunction(env, model);
+		DefineConstraints(env, model);
+
+		/* Assure linear mappings between the presolved and original models */
+		cplex.setParam(IloCplex::Param::Preprocessing::Presolve, IloFalse);
+		/* Turn on traditional search for use with control callbacks */
+		cplex.setParam(IloCplex::Param::MIP::Strategy::Search, CPX_MIPSEARCH_TRADITIONAL);
+		/* Let MIP callbacks work on the original model */
+		cplex.setParam(IloCplex::Param::Preprocessing::Reduce, 0);
+
+		if (save_lpFile)
+		{
+			string directory = "../cplexFiles/lpModel/";
+			if (shortageAllowed)
+			{
+				string lpFileName = directory + "MWPRP_FE_Deterministic_NW" + std::to_string(params.numWarehouses) + 
+							"_NR" + std::to_string(params.numCustomers) + 
+							"_KP" + std::to_string(params.numVehicles_Plant) + 
+							"_KW" + std::to_string(params.numVehicles_Warehouse) + 
+							"_T" + std::to_string(params.numPeriods) + 
+							"_S" + std::to_string(params.numScenarios) + 
+							"_Ins" + params.instance.c_str() + ".lp";
+			}
+			else
+			{
+				string lpFileName = directory + "MWPRP_FE_Deterministic_NW" + std::to_string(params.numWarehouses) + 
+							"_NR" + std::to_string(params.numCustomers) + 
+							"_KP" + std::to_string(params.numVehicles_Plant) + 
+							"_KW" + std::to_string(params.numVehicles_Warehouse) + 
+							"_T" + std::to_string(params.numPeriods) + 
+							"_Ins" + params.instance.c_str() + ".lp";
+				
+			}
+			// Export the model to an LP file
+			cplex.exportModel(lpFileName.c_str());
+		}
+
+		// Extract model
+		cplex.extract(model);
+
+		// Solve the model
+		cplex.solve();
+
+		string status;
+		double objValue;
+		double optimalityGap;
+		double lowerBound;
+		if (cplex.getStatus() == IloAlgorithm::Optimal)
+		{
+			status = "Optimal";
+			objValue = cplex.getObjValue();
+			cout << "Optimal solution found with objective value: " << std::fixed << std::setprecision(1) << objValue << endl;
+			optimalityGap = cplex.getMIPRelativeGap() * 100;
+			lowerBound = cplex.getBestObjValue();
+
+			if (save_mpsResultFile)
+			{
+				string directory = "../cplexFiles/solVal/";
+				if (shortageAllowed)
+				{
+					string solFileName = directory + "MWPRP_FE_Deterministic_NW" + std::to_string(params.numWarehouses) + 
+									"_NR" + std::to_string(params.numCustomers) + 
+									"_KP" + std::to_string(params.numVehicles_Plant) + 
+									"_KW" + std::to_string(params.numVehicles_Warehouse) + 
+									"_T" + std::to_string(params.numPeriods) + 
+									"_S" + std::to_string(params.numScenarios) + 
+									"_Ins" + params.instance.c_str();
+				}
+				else
+				{
+					string solFileName = directory + "MWPRP_FE_Deterministic_NW" + std::to_string(params.numWarehouses) + 
+									"_NR" + std::to_string(params.numCustomers) + 
+									"_KP" + std::to_string(params.numVehicles_Plant) + 
+									"_KW" + std::to_string(params.numVehicles_Warehouse) + 
+									"_T" + std::to_string(params.numPeriods) + 
+									"_Ins" + params.instance.c_str();
+				}
+
+				// Export the model to an LP file
+				cplex.writeSolution(solFileName.c_str());
+			}
+		}
+		else if (cplex.getStatus() == IloAlgorithm::Feasible)
+		{
+			status = "Incumbent";
+			objValue = cplex.getObjValue();
+			cout << "Incumbent solution found with objective value: " << std::fixed << std::setprecision(1) << objValue << endl;
+			optimalityGap = cplex.getMIPRelativeGap() * 100;
+			cout << "Optimality gap: " << optimalityGap << "%" << endl;
+			lowerBound = cplex.getBestObjValue();
+			cout << "Lower bound: " << lowerBound << endl;
+
+			if (save_mpsResultFile)
+			{
+				string directory = "../cplexFiles/solVal/";
+				if (shortageAllowed)
+				{
+					string solFileName = directory + "MWPRP_FE_Deterministic_NW" + std::to_string(params.numWarehouses) + 
+									"_NR" + std::to_string(params.numCustomers) + 
+									"_KP" + std::to_string(params.numVehicles_Plant) + 
+									"_KW" + std::to_string(params.numVehicles_Warehouse) + 
+									"_T" + std::to_string(params.numPeriods) + 
+									"_S" + std::to_string(params.numScenarios) + 
+									"_Ins" + params.instance.c_str();
+				}
+				else
+				{
+					string solFileName = directory + "MWPRP_FE_Deterministic_NW" + std::to_string(params.numWarehouses) + 
+									"_NR" + std::to_string(params.numCustomers) + 
+									"_KP" + std::to_string(params.numVehicles_Plant) + 
+									"_KW" + std::to_string(params.numVehicles_Warehouse) + 
+									"_T" + std::to_string(params.numPeriods) + 
+									"_Ins" + params.instance.c_str();
+				}
+
+				// Export the model to an LP file
+				cplex.writeSolution(solFileName.c_str());
+			}
+		}
+		else if (cplex.getStatus() == IloAlgorithm::Infeasible)
+		{
+			status = "Infeasible";
+			cout << "Problem is infeasible" << endl;
+
+			IloConstraintArray conflictConstraints(env);
+			cplex.getConflict(conflictConstraints);
+
+			IloCplex::ConflictStatusArray conflictStatus(env);
+			for (int i = 0; i < conflictConstraints.getSize(); i++)
+			{
+				conflictStatus.add(cplex.getConflict(conflictConstraints[i]));
+			}
+
+			cout << "Conflict constraints:" << endl;
+			cout << conflictConstraints << endl;
+
+			cout << "Conflict status:" << endl;
+			cout << conflictStatus << endl;
+
+			throw std::runtime_error("Solver terminated with infeasible solution.");
+		}
+		else
+		{
+			status = "Undefined";
+			cout << "Solver terminated with status: " << status << endl;
+		}
+
+		auto currentTime = std::chrono::high_resolution_clock::now();
+		double CPUtime = std::chrono::duration_cast<std::chrono::duration<double>>(currentTime - startTime).count();
+		cout << "Timer (seconds): " << std::fixed << std::setprecision(4) << CPUtime << endl;
+
+		if (status == "Optimal" || status == "Incumbent")
+		{
+			// Retrieve the solution
+			RetrieveSolutions(cplex);
+			// Display the solution
+			DisplayProductionSetupVars();
+			DisplayProductionQuantVars();
+			// DisplayPlantInventoryVars();
+			// DisplayWarehouseInventoryVars();
+			// DisplayFirstEchelonRouteVars();
+			// DisplayDeliveryQuantityToWarehousesVars();
+			CalculateCostsForEachPart();
+		}
+
+		env.end();
+	}
+	catch (const IloException &e)
+	{
+		cerr << "Error: " << e << endl;
+		return false;
+	}
+	catch (const std::runtime_error &e)
+	{
+		cerr << "Runtime Error: " << e.what() << endl;
+		return false;
+	}
+	return true;
+}
+
+void MWPRP_FE_Deterministic::DefineVariables(IloEnv &env, IloModel &model)
+{
+	// Define Decision Variables
+
+	// Initialize Variable Manager
+	VariableManager varManager(env);
+	// -------------------------------------------------------------------------------------------------------------------------------
+	// Define y[t] variables (Production setup in period t)
+	y = varManager.create1D(params.numPeriods);
+	for (int t = 0; t < params.numPeriods; ++t)
+	{
+		string varName = "y[" + std::to_string(t) + "]";
+		y[t] = IloNumVar(env, 0.0, 1.0, IloNumVar::Bool, varName.c_str());
+		model.add(y[t]);
+	}
+	// -------------------------------------------------------------------------------------------------------------------------------
+	// Define p[t] variables (Production quantity in period t)
+	p = varManager.create1D(params.numPeriods);
+	for (int t = 0; t < params.numPeriods; ++t)
+	{
+		string varName = "p[" + std::to_string(t) + "]";
+		p[t] = IloNumVar(env, 0.0, params.prodCapacity, IloNumVar::Float, varName.c_str());
+		model.add(p[t]);
+	}
+	// -------------------------------------------------------------------------------------------------------------------------------
+	// Define I_plant[t] variables (Plant inventory in period t)
+	I_plant = varManager.create1D(params.numPeriods);
+	for (int t = 0; t < params.numPeriods; ++t)
+	{
+		string varName = "I_plant[" + std::to_string(t) + "]";
+		I_plant[t] = IloNumVar(env, 0.0, params.storageCapacity_Plant, IloNumVar::Float, varName.c_str());
+		model.add(I_plant[t]);
+	}
+	// -------------------------------------------------------------------------------------------------------------------------------
+	// Define I_warehouse[w][t] variables (Warehouse w inventory in period t)
+	I_warehouse = varManager.create2D(params.numWarehouses, params.numPeriods);
+	for (int w = 0; w < params.numWarehouses; ++w)
+	{
+		for (int t = 0; t < params.numPeriods; ++t)
+		{
+			string varName = "I_warehouse[" + std::to_string(w) + "][" + std::to_string(t) + "]";
+			I_warehouse[w][t] = IloNumVar(env, 0.0, params.storageCapacity_Warehouse[w], IloNumVar::Float, varName.c_str());
+			model.add(I_warehouse[w][t]);
+		}
+	}
+	// -------------------------------------------------------------------------------------------------------------------------------
+	if(shortageAllowed)
+	{
+		// Define b_warehouse[w][t] variables (Warehouse w inventory in period t)
+		b_warehouse = varManager.create2D(params.numWarehouses, params.numPeriods);
+		for (int w = 0; w < params.numWarehouses; ++w)
+		{
+			for (int t = 0; t < params.numPeriods; ++t)
+			{
+				string varName = "b_warehouse[" + std::to_string(w) + "][" + std::to_string(t) + "]";
+				b_warehouse[w][t] = IloNumVar(env, 0.0, demand_warehouse[w][t], IloNumVar::Float, varName.c_str());
+				model.add(b_warehouse[w][t]);
+			}
+		}
+	}
+	// -------------------------------------------------------------------------------------------------------------------------------
+	// Define q[r][w][t] variables (Delivery quantity to warehouse w in period t from route r)
+	q = varManager.create3D(numRoutes_FirstEchelon, params.numWarehouses, params.numPeriods);
+	for (int routeInd = 0; routeInd < numRoutes_FirstEchelon; ++routeInd)
+	{
+		for (int w = 0; w < params.numWarehouses; ++w)
+		{
+			for (int t = 0; t < params.numPeriods; ++t)
+			{
+				string varName = "q[" + std::to_string(routeInd) + "][" + std::to_string(w) + "][" + std::to_string(t) + "]";
+				q[routeInd][w][t] = IloNumVar(env, 0.0, routeMatrix_FirstEchelon[routeInd][w + 1] * params.storageCapacity_Warehouse[w], IloNumVar::Float, varName.c_str());
+				model.add(q[routeInd][w][t]);
+			}
+		}
+	}
+	// -------------------------------------------------------------------------------------------------------------------------------
+	// Define o[r][t] variables (binary variables to indicate whether route r is selected in period t) - from plant to warehouse
+	o = varManager.create2D(numRoutes_FirstEchelon, params.numPeriods);
+	for (int routeInd = 0; routeInd < numRoutes_FirstEchelon; ++routeInd)
+	{
+		for (int t = 0; t < params.numPeriods; ++t)
+		{
+			string varName = "o[" + std::to_string(routeInd) + "][" + std::to_string(t) + "]";
+			o[routeInd][t] = IloNumVar(env, 0.0, 1.0, IloNumVar::Bool, varName.c_str());
+			model.add(o[routeInd][t]);
+		}
+	}
+}
+
+void MWPRP_FE_Deterministic::DefineObjectiveFunction(IloEnv &env, IloModel &model)
+{
+	// Define objective function
+	IloExpr obj(env);
+	for (int t = 0; t < params.numPeriods; ++t)
+	{
+		obj += params.setupCost * y[t];
+		obj += params.unitProdCost * p[t];
+		obj += params.unitHoldingCost_Plant * I_plant[t];
+		for (int routeInd = 0; routeInd < numRoutes_FirstEchelon; ++routeInd)
+		{
+			obj += routeCosts_FirstEchelon[routeInd] * o[routeInd][t];
+		}
+
+		for (int w = 0; w < params.numWarehouses; ++w)
+		{
+			obj += params.unitHoldingCost_Warehouse[w] * I_warehouse[w][t];
+			if (shortageAllowed)
+			{
+				obj += approximatedUnmetDemandPenalty_warehouse[w][t] * b_warehouse[w][t];
+			}
+		}
+	}
+	model.add(IloMinimize(env, obj));
+}
+
+void MWPRP_FE_Deterministic::DefineConstraints(IloEnv &env, IloModel &model)
+{
+	/* Define Constraints */
+	// ---------------------------------------------------------------------------------------------------------------------------
+	/*
+		Define Production Capacity Constraints:
+			p[t] <= Capacity * y[t]			for all t in T
+	*/
+	for (int t = 0; t < params.numPeriods; ++t)
+	{
+		string constraintName = "ProductionCapacity(" + std::to_string(t + 1) + ")";
+
+		IloExpr expr(env);
+		expr += p[t];
+		expr += -params.prodCapacity * y[t];
+		IloConstraint productionCapacityConstraint(expr <= 0);
+		expr.end();
+
+		model.add(productionCapacityConstraint).setName(constraintName.c_str());
+	}
+	// ---------------------------------------------------------------------------------------------------------------------------
+	/*
+		Define Inventory Capacity Constraints (Plant)
+			I_plant[t] <= params.storageCapacity_Plant 		for all t in T
+	*/
+	for (int t = 0; t < params.numPeriods; ++t)
+	{
+		string constraintName = "PlantInventoryCapacity(" + std::to_string(t + 1) + ")";
+
+		IloExpr expr(env);
+		expr += I_plant[t];
+		IloConstraint plantInventoryCapacityConstraint(expr <= params.storageCapacity_Plant);
+		expr.end();
+
+		model.add(plantInventoryCapacityConstraint).setName(constraintName.c_str());
+	}
+	// ---------------------------------------------------------------------------------------------------------------------------
+	/*
+		Define Inventory Balance Constraints (Plant):
+			I_plant[t] = I_plant[t-1] + p[t] - sum(r in R) sum(w in W) q[r][w][t] 		for all t in T
+	*/
+	for (int t = 0; t < params.numPeriods; ++t)
+	{
+		string constraintName = "PlantInventoryBalance(" + std::to_string(t + 1) + ")";
+
+		IloExpr expr(env);
+		if (t == 0)
+		{
+			expr += I_plant[t];
+			expr += -p[t];
+			for (int routeInd = 0; routeInd < numRoutes_FirstEchelon; ++routeInd)
+			{
+				for (int w = 0; w < params.numWarehouses; ++w)
+				{
+					expr += q[routeInd][w][t];
+				}
+			}
+			IloConstraint plantInventoryBalanceConstraint(expr == params.initialInventory_Plant);
+			expr.end();
+
+			model.add(plantInventoryBalanceConstraint).setName(constraintName.c_str());
+		}
+		else
+		{
+			expr += I_plant[t];
+			expr += -I_plant[t - 1];
+			expr += -p[t];
+			for (int routeInd = 0; routeInd < numRoutes_FirstEchelon; ++routeInd)
+			{
+				for (int w = 0; w < params.numWarehouses; ++w)
+				{
+					expr += q[routeInd][w][t];
+				}
+			}
+			IloConstraint plantInventoryBalanceConstraint(expr == 0);
+			expr.end();
+
+			model.add(plantInventoryBalanceConstraint).setName(constraintName.c_str());
+		}
+	}
+	// ---------------------------------------------------------------------------------------------------------------------------
+	/*
+		Define Inventory Capacity Constraints (Warehouses):
+			I_warehouse[w][t] + demand_warehouse[w][t] <= storageCapacity_warehouse 		for all w in W, t in T
+	*/
+	for (int t = 0; t < params.numPeriods; ++t)
+	{
+		for (int w = 0; w < params.numWarehouses; ++w)
+		{
+			string constraintName = "WarehouseInventoryCapacity(" + std::to_string(w + 1) + "," + std::to_string(t + 1) + ")";
+
+			IloExpr expr(env);
+			expr += I_warehouse[w][t];
+			IloConstraint warehouseInventoryCapacityConstraint(expr <= params.storageCapacity_Warehouse[w]);
+			expr.end();
+
+			model.add(warehouseInventoryCapacityConstraint).setName(constraintName.c_str());
+		}
+	}
+	// ---------------------------------------------------------------------------------------------------------------------------
+	/*
+		Define Inventory Balance Constraints (Warehouses):
+			I_warehouse[w][t] = I_warehouse[w][t-1] + q[w][t] - d[w][t] 	for all w in W, t in T
+	*/
+	for (int t = 0; t < params.numPeriods; ++t)
+	{
+		for (int w = 0; w < params.numWarehouses; ++w)
+		{
+			string constraintName = "WarehouseInventoryBalance(" + std::to_string(w + 1) + "," + std::to_string(t + 1) + ")";
+
+			IloExpr expr(env);
+			if (t == 0)
+			{
+				expr += I_warehouse[w][t];
+
+				if (shortageAllowed)
+				{
+					expr += -b_warehouse[w][t];
+				}
+
+				for (int routeInd = 0; routeInd < numRoutes_FirstEchelon; ++routeInd)
+				{
+					expr += -q[routeInd][w][t];
+				}
+				IloConstraint warehouseInventoryBalanceConstraint(expr == params.initialInventory_Warehouse[w] - demand_warehouse[w][t]);
+				expr.end();
+
+				model.add(warehouseInventoryBalanceConstraint).setName(constraintName.c_str());
+			}
+			else
+			{
+				expr += I_warehouse[w][t];
+				if (shortageAllowed)
+				{
+					expr += -b_warehouse[w][t];
+				}
+				expr += -I_warehouse[w][t - 1];
+				for (int routeInd = 0; routeInd < numRoutes_FirstEchelon; ++routeInd)
+				{
+					expr += -q[routeInd][w][t];
+				}
+				IloConstraint warehouseInventoryBalanceConstraint(expr == -demand_warehouse[w][t]);
+				expr.end();
+
+				model.add(warehouseInventoryBalanceConstraint).setName(constraintName.c_str());
+			}
+		}
+	}
+	// ---------------------------------------------------------------------------------------------------------------------------
+	/*
+		Each Warehouse must be covered by at most one route.
+			sum(r in R) a[r][w] * o[r][t] <= 1			for all w in w and t in T
+	// */
+	for (int t = 0; t < params.numPeriods; ++t)
+	{
+		for (int w = 0; w < params.numWarehouses; ++w)
+		{
+			string constraintName = "WarehouseCoverage(" + std::to_string(w + 1) + "," + std::to_string(t + 1) + ")";
+
+			IloExpr expr(env);
+			for (int routeInd = 0; routeInd < numRoutes_FirstEchelon; ++routeInd)
+			{
+				expr += routeMatrix_FirstEchelon[routeInd][w + 1] * o[routeInd][t];
+			}
+			IloConstraint warehouseCoverageConstraint(expr <= 1);
+			expr.end();
+
+			model.add(warehouseCoverageConstraint).setName(constraintName.c_str());
+		}
+	}
+	// ---------------------------------------------------------------------------------------------------------------------------
+	/*
+		Define Vehicle Capacity Constraints (From Plant to Warehouse):
+			sum(w in W) q[r][w][t] <= params.vehicleCapacity_Plant * o[r][t] 		for all r in R, t in T
+	*/
+	for (int t = 0; t < params.numPeriods; ++t)
+	{
+		for (int routeInd = 0; routeInd < numRoutes_FirstEchelon; ++routeInd)
+		{
+			string constraintName = "VehicleCapacity(" + std::to_string(routeInd + 1) + "," + std::to_string(t + 1) + ")";
+
+			IloExpr expr(env);
+			for (int w = 0; w < params.numWarehouses; ++w)
+			{
+				// expr += routeMatrix_FirstEchelon[routeInd][w + 1] * q[routeInd][w][t];
+				expr += q[routeInd][w][t];
+			}
+			expr -= params.vehicleCapacity_Plant * o[routeInd][t];
+			IloConstraint vehicleCapacityConstraint(expr <= 0);
+			expr.end();
+
+			model.add(vehicleCapacityConstraint).setName(constraintName.c_str());
+		}
+	}
+	// ---------------------------------------------------------------------------------------------------------------------------
+	/*
+		Define Fleet Size Constraints:
+			sum (r in R) o[r][t] <= params.numVehicles_Plant 		for all t in T
+	*/
+	for (int t = 0; t < params.numPeriods; ++t)
+	{
+		string constraintName = "FleetSize(" + std::to_string(t + 1) + ")";
+
+		IloExpr expr(env);
+		for (int routeInd = 0; routeInd < numRoutes_FirstEchelon; ++routeInd)
+		{
+			expr += o[routeInd][t];
+		}
+		IloConstraint fleetSizeConstraint(expr <= params.numVehicles_Plant);
+		expr.end();
+
+		model.add(fleetSizeConstraint).setName(constraintName.c_str());
+	}
+}
+
+void MWPRP_FE_Deterministic::RetrieveSolutions(IloCplex &cplex)
+{
+	// Retrieve solution
+	// initilize variables
+	solFE.productionSetup.assign(params.numPeriods, 0);
+	solFE.productionQuantity.assign(params.numPeriods, 0.0);
+	solFE.plantInventory.assign(params.numPeriods, 0.0);
+	solFE.deliveryQuantityToWarehouse.assign(params.numWarehouses, vector<double>(params.numPeriods, 0.0));
+	solFE.routesPlantToWarehouse.assign(params.numPeriods, vector<vector<int>>(params.numVehicles_Plant, vector<int>()));
+
+	warehouseInventory.assign(params.numWarehouses, vector<double>(params.numPeriods, 0.0));
+
+	selectedRoute.assign(numRoutes_FirstEchelon, vector<int>(params.numPeriods, 0));
+
+	// Get solution values of decision variables
+	for (int t = 0; t < params.numPeriods; ++t)
+	{
+		solFE.productionSetup[t] = cplex.getIntValue(y[t]);
+		solFE.productionQuantity[t] = cplex.getValue(p[t]);
+		solFE.plantInventory[t] = cplex.getValue(I_plant[t]);
+
+		int vehInd = 0;
+		for (int routeInd = 0; routeInd < numRoutes_FirstEchelon; ++routeInd)
+		{
+			selectedRoute[routeInd][t] = cplex.getIntValue(o[routeInd][t]);
+			if (selectedRoute[routeInd][t] == 1)
+			{
+				for (int node : optimalRoutes_FirstEchelon[routeInd])
+				{
+					solFE.routesPlantToWarehouse[t][vehInd].push_back(node);
+				}
+				vehInd++;
+			}
+		}
+
+		for (int w = 0; w < params.numWarehouses; ++w)
+		{
+			for (int routeInd = 0; routeInd < numRoutes_FirstEchelon; ++routeInd)
+			{
+				solFE.deliveryQuantityToWarehouse[w][t] += cplex.getValue(q[routeInd][w][t]);
+			}
+			
+			warehouseInventory[w][t] = cplex.getValue(I_warehouse[w][t]);
+		}
+	}
+}
+
+void MWPRP_FE_Deterministic::CalculateCostsForEachPart()
+{
+	double holdingCostWarehouse;
+	for (int t = 0; t < params.numPeriods; ++t)
+	{
+		solFE.setupCost += params.setupCost * solFE.productionSetup[t];
+		solFE.productionCost += params.unitProdCost * solFE.productionQuantity[t];
+		solFE.holdingCostPlant += params.unitHoldingCost_Plant * solFE.plantInventory[t];
+
+		for (int routeInd = 0; routeInd < numRoutes_FirstEchelon; ++routeInd)
+		{
+			if (selectedRoute[routeInd][t] == 1)
+			{
+				solFE.transportationCostPlantToWarehouse += routeCosts_FirstEchelon[routeInd];
+			}
+		}
+
+		for (int w = 0; w < params.numWarehouses; ++w)
+		{
+			holdingCostWarehouse += params.unitHoldingCost_Warehouse[w] * warehouseInventory[w][t];
+		}
+	}
+	double totalCost_FE = solFE.setupCost + solFE.productionCost + solFE.holdingCostPlant + solFE.transportationCostPlantToWarehouse;
+
+	cout << "Setup Cost: " << solFE.setupCost << endl;
+	cout << "Production Cost: " << solFE.productionCost << endl;
+	cout << "Holding Cost Plant: " << solFE.holdingCostPlant << endl;
+	cout << "Transportation Cost Plant to Warehouse: " << solFE.transportationCostPlantToWarehouse << endl;
+	cout << "Total Cost_FE (MW-PRP): " << totalCost_FE << endl;
+}
+
+void MWPRP_FE_Deterministic::DisplayProductionSetupVars()
+{
+	for (int t = 0; t < params.numPeriods; ++t)
+	{
+		if (solFE.productionSetup[t] == 1)
+		{
+			cout << "y[" << t + 1 << "] = " << solFE.productionSetup[t] << endl;
+		}
+	}
+}
+
+void MWPRP_FE_Deterministic::DisplayProductionQuantVars()
+{
+	for (int t = 0; t < params.numPeriods; ++t)
+	{
+		if (solFE.productionQuantity[t] > THRESHOLD)
+		{
+			cout << "p[" << t + 1 << "] = " << std::setprecision(0) << std::fixed << solFE.productionQuantity[t] << endl;
+		}
+	}
+}
+
+void MWPRP_FE_Deterministic::DisplayPlantInventoryVars()
+{
+	for (int t = 0; t < params.numPeriods; ++t)
+	{
+		if (solFE.plantInventory[t] > THRESHOLD)
+		{
+			cout << "I_plant[" << t + 1 << "] = " << std::setprecision(0) << std::fixed << solFE.plantInventory[t] << endl;
+		}
+	}
+}
+
+void MWPRP_FE_Deterministic::DisplayWarehouseInventoryVars()
+{
+	for (int t = 0; t < params.numPeriods; ++t)
+	{
+		for (int w = 0; w < params.numWarehouses; ++w)
+		{
+			if (warehouseInventory[w][t][s] > THRESHOLD)
+			{
+				cout << "I_warehouse[" << w + 1 << "][" << t + 1 << "] = " << std::setprecision(0) << std::fixed << warehouseInventory[w][t] << endl;
+			}
+		}
+	}
+}
+
+void MWPRP_FE_Deterministic::DisplayFirstEchelonRouteVars()
+{
+	for (int t = 0; t < params.numPeriods; ++t)
+	{
+		for (int routeInd = 0; routeInd < numRoutes_FirstEchelon; ++routeInd)
+		{
+			if (selectedRoute[routeInd][t] == 1)
+			{
+				cout << "o[" << routeInd + 1 << "][" << t + 1 << "] = " << selectedRoute[routeInd][t] << endl;
+			}
+		}
+	}
+
+	for (int t = 0; t < params.numPeriods; ++t)
+	{
+		int routeInd = 1;
+		for (const auto &route : solFE.routesPlantToWarehouse[t])
+		{
+
+			if (!route.empty())
+			{
+				cout << "Period: " << t + 1 << ", Route: " << routeInd << " : ";
+				for (auto it = route.begin(); it != route.end() - 1; ++it)
+				{
+					cout << *it << " -> ";
+				}
+				cout << route.back() << endl;
+			}
+			++routeInd;
+		}
+	}
+}
+
+void MWPRP_FE_Deterministic::DisplayDeliveryQuantityToWarehousesVars()
+{
+	for (int t = 0; t < params.numPeriods; ++t)
+	{
+		for (int w = 0; w < params.numWarehouses; ++w)
+		{
+			if (solFE.deliveryQuantityToWarehouse[w][t] > THRESHOLD)
+			{
+				cout << "q[" << w + 1 << "][" << t + 1 << "] = " << solFE.deliveryQuantityToWarehouse[w][t] << endl;
+			}
+		}
+	}
+}

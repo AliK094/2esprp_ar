@@ -2,14 +2,13 @@
 #define ALGORITHMS_H
 
 #include "ParameterSetting.h"
+#include "MWPRP_FE.h"
+#include "ILS.h"
+#include "S2EPRP_BC.h"
+#include "EV_BC.h"
+#include "RS2EPRP.h"
 #include "SolutionManager.h"
 
-#include "stochastic/MWPRP_FE.h"
-#include "stochastic/ILS.h"
-#include "stochastic/S2EPRP_BC.h"
-#include "stochastic/RS2EPRP.h"
-
-#include "eval/EV_BC.h"
 
 class Algorithms
 {

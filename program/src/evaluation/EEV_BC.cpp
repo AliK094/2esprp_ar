@@ -1,8 +1,8 @@
-#include "EV_BC.h"
+#include "EEV_BC.h"
 
-EV_BC::EV_BC(const ParameterSetting &parameters, const SolutionWarmStart_EV &warmStartSol_EV)
+EEV_BC::EEV_BC(const ParameterSetting &parameters, const SolutionWarmStart &warmStartSol, const SolFE &sol_EV)
 	: params(parameters),
-	  warmStart_EV(warmStartSol_EV),
+	  warmStart_EV(warmStartSol),
 	  THRESHOLD(1e-2),
 	  save_lpFile(false),
 	  save_mpsResultFile(false)
@@ -13,7 +13,7 @@ EV_BC::EV_BC(const ParameterSetting &parameters, const SolutionWarmStart_EV &war
 	routeCosts_FirstEchelon = params.getRouteCosts();
 }
 
-bool EV_BC::Solve()
+bool EEV_BC::Solve(const int scenarioIndex)
 {
 	try
 	{
@@ -29,9 +29,9 @@ bool EV_BC::Solve()
 		cplex.setParam(IloCplex::Param::Emphasis::MIP, 2);
 		cplex.setParam(IloCplex::Param::Conflict::Display, 2);
 
-		DefineVariables(env, model);
-		DefineObjectiveFunction(env, model);
-		DefineConstraints(env, model);
+		DefineVariables(env, model, scenarioIndex);
+		DefineObjectiveFunction(env, model, scenarioIndex);
+		DefineConstraints(env, model, scenarioIndex);
 
 		/* Assure linear mappings between the presolved and original models */
 		cplex.setParam(IloCplex::Param::Preprocessing::Presolve, IloFalse);
@@ -40,14 +40,14 @@ bool EV_BC::Solve()
 		/* Let MIP callbacks work on the original model */
 		cplex.setParam(IloCplex::Param::Preprocessing::Reduce, 0);
 
-		cout << "Solving EV_BC..." << endl;
+		cout << "Solving EEV_BC..." << endl;
 		SEC_2EPRP LegacyCallback(env, params, x, z);
 		cplex.use(&LegacyCallback);
 
 		if (save_lpFile)
 		{
 			string directory = "../cplexFiles/lpModel/";
-			string lpFileName = directory + "EV_BC_NW" + std::to_string(params.numWarehouses) + "_NR" + std::to_string(params.numCustomers) + "_KP" + std::to_string(params.numVehicles_Plant) + "_KW" + std::to_string(params.numVehicles_Warehouse) + "_T" + std::to_string(params.numPeriods) + "_S" + std::to_string(params.numScenarios) + "_Ins" + params.instance.c_str() + ".lp";
+			string lpFileName = directory + "EEV_BC_NW" + std::to_string(params.numWarehouses) + "_NR" + std::to_string(params.numCustomers) + "_KP" + std::to_string(params.numVehicles_Plant) + "_KW" + std::to_string(params.numVehicles_Warehouse) + "_T" + std::to_string(params.numPeriods) + "_S" + std::to_string(params.numScenarios) + "_Ins" + params.instance.c_str() + ".lp";
 
 			// Export the model to an LP file
 			cplex.exportModel(lpFileName.c_str());
@@ -85,7 +85,7 @@ bool EV_BC::Solve()
 			if (save_mpsResultFile)
 			{
 				string directory = "../cplexFiles/solVal/";
-				string solFileName = directory + "EV_BC_NW" + std::to_string(params.numWarehouses) + "_NR" + std::to_string(params.numCustomers) + "_KP" + std::to_string(params.numVehicles_Plant) + "_KW" + std::to_string(params.numVehicles_Warehouse) + "_T" + std::to_string(params.numPeriods) + "_S" + std::to_string(params.numScenarios) + "_Ins" + params.instance.c_str();
+				string solFileName = directory + "EEV_BC_NW" + std::to_string(params.numWarehouses) + "_NR" + std::to_string(params.numCustomers) + "_KP" + std::to_string(params.numVehicles_Plant) + "_KW" + std::to_string(params.numVehicles_Warehouse) + "_T" + std::to_string(params.numPeriods) + "_S" + std::to_string(params.numScenarios) + "_Ins" + params.instance.c_str();
 
 				// Export the model to an LP file
 				cplex.writeSolution(solFileName.c_str());
@@ -104,7 +104,7 @@ bool EV_BC::Solve()
 			if (save_mpsResultFile)
 			{
 				string directory = "../cplexFiles/solVal/";
-				string solFileName = directory + "EV_BC_NW" + std::to_string(params.numWarehouses) + "_NR" + std::to_string(params.numCustomers) + "_KP" + std::to_string(params.numVehicles_Plant) + "_KW" + std::to_string(params.numVehicles_Warehouse) + "_T" + std::to_string(params.numPeriods) + "_S" + std::to_string(params.numScenarios) + "_Ins" + params.instance.c_str();
+				string solFileName = directory + "EEV_BC_NW" + std::to_string(params.numWarehouses) + "_NR" + std::to_string(params.numCustomers) + "_KP" + std::to_string(params.numVehicles_Plant) + "_KW" + std::to_string(params.numVehicles_Warehouse) + "_T" + std::to_string(params.numPeriods) + "_S" + std::to_string(params.numScenarios) + "_Ins" + params.instance.c_str();
 
 				// Export the model to an LP file
 				cplex.writeSolution(solFileName.c_str());
@@ -214,40 +214,13 @@ bool EV_BC::Solve()
 	return true;
 }
 
-void EV_BC::DefineVariables(IloEnv &env, IloModel &model)
+void EEV_BC::DefineVariables(IloEnv &env, IloModel &model, int scenario)
 {
 	/* Define Decision Variables */
 	// Initialize Variable Manager
 	VariableManager varManager(env);
 	// -------------------------------------------------------------------------------------------------------------------------------
-	// y[t] variables (Production setup in period t)
-	y = varManager.create1D(params.numPeriods);
-	for (int t = 0; t < params.numPeriods; ++t)
-	{
-		string varName = "y[" + std::to_string(t + 1) + "]";
-		y[t] = IloNumVar(env, 0.0, 1.0, IloNumVar::Bool, varName.c_str());
-		model.add(y[t]);
-	}
-	// -------------------------------------------------------------------------------------------------------------------------------
-	// p[t] variables (Production quantity in period t)
-	p = varManager.create1D(params.numPeriods);
-	for (int t = 0; t < params.numPeriods; ++t)
-	{
-		string varName = "p[" + std::to_string(t + 1) + "]";
-		p[t] = IloNumVar(env, 0.0, params.prodCapacity, IloNumVar::Float, varName.c_str());
-		model.add(p[t]);
-	}
-	// -------------------------------------------------------------------------------------------------------------------------------
-	// I_plant[t] variables (Plant inventory in period t)
-	I_plant = varManager.create1D(params.numPeriods);
-	for (int t = 0; t < params.numPeriods; ++t)
-	{
-		string varName = "I_plant[" + std::to_string(t + 1) + "]";
-		I_plant[t] = IloNumVar(env, 0.0, params.storageCapacity_Plant, IloNumVar::Float, varName.c_str());
-		model.add(I_plant[t]);
-	}
-	// -------------------------------------------------------------------------------------------------------------------------------
-	// I_warehouse[w][t] variables (Warehouse w inventory in period t)
+	// I_warehouse[w][t]^([s]) variables (Warehouse w inventory in period t)
 	I_warehouse = varManager.create2D(params.numWarehouses, params.numPeriods);
 	for (int w = 0; w < params.numWarehouses; ++w)
 	{
@@ -259,7 +232,7 @@ void EV_BC::DefineVariables(IloEnv &env, IloModel &model)
 		}
 	}
 	// -------------------------------------------------------------------------------------------------------------------------------
-	// I_customer[i][t] variables (Customer i inventory in period t)
+	// I_customer[i][t]^([s]) variables (Customer i inventory in period t)
 	I_customer = varManager.create2D(params.numCustomers, params.numPeriods);
 	for (int i = 0; i < params.numCustomers; ++i)
 	{
@@ -271,42 +244,15 @@ void EV_BC::DefineVariables(IloEnv &env, IloModel &model)
 		}
 	}
 	// -------------------------------------------------------------------------------------------------------------------------------
-	// b_customer[i][t] variables (Customer i unsatisfied demand in period t)
+	// b_customer[i][t]^([s]) variables (Customer i unsatisfied demand in period t)
 	b_customer = varManager.create2D(params.numCustomers, params.numPeriods);
 	for (int i = 0; i < params.numCustomers; ++i)
 	{
 		for (int t = 0; t < params.numPeriods; ++t)
 		{
 			string varName = "b_customer[" + std::to_string(i + 1 + params.numWarehouses) + "][" + std::to_string(t + 1) + "]";
-			b_customer[i][t] = IloNumVar(env, 0.0, params.consumeRate[i], IloNumVar::Float, varName.c_str());
+			b_customer[i][t] = IloNumVar(env, 0.0, params.demand[i][t][scenario], IloNumVar::Float, varName.c_str());
 			model.add(b_customer[i][t]);
-		}
-	}
-	// -------------------------------------------------------------------------------------------------------------------------------
-	// q[r][w][t] variables (Delivery quantity to warehouse w in period t from route r)
-	q = varManager.create3D(numRoutes_FirstEchelon, params.numWarehouses, params.numPeriods);
-	for (int routeInd = 0; routeInd < numRoutes_FirstEchelon; ++routeInd)
-	{
-		for (int w = 0; w < params.numWarehouses; ++w)
-		{
-			for (int t = 0; t < params.numPeriods; ++t)
-			{
-				string varName = "q[" + std::to_string(routeInd + 1) + "][" + std::to_string(w + 1) + "][" + std::to_string(t + 1) + "]";
-				q[routeInd][w][t] = IloNumVar(env, 0.0, routeMatrix_FirstEchelon[routeInd][w + 1] * params.storageCapacity_Warehouse[w], IloNumVar::Float, varName.c_str());
-				model.add(q[routeInd][w][t]);
-			}
-		}
-	}
-	// -------------------------------------------------------------------------------------------------------------------------------
-	// o[r][t] variables (binary variables to indicate whether route r is selected in period t) - from plant to warehouse
-	o = varManager.create2D(numRoutes_FirstEchelon, params.numPeriods);
-	for (int routeInd = 0; routeInd < numRoutes_FirstEchelon; ++routeInd)
-	{
-		for (int t = 0; t < params.numPeriods; ++t)
-		{
-			string varName = "o[" + std::to_string(routeInd + 1) + "][" + std::to_string(t + 1) + "]";
-			o[routeInd][t] = IloNumVar(env, 0.0, 1.0, IloNumVar::Bool, varName.c_str());
-			model.add(o[routeInd][t]);
 		}
 	}
 	// -------------------------------------------------------------------------------------------------------------------------------
@@ -319,7 +265,7 @@ void EV_BC::DefineVariables(IloEnv &env, IloModel &model)
 			for (int t = 0; t < params.numPeriods; ++t)
 			{
 				string varName = "w[" + std::to_string(i + 1 + params.numWarehouses) + "][" + std::to_string(k + 1) + "][" + std::to_string(t + 1) + "]";
-				w_customer[i][k][t] = IloNumVar(env, 0.0, params.consumeRate[i], IloNumVar::Float, varName.c_str());
+				w_customer[i][k][t] = IloNumVar(env, 0.0, params.demand[i][t][scenario], IloNumVar::Float, varName.c_str());
 				model.add(w_customer[i][k][t]);
 			}
 		}
@@ -425,20 +371,12 @@ void EV_BC::DefineVariables(IloEnv &env, IloModel &model)
 	}
 }
 
-void EV_BC::DefineObjectiveFunction(IloEnv &env, IloModel &model)
+void EEV_BC::DefineObjectiveFunction(IloEnv &env, IloModel &model)
 {
 	// Define objective function
 	IloExpr obj(env);
 	for (int t = 0; t < params.numPeriods; ++t)
 	{
-		obj += params.setupCost * y[t];
-		obj += params.unitProdCost * p[t];
-		obj += params.unitHoldingCost_Plant * I_plant[t];
-		for (int routeInd = 0; routeInd < numRoutes_FirstEchelon; ++routeInd)
-		{
-			obj += routeCosts_FirstEchelon[routeInd] * o[routeInd][t];
-		}
-
 		for (int w = 0; w < params.numWarehouses; ++w)
 		{
 			obj += params.unitHoldingCost_Warehouse[w] * I_warehouse[w][t];
@@ -465,96 +403,19 @@ void EV_BC::DefineObjectiveFunction(IloEnv &env, IloModel &model)
 	model.add(IloMinimize(env, obj));
 }
 
-void EV_BC::DefineConstraints(IloEnv &env, IloModel &model)
+void EEV_BC::DefineConstraints(IloEnv &env, IloModel &model, int scenario)
 {
 	/* Define Constraints */
 	// ---------------------------------------------------------------------------------------------------------------------------
 	/*
-		Production Capacity Constraints:
-			p[t] <= Capacity * y[t]			for all t in T
-	*/
-	for (int t = 0; t < params.numPeriods; ++t)
-	{
-		string constraintName = "ProductionCapacity(" + std::to_string(t + 1) + ")";
-
-		IloExpr expr(env);
-		expr += p[t];
-		expr -= params.prodCapacity * y[t];
-		IloConstraint productionCapacityConstraint(expr <= 0);
-		expr.end();
-
-		model.add(productionCapacityConstraint).setName(constraintName.c_str());
-	}
-	// ---------------------------------------------------------------------------------------------------------------------------
-	/*
-		Plant Inventory Capacity Constraints
-			I_plant[t] <= params.storageCapacity_Plant 		for all t in T
-	*/
-	for (int t = 0; t < params.numPeriods; ++t)
-	{
-		string constraintName = "PlantInventoryCapacity(" + std::to_string(t + 1) + ")";
-
-		IloExpr expr(env);
-		expr += I_plant[t];
-		IloConstraint plantInventoryCapacityConstraint(expr <= params.storageCapacity_Plant);
-		expr.end();
-
-		model.add(plantInventoryCapacityConstraint).setName(constraintName.c_str());
-	}
-	// ---------------------------------------------------------------------------------------------------------------------------
-	/*
-		Plant Inventory Balance Constraints:
-			I_plant[t] = I_plant[t-1] + p[t] - sum(r in R) sum(w in W) q[r][w][t] 		for all t in T
-	*/
-	for (int t = 0; t < params.numPeriods; ++t)
-	{
-		string constraintName = "PlantInventoryBalance(" + std::to_string(t + 1) + ")";
-
-		IloExpr expr(env);
-		if (t == 0)
-		{
-			expr += I_plant[t];
-			expr -= p[t];
-			for (int routeInd = 0; routeInd < numRoutes_FirstEchelon; ++routeInd)
-			{
-				for (int w = 0; w < params.numWarehouses; ++w)
-				{
-					expr += q[routeInd][w][t];
-				}
-			}
-			IloConstraint plantInventoryBalanceConstraint(expr == params.initialInventory_Plant);
-			expr.end();
-
-			model.add(plantInventoryBalanceConstraint).setName(constraintName.c_str());
-		}
-		else
-		{
-			expr += I_plant[t];
-			expr -= I_plant[t - 1];
-			expr -= p[t];
-			for (int routeInd = 0; routeInd < numRoutes_FirstEchelon; ++routeInd)
-			{
-				for (int w = 0; w < params.numWarehouses; ++w)
-				{
-					expr += q[routeInd][w][t];
-				}
-			}
-			IloConstraint plantInventoryBalanceConstraint(expr == 0);
-			expr.end();
-
-			model.add(plantInventoryBalanceConstraint).setName(constraintName.c_str());
-		}
-	}
-	// ---------------------------------------------------------------------------------------------------------------------------
-	/*
 		Warehouses Inventory Capacity Constraints:
-			I_warehouse[w][t] <= storageCapacity_warehouse 		for all w in W, t in T
+			I_warehouse[w][t]^([s]) <= storageCapacity_warehouse 		for all w in W, t in T
 	*/
 	for (int t = 0; t < params.numPeriods; ++t)
 	{
 		for (int w = 0; w < params.numWarehouses; ++w)
 		{
-			string constraintName = "WarehouseInventoryCapacity(" + std::to_string(w + 1) + "," + std::to_string(t + 1) + ")";
+			string constraintName = "WarehouseInventoryCapacity(" + std::to_string(w + 1) + "," + std::to_string(t + 1) + "," + std::to_string(scenario + 1) + ")";
 
 			IloExpr expr(env);
 			expr += I_warehouse[w][t];
@@ -567,23 +428,18 @@ void EV_BC::DefineConstraints(IloEnv &env, IloModel &model)
 	// ---------------------------------------------------------------------------------------------------------------------------
 	/*
 		Warehouse Inventory Balance Constraints:
-			I[w][t] = I[w][t-1] + sum(r in R) q[w][r][t] - sum(i in N_c) sum(k in K_w) w_customer[i][k][t]	for all w in W, t in T
+			I[w][t]^([s]) = I[w][t-1]^([s]) + sum(r in R) q[w][r][t] - sum(i in N_c) sum(k in K_w) w_customer[i][k][t]^([s])	for all w in W, t in T
 	*/
 	for (int t = 0; t < params.numPeriods; ++t)
 	{
 		for (int w = 0; w < params.numWarehouses; ++w)
 		{
-			string constraintName = "WarehouseInventoryBalance(" + std::to_string(w + 1) + "," + std::to_string(t + 1) + ")";
+			string constraintName = "WarehouseInventoryBalance(" + std::to_string(w + 1) + "," + std::to_string(t + 1) + "," + std::to_string(scenario + 1) + ")";
 
 			IloExpr expr(env);
 			if (t == 0)
 			{
 				expr += I_warehouse[w][t];
-
-				for (int routeInd = 0; routeInd < numRoutes_FirstEchelon; ++routeInd)
-				{
-					expr -= q[routeInd][w][t];
-				}
 
 				for (int k : params.set_WarehouseVehicles[w])
 				{
@@ -592,7 +448,7 @@ void EV_BC::DefineConstraints(IloEnv &env, IloModel &model)
 						expr += w_customer[i][k][t];
 					}
 				}
-				IloConstraint WarehouseInventoryBalanceConstraint(expr == params.initialInventory_Warehouse[w]);
+				IloConstraint WarehouseInventoryBalanceConstraint(expr == params.initialInventory_Warehouse[w] + sol_EV.deliveryQuantityToWarehouse[w][t]);
 				expr.end();
 
 				model.add(WarehouseInventoryBalanceConstraint).setName(constraintName.c_str());
@@ -602,11 +458,6 @@ void EV_BC::DefineConstraints(IloEnv &env, IloModel &model)
 				expr += I_warehouse[w][t];
 				expr -= I_warehouse[w][t - 1];
 
-				for (int routeInd = 0; routeInd < numRoutes_FirstEchelon; ++routeInd)
-				{
-					expr -= q[routeInd][w][t];
-				}
-
 				for (int k : params.set_WarehouseVehicles[w])
 				{
 					for (int i = 0; i < params.numCustomers; ++i)
@@ -614,7 +465,7 @@ void EV_BC::DefineConstraints(IloEnv &env, IloModel &model)
 						expr += w_customer[i][k][t];
 					}
 				}
-				IloConstraint WarehouseInventoryBalanceConstraint(expr == 0);
+				IloConstraint WarehouseInventoryBalanceConstraint(expr == sol_EV.deliveryQuantityToWarehouse[w][t]);
 				expr.end();
 
 				model.add(WarehouseInventoryBalanceConstraint).setName(constraintName.c_str());
@@ -624,13 +475,13 @@ void EV_BC::DefineConstraints(IloEnv &env, IloModel &model)
 	// ---------------------------------------------------------------------------------------------------------------------------
 	/*
 		Customers Inventory Balance Constraints:
-			I[i][t] = I[i][t-1] + sum(k in K) w_customer[i][k][t] - d[i][t] + b[i][t] 	for all i in N_w, t in T
+			I[i][t]^([s]) = I[i][t-1]^([s]) + sum(k in K) w_customer[i][k][t]^([s]) - d[i][t]^([s]) + b[i][t]^([s]) 	for all i in N_w, t in T
 	*/
 	for (int t = 0; t < params.numPeriods; ++t)
 	{
 		for (int i = 0; i < params.numCustomers; ++i)
 		{
-			string constraintName = "CustomerInventoryBalance(" + std::to_string(i + 1 + params.numWarehouses) + "," + std::to_string(t + 1) + ")";
+			string constraintName = "CustomerInventoryBalance(" + std::to_string(i + 1 + params.numWarehouses) + "," + std::to_string(t + 1) + "," + std::to_string(scenario + 1) + ")";
 
 			IloExpr expr(env);
 			if (t == 0)
@@ -641,7 +492,7 @@ void EV_BC::DefineConstraints(IloEnv &env, IloModel &model)
 					expr -= w_customer[i][k][t];
 				}
 				expr -= b_customer[i][t];
-				IloConstraint CustomerInventoryBalanceConstraint(expr == params.initialInventory_Customer[i] - params.consumeRate[i]);
+				IloConstraint CustomerInventoryBalanceConstraint(expr == params.initialInventory_Customer[i] - params.demand[i][t][scenario]);
 				expr.end();
 
 				model.add(CustomerInventoryBalanceConstraint).setName(constraintName.c_str());
@@ -655,7 +506,7 @@ void EV_BC::DefineConstraints(IloEnv &env, IloModel &model)
 					expr -= w_customer[i][k][t];
 				}
 				expr -= b_customer[i][t];
-				IloConstraint CustomerInventoryBalanceConstraint(expr == -params.consumeRate[i]);
+				IloConstraint CustomerInventoryBalanceConstraint(expr == -params.demand[i][t][scenarioIndex]);
 				expr.end();
 
 				model.add(CustomerInventoryBalanceConstraint).setName(constraintName.c_str());
@@ -665,17 +516,17 @@ void EV_BC::DefineConstraints(IloEnv &env, IloModel &model)
 	// ---------------------------------------------------------------------------------------------------------------------------
 	/*
 		Customers Inventory Capacity Constraints:
-			I[i][t] + d[i][t] <= params.storageCapacity_Customer[i] 		for all i in N_w, t in T
+			I[i][t]^([s]) + d[i][t]^([s]) <= params.storageCapacity_Customer[i] 		for all i in N_w, t in T
 	*/
 	for (int t = 0; t < params.numPeriods; ++t)
 	{
 		for (int i = 0; i < params.numCustomers; ++i)
 		{
-			string constraintName = "CustomerInventoryCapacity(" + std::to_string(i + 1 + params.numWarehouses) + "," + std::to_string(t + 1) + ")";
+			string constraintName = "CustomerInventoryCapacity(" + std::to_string(i + 1 + params.numWarehouses) + "," + std::to_string(t + 1) + "," + std::to_string(scenario + 1) + ")";
 
 			IloExpr expr(env);
 			expr += I_customer[i][t];
-			IloConstraint CustomerInventoryCapacityConstraint(expr <= params.storageCapacity_Customer[i] - params.consumeRate[i]);
+			IloConstraint CustomerInventoryCapacityConstraint(expr <= params.storageCapacity_Customer[i] - params.demand[i][t][scenarioIndex]);
 			expr.end();
 
 			model.add(CustomerInventoryCapacityConstraint).setName(constraintName.c_str());
@@ -683,94 +534,21 @@ void EV_BC::DefineConstraints(IloEnv &env, IloModel &model)
 	}
 	// ---------------------------------------------------------------------------------------------------------------------------
 	/*
-		Each Warehouse must be covered by at most one route.
-			sum(r in R) a[r][w] * o[r][t] <= 1			for all w in w and t in T
-	*/
-	for (int t = 0; t < params.numPeriods; ++t)
-	{
-		for (int w = 0; w < params.numWarehouses; ++w)
-		{
-			string constraintName = "WarehouseCoverage(" + std::to_string(w + 1) + "," + std::to_string(t + 1) + ")";
-
-			IloExpr expr(env);
-			for (int routeInd = 0; routeInd < numRoutes_FirstEchelon; ++routeInd)
-			{
-				expr += routeMatrix_FirstEchelon[routeInd][w + 1] * o[routeInd][t];
-			}
-			IloConstraint warehouseCoverageConstraint(expr <= 1);
-			expr.end();
-
-			model.add(warehouseCoverageConstraint).setName(constraintName.c_str());
-		}
-	}
-	// ---------------------------------------------------------------------------------------------------------------------------
-	/*
-		Vehicle Capacity Constraints (From Plant to Warehouse):
-			sum(w in W) q[r][w][t] <= params.vehicleCapacity_Plant * o[r][t] 		for all r in R, t in T
-	*/
-	for (int t = 0; t < params.numPeriods; ++t)
-	{
-		for (int routeInd = 0; routeInd < numRoutes_FirstEchelon; ++routeInd)
-		{
-			string constraintName = "VehicleCapacity(" + std::to_string(routeInd + 1) + "," + std::to_string(t + 1) + ")";
-
-			IloExpr expr(env);
-			for (int w = 0; w < params.numWarehouses; ++w)
-			{
-				expr += q[routeInd][w][t];
-			}
-			expr -= params.vehicleCapacity_Plant * o[routeInd][t];
-			IloConstraint vehicleCapacityConstraint(expr <= 0);
-			expr.end();
-
-			model.add(vehicleCapacityConstraint).setName(constraintName.c_str());
-		}
-	}
-	// ---------------------------------------------------------------------------------------------------------------------------
-	/*
-		Fleet Size Constraints:
-			sum (r in R) o[r][t] <= params.numVehicles_Plant 		for all t in T
-	*/
-	for (int t = 0; t < params.numPeriods; ++t)
-	{
-		string constraintName = "FleetSize(" + std::to_string(t + 1) + ")";
-
-		IloExpr expr(env);
-		for (int routeInd = 0; routeInd < numRoutes_FirstEchelon; ++routeInd)
-		{
-			expr += o[routeInd][t];
-		}
-		IloConstraint fleetSizeConstraint(expr <= params.numVehicles_Plant);
-		expr.end();
-
-		model.add(fleetSizeConstraint).setName(constraintName.c_str());
-	}
-	// ---------------------------------------------------------------------------------------------------------------------------
-	/*
 		Customer Visit Constraints (From Warehouse to Customer):
-			w_customer[i][k][t] <= DeliveryUB[i][t] * z[i][k][t] 		for all i in N_c, k in union K, t in T
+			w_customer[i][k][t]^([s]) <= DeliveryUB[i][t]^([s]) * z[i][k][t]^([s]) 		for all i in N_c, k in union K, t in T
 
 	*/
-	vector<vector<double>> Del_UB(numCustomers, vector<double>(numPeriods, 0.0));
-	for (int t = 0; t < numPeriods; ++t)
-	{
-		for (int i = 0; i < numCustomers; ++i)
-		{
-			Del_UB[i][t] = std::min({(params.numPeriods - t) * params.consumeRate[i], params.vehicleCapacity_Warehouse, params.storageCapacity_Customer[i]});
-		}
-	}
-
 	for (int t = 0; t < params.numPeriods; ++t)
 	{
 		for (int k = 0; k < params.numVehicles_SecondEchelon; ++k)
 		{
 			for (int i = 0; i < params.numCustomers; ++i)
 			{
-				string constraintName = "CustomerVisit(" + std::to_string(i + 1 + params.numWarehouses) + "," + std::to_string(k + 1) + "," + std::to_string(t + 1) + ")";
+				string constraintName = "CustomerVisit(" + std::to_string(i + 1 + params.numWarehouses) + "," + std::to_string(k + 1) + "," + std::to_string(t + 1) + "," + std::to_string(scenario + 1) + ")";
 
 				IloExpr expr(env);
 				expr += w_customer[i][k][t];
-				expr -= Del_UB[i][t] * z[i + params.numWarehouses][k][t];
+				expr -= params.DeliveryUB_perCustomer[i][t][scenario] * z[i + params.numWarehouses][k][t];
 				IloConstraint customerVisitConstraint(expr <= 0);
 				expr.end();
 
@@ -781,7 +559,7 @@ void EV_BC::DefineConstraints(IloEnv &env, IloModel &model)
 	// ---------------------------------------------------------------------------------------------------------------------------
 	/*
 		Vehicle Capacity Constraints (From Warehouse to Customer):
-			sum(i in N_c) w_customer[i][k][t] <= Q^w * z[w][k][t] 		for all w in N_w, k in K_w, t in T
+			sum(i in N_c) w_customer[i][k][t]^([s]) <= Q^w * z[w][k][t]^([s]) 		for all w in N_w, k in K_w, t in T
 
 	*/
 	for (int t = 0; t < params.numPeriods; ++t)
@@ -790,7 +568,7 @@ void EV_BC::DefineConstraints(IloEnv &env, IloModel &model)
 		{
 			for (int k : params.set_WarehouseVehicles[w])
 			{
-				string constraintName = "VehicleCapacity(" + std::to_string(w + 1) + "," + std::to_string(k + 1) + "," + std::to_string(t + 1) + ")";
+				string constraintName = "VehicleCapacity(" + std::to_string(w + 1) + "," + std::to_string(k + 1) + "," + std::to_string(t + 1) + "," + std::to_string(scenario + 1) + ")";
 
 				IloExpr expr(env);
 				for (int i = 0; i < params.numCustomers; ++i)
@@ -808,14 +586,14 @@ void EV_BC::DefineConstraints(IloEnv &env, IloModel &model)
 	// ---------------------------------------------------------------------------------------------------------------------------
 	/*
 		Prevent Split Deliveries:
-			sum(k in union K) z[i][k][t] <= 1 		for all i in N_c, k in union K, t in T
+			sum(k in union K) z[i][k][t]^([s]) <= 1 		for all i in N_c, k in union K, t in T
 
 	*/
 	for (int t = 0; t < params.numPeriods; ++t)
 	{
 		for (int i = 0; i < params.numCustomers; ++i)
 		{
-			string constraintName = "PreventSplitDeliveries(" + std::to_string(i + 1 + params.numWarehouses) + "," + std::to_string(t + 1) + ")";
+			string constraintName = "PreventSplitDeliveries(" + std::to_string(i + 1 + params.numWarehouses) + "," + std::to_string(t + 1) + "," + std::to_string(scenario + 1) + ")";
 
 			IloExpr expr(env);
 			for (int k = 0; k < params.numVehicles_SecondEchelon; ++k)
@@ -831,7 +609,7 @@ void EV_BC::DefineConstraints(IloEnv &env, IloModel &model)
 	// ---------------------------------------------------------------------------------------------------------------------------
 	/*
 		Degree Constraints:
-			sum((j,j') in incident (i)) x[j][j'][k][t] == 2 * z[i][k][t] 		for all i in N_w + N_c, k in union K, t in T
+			sum((j,j') in incident (i)) x[j][j'][k][t]^([s]) == 2 * z[i][k][t]^([s]) 		for all i in N_w + N_c, k in union K, t in T
 
 	*/
 	for (int t = 0; t < params.numPeriods; ++t)
@@ -840,7 +618,7 @@ void EV_BC::DefineConstraints(IloEnv &env, IloModel &model)
 		{
 			for (int i = 0; i < params.numNodes_SecondEchelon; ++i)
 			{
-				string constraintName = "DegreeConstraint(" + std::to_string(i + 1) + "," + std::to_string(k + 1) + "," + std::to_string(t + 1) + ")";
+				string constraintName = "DegreeConstraint(" + std::to_string(i + 1) + "," + std::to_string(k + 1) + "," + std::to_string(t + 1) + "," + std::to_string(scenario + 1) + ")";
 
 				IloExpr expr(env);
 				for (int e = 0; e < params.numEdges_SecondEchelon; ++e)
@@ -861,7 +639,7 @@ void EV_BC::DefineConstraints(IloEnv &env, IloModel &model)
 	/* End of Model Constraints */
 }
 
-void EV_BC::DefineValidInequalities(IloEnv &env, IloModel &model)
+void EEV_BC::DefineValidInequalities(IloEnv &env, IloModel &model)
 {
 	// ---------------------------------------------------------------------------------------------------------------------------
 	/* Define Valid Inequalities */
@@ -869,7 +647,7 @@ void EV_BC::DefineValidInequalities(IloEnv &env, IloModel &model)
 	/*
 		Logical Inequality (#1):
 			i can be visited by vehicle k iff k leaves the warehouse w
-			z[i][k][t] <= z[w][k][t] for all i in N_c, w in N_w, k in K_w t in T
+			z[i][k][t]^([s]) <= z[w][k][t]^([s]) for all i in N_c, w in N_w, k in K_w t in T
 	*/
 	for (int t = 0; t < params.numPeriods; ++t)
 	{
@@ -879,7 +657,7 @@ void EV_BC::DefineValidInequalities(IloEnv &env, IloModel &model)
 			{
 				for (int i = 0; i < params.numCustomers; ++i)
 				{
-					string constraintName = "LogicalInequality_One(" + std::to_string(i + 1 + params.numWarehouses) + "," + std::to_string(w + 1) + "," + std::to_string(k + 1) + "," + std::to_string(t + 1) + ")";
+					string constraintName = "LogicalInequality_One(" + std::to_string(i + 1 + params.numWarehouses) + "," + std::to_string(w + 1) + "," + std::to_string(k + 1) + "," + std::to_string(t + 1) + "," + std::to_string(scenario + 1) + ")";
 
 					IloExpr expr(env);
 					expr += z[i + params.numWarehouses][k][t];
@@ -895,8 +673,8 @@ void EV_BC::DefineValidInequalities(IloEnv &env, IloModel &model)
 	// ---------------------------------------------------------------------------------------------------------------------------
 	/*
 		Logical Inequality (#2):
-		x[i][j][k][t] <= z[i][k][t] for all i in N_w + N_c, j in N_w + N_c, k in K_w, t in T
-		x[i][j][k][t] <= z[j][k][t] for all i in N_w + N_c, j in N_w + N_c, k in K_w, t in T
+		x[i][j][k][t]^([s]) <= z[i][k][t]^([s]) for all i in N_w + N_c, j in N_w + N_c, k in K_w, t in T
+		x[i][j][k][t]^([s]) <= z[j][k][t]^([s]) for all i in N_w + N_c, j in N_w + N_c, k in K_w, t in T
 	*/
 	//
 	// {
@@ -910,7 +688,7 @@ void EV_BC::DefineValidInequalities(IloEnv &env, IloModel &model)
 	// 				{
 	// 					if (params.index_i_SecondEchelon[e] >= params.numWarehouses && params.index_j_SecondEchelon[e] >= params.numWarehouses)
 	// 					{
-	// 						string constraintName = "LogicalInequality_TwoSetOne(" + std::to_string(e) + "," + std::to_string(k + 1) + "," + std::to_string(t + 1) + ")";
+	// 						string constraintName = "LogicalInequality_TwoSetOne(" + std::to_string(e) + "," + std::to_string(k + 1) + "," + std::to_string(t + 1) + "," + std::to_string(scenario + 1) + ")";
 
 	// 						IloExpr expr(env);
 	// 						expr += x[e][k][t];
@@ -938,7 +716,7 @@ void EV_BC::DefineValidInequalities(IloEnv &env, IloModel &model)
 	// 				{
 	// 					if (params.index_i_SecondEchelon[e] >= params.numWarehouses && params.index_j_SecondEchelon[e] >= params.numWarehouses)
 	// 					{
-	// 						string constraintName = "LogicalInequality_TwoSetTwo(" + std::to_string(e) + "," + std::to_string(k + 1) + "," + std::to_string(t + 1) + ")";
+	// 						string constraintName = "LogicalInequality_TwoSetTwo(" + std::to_string(e) + "," + std::to_string(k + 1) + "," + std::to_string(t + 1) + "," + std::to_string(scenario + 1) + ")";
 
 	// 						IloExpr expr(env);
 	// 						expr += x[e][k][t];
@@ -957,7 +735,7 @@ void EV_BC::DefineValidInequalities(IloEnv &env, IloModel &model)
 	/*
 		Symmetry Breaking Constraints (#1):
 			k can be dispatched iff k - 1 is already dispatched
-			z[w][k][t] <= z[w][k - 1][t] for all w in N_w, k in K_w t in T
+			z[w][k][t]^([s]) <= z[w][k - 1][t]^([s]) for all w in N_w, k in K_w t in T
 	*/
 	for (int t = 0; t < params.numPeriods; ++t)
 	{
@@ -967,7 +745,7 @@ void EV_BC::DefineValidInequalities(IloEnv &env, IloModel &model)
 			{
 				for (int k = params.set_WarehouseVehicles[w][1]; k < params.set_WarehouseVehicles[w][params.set_WarehouseVehicles[w].size() - 1]; ++k)
 				{
-					string constraintName = "SymmetryBreakingConstraint_One(" + std::to_string(w + 1) + "," + std::to_string(k + 1) + "," + std::to_string(t + 1) + ")";
+					string constraintName = "SymmetryBreakingConstraint_One(" + std::to_string(w + 1) + "," + std::to_string(k + 1) + "," + std::to_string(t + 1) + "," + std::to_string(scenario + 1) + ")";
 
 					IloExpr expr(env);
 					expr += z[w][k][t];
@@ -983,7 +761,7 @@ void EV_BC::DefineValidInequalities(IloEnv &env, IloModel &model)
 	// ---------------------------------------------------------------------------------------------------------------------------
 	/*
 		Lexicographic Constraints:
-			sum(i = 1 to j) 2**(j - i) * z[i][k][t] <= sum(i = 1 to j) 2**(j - i) * z[i][k - 1][t] for all j in N_c, k in K_w, t in T
+			sum(i = 1 to j) 2**(j - i) * z[i][k][t]^([s]) <= sum(i = 1 to j) 2**(j - i) * z[i][k - 1][t]^([s]) for all j in N_c, k in K_w, t in T
 	*/
 	for (int t = 0; t < params.numPeriods; ++t)
 	{
@@ -995,7 +773,7 @@ void EV_BC::DefineValidInequalities(IloEnv &env, IloModel &model)
 				{
 					for (int j = 0; j < params.numCustomers; ++j)
 					{
-						string constraintName = "LexicographicConstraint(" + std::to_string(j + 1 + params.numWarehouses) + "," + std::to_string(k + 1) + "," + std::to_string(t + 1) + ")";
+						string constraintName = "LexicographicConstraint(" + std::to_string(j + 1 + params.numWarehouses) + "," + std::to_string(k + 1) + "," + std::to_string(t + 1) + "," + std::to_string(scenario + 1) + ")";
 
 						IloExpr expr(env);
 						for (int i = 0; i <= j; i++)
@@ -1018,57 +796,21 @@ void EV_BC::DefineValidInequalities(IloEnv &env, IloModel &model)
 	// ---------------------------------------------------------------------------------------------------------------------------
 }
 
-void EV_BC::RetrieveSolutions(IloCplex &cplex)
+void EEV_BC::RetrieveSolutions(IloCplex &cplex)
 {
 	// Retrieve solution
-	// initilize variables
-	solFE.productionSetup.assign(params.numPeriods, 0);
-	solFE.productionQuantity.assign(params.numPeriods, 0.0);
-	solFE.plantInventory.assign(params.numPeriods, 0.0);
-	solFE.deliveryQuantityToWarehouse.assign(params.numWarehouses, vector<double>(params.numPeriods, 0.0));
-	solFE.routesPlantToWarehouse.assign(params.numPeriods, vector<vector<int>>(params.numVehicles_Plant, vector<int>()));
-
 	solSE.warehouseInventory.assign(params.numWarehouses, vector<vector<double>>(params.numPeriods, vector<double>(1, 0.0)));
 	solSE.customerInventory.assign(params.numCustomers, vector<vector<double>>(params.numPeriods, vector<double>(1, 0.0)));
 	solSE.customerUnmetDemand.assign(params.numCustomers, vector<vector<double>>(params.numPeriods, vector<double>(1, 0.0)));
 	solSE.deliveryQuantityToCustomer.assign(params.numCustomers, vector<vector<double>>(params.numPeriods, vector<double>(1, 0.0)));
 	solSE.routesWarehouseToCustomer.assign(1, vector<vector<vector<vector<int>>>>(params.numWarehouses, vector<vector<vector<int>>>(params.numPeriods, vector<vector<int>>(params.numVehicles_Warehouse, vector<int>()))));
 	solSE.customerAssignmentToWarehouse.assign(1, vector<vector<vector<int>>>(params.numPeriods, vector<vector<int>>(params.numWarehouses, vector<int>(params.numCustomers, 0))));
-
-	selectedRoute.assign(numRoutes_FirstEchelon, vector<int>(params.numPeriods, 0));
 	vector<vector<vector<vector<int>>>> visitedNodes_SecondEchelon(params.numNodes_SecondEchelon, vector<vector<vector<int>>>(params.numVehicles_SecondEchelon, vector<vector<int>>(params.numPeriods, vector<int>(1, 0))));
 	vector<vector<vector<vector<int>>>> visitedEdges_SecondEchelon(params.numEdges_SecondEchelon, vector<vector<vector<int>>>(params.numVehicles_SecondEchelon, vector<vector<int>>(params.numPeriods, vector<int>(1, 0))));
 
 	// Get solution values of decision variables
 	for (int t = 0; t < params.numPeriods; ++t)
 	{
-		solFE.productionSetup[t] = cplex.getIntValue(y[t]);
-		solFE.productionQuantity[t] = cplex.getValue(p[t]);
-		solFE.plantInventory[t] = cplex.getValue(I_plant[t]);
-
-		for (int w = 0; w < params.numWarehouses; ++w)
-		{
-			for (int routeInd = 0; routeInd < numRoutes_FirstEchelon; ++routeInd)
-			{
-				solFE.deliveryQuantityToWarehouse[w][t] += cplex.getValue(q[routeInd][w][t]);
-			}
-		}
-
-		int vehInd = 0;
-		for (int routeInd = 0; routeInd < numRoutes_FirstEchelon; ++routeInd)
-		{
-			selectedRoute[routeInd][t] = cplex.getIntValue(o[routeInd][t]);
-			if (selectedRoute[routeInd][t] == 1)
-			{
-				for (int node : optimalRoutes_FirstEchelon[routeInd])
-				{
-					solFE.routesPlantToWarehouse[t][vehInd].push_back(node);
-				}
-				vehInd++;
-				// solFE.routesPlantToWarehouse[t][routeInd] = optimalRoutes_FirstEchelon[routeInd];
-			}
-		}
-
 		for (int w = 0; w < params.numWarehouses; ++w)
 		{
 			solSE.warehouseInventory[w][t][0] = cplex.getValue(I_warehouse[w][t]);
@@ -1131,16 +873,6 @@ void EV_BC::RetrieveSolutions(IloCplex &cplex)
 				vector<int> route;
 				if (visitedNodes_SecondEchelon[w][k][t][0] == 1)
 				{
-					// int routeSize = 0;
-					// for (int i = 0; i < params.numNodes_SecondEchelon; ++i)
-					// {
-					// 	if (visitedNodes_SecondEchelon[i][k][t][0] == 1)
-					// 	{
-					// 		routeSize++;
-					// 		cout << "visitedNodes_SecondEchelon[" << i + 1 << "][" << k + 1 << "][" << t + 1 << "] = " << visitedNodes_SecondEchelon[i][k][t][0] << endl;
-					// 	}
-					// }
-
 					route.push_back(w);
 					int currentNode = w;
 					vector<bool> visited(params.numNodes_SecondEchelon, false);
@@ -1208,7 +940,7 @@ void EV_BC::RetrieveSolutions(IloCplex &cplex)
 	}
 }
 
-void EV_BC::CalculateCostsForEachPart()
+void EEV_BC::CalculateCostsForEachPart()
 {
 	for (int t = 0; t < params.numPeriods; ++t)
 	{
@@ -1277,7 +1009,7 @@ void EV_BC::CalculateCostsForEachPart()
 	cout << "objValue_Total (EV) : " << result.objValue_Total << endl;
 }
 
-void EV_BC::DisplayProductionSetupVars()
+void EEV_BC::DisplayProductionSetupVars()
 {
 	for (int t = 0; t < params.numPeriods; ++t)
 	{
@@ -1288,7 +1020,7 @@ void EV_BC::DisplayProductionSetupVars()
 	}
 }
 
-void EV_BC::DisplayProductionQuantVars()
+void EEV_BC::DisplayProductionQuantVars()
 {
 	for (int t = 0; t < params.numPeriods; ++t)
 	{
@@ -1299,7 +1031,7 @@ void EV_BC::DisplayProductionQuantVars()
 	}
 }
 
-void EV_BC::DisplayPlantInventoryVars()
+void EEV_BC::DisplayPlantInventoryVars()
 {
 	for (int t = 0; t < params.numPeriods; ++t)
 	{
@@ -1310,7 +1042,7 @@ void EV_BC::DisplayPlantInventoryVars()
 	}
 }
 
-void EV_BC::DisplayWarehouseInventoryVars()
+void EEV_BC::DisplayWarehouseInventoryVars()
 {
 	for (int t = 0; t < params.numPeriods; ++t)
 	{
@@ -1324,7 +1056,7 @@ void EV_BC::DisplayWarehouseInventoryVars()
 	}
 }
 
-void EV_BC::DisplayFirstEchelonRouteVars()
+void EEV_BC::DisplayFirstEchelonRouteVars()
 {
 	for (int t = 0; t < params.numPeriods; ++t)
 	{
@@ -1356,7 +1088,7 @@ void EV_BC::DisplayFirstEchelonRouteVars()
 	}
 }
 
-void EV_BC::DisplayDeliveryQuantityToWarehousesVars()
+void EEV_BC::DisplayDeliveryQuantityToWarehousesVars()
 {
 	for (int t = 0; t < params.numPeriods; ++t)
 	{
@@ -1370,7 +1102,7 @@ void EV_BC::DisplayDeliveryQuantityToWarehousesVars()
 	}
 }
 
-void EV_BC::DisplayCustomerInventoryVars()
+void EEV_BC::DisplayCustomerInventoryVars()
 {
 	for (int t = 0; t < params.numPeriods; ++t)
 	{
@@ -1384,7 +1116,7 @@ void EV_BC::DisplayCustomerInventoryVars()
 	}
 }
 
-void EV_BC::DisplayCustomerUnmetDemandVars()
+void EEV_BC::DisplayCustomerUnmetDemandVars()
 {
 	for (int t = 0; t < params.numPeriods; ++t)
 	{
@@ -1398,7 +1130,7 @@ void EV_BC::DisplayCustomerUnmetDemandVars()
 	}
 }
 
-void EV_BC::DisplayDeliveryQuantityToCustomersVars()
+void EEV_BC::DisplayDeliveryQuantityToCustomersVars()
 {
 	for (int t = 0; t < params.numPeriods; ++t)
 	{
@@ -1412,7 +1144,7 @@ void EV_BC::DisplayDeliveryQuantityToCustomersVars()
 	}
 }
 
-void EV_BC::DisplayRoutesWarehouseToCustomersVars()
+void EEV_BC::DisplayRoutesWarehouseToCustomersVars()
 {
 	for (int w = 0; w < params.numWarehouses; ++w)
 	{
@@ -1438,7 +1170,7 @@ void EV_BC::DisplayRoutesWarehouseToCustomersVars()
 	}
 }
 
-void EV_BC::DefineWarmStartSolution(IloEnv &env, IloCplex &cplex)
+void EEV_BC::DefineWarmStartSolution(IloEnv &env, IloCplex &cplex)
 {
 	IloNumVarArray startVar(env);
 	IloNumArray startVal(env);

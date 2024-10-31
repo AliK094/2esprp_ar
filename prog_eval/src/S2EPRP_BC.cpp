@@ -69,7 +69,7 @@ bool S2EPRP_BC::Solve()
 		{
 			cout << "Couldn't Find A Solution For Warmstart" << endl;
 		}
-		// DefineValidInequalities(env, model);
+		DefineValidInequalities(env, model);
 
 		// Solve the model
 		cplex.solve();

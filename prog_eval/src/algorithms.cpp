@@ -144,13 +144,13 @@ bool Algorithms::solve_EV()
 	return true;
 }
 
-bool Algorithms::solve_EV_HILS()
+bool Algorithms::solve_Deterministic_HILS()
 {
-	cout << "Start Solving The Deterministic Two-Echelon Production Routing Problem With Hybrid-ILS For the EV Problem." << endl;
+	cout << "Start Solving The Deterministic Two-Echelon Production Routing Problem With Hybrid-ILS." << endl;
 	cout << "-------------------------------------------------------------------" << endl;
 
 	SolutionFirstEchelon sol_FE;
-	SolutionSecondEchelon_Deterministic sol_SE_EV;
+	SolutionSecondEchelon sol_SE;
 	Result result_temp;
 
 	result_incumbent.objValue_Total = std::numeric_limits<double>::max();
@@ -163,13 +163,13 @@ bool Algorithms::solve_EV_HILS()
 	// -----------------------------------------------------------------------------------------------------------------
 
 	// Solve the first-echelon problem
-	if (!solveFirstEchelon_EV(sol_FE))
+	if (!solveFirstEchelon(sol_FE))
 	{
 		return EXIT_FAILURE;
 	}
 
 	// Run ILS for the second-echelon problem
-	if (!runILSForSecondEchelon_EV(sol_FE, sol_SE_EV, result_temp))
+	if (!runILSForSecondEchelon(sol_FE, sol_SE, result_temp))
 	{
 		return EXIT_FAILURE;
 	}
@@ -244,45 +244,9 @@ bool Algorithms::solveFirstEchelon(SolutionFirstEchelon &solFE)
 	return true;
 }
 
-bool Algorithms::solveFirstEchelon_EV(SolutionFirstEchelon &solFE)
-{
-	cout << "Solve The First-Echelon Problem For the EV Problem" << endl;
-	vector<vector<double>> deterministicDemand(params.numCustomers, vector<double>(params.numPeriods, 0.0));
-	for (int t = 0; t < params.numPeriods; ++t)
-	{
-		for (int i = 0; i < params.numCustomers; ++i)
-		{
-			deterministicDemand[i][t] = params.consumeRate[i];
-		}
-	}
-
-	MWPRP_FE_Deterministic mwprp_fe_det(params, deterministicDemand);
-	if (!mwprp_fe_det.Solve())
-	{
-		return false;
-	}
-	solFE = mwprp_fe_det.getSolutionFE();
-	return true;
-}
-
 bool Algorithms::runILSForSecondEchelon(SolutionFirstEchelon &solFE_current, SolutionSecondEchelon &solSE_current, Result &result_current)
 {
 	ILS_SIRP ils_SIRP(params, solFE_current, solSE_current);
-	if (!ils_SIRP.run())
-	{
-		return false;
-	}
-
-	solFE_current = ils_SIRP.getSolutionFE();
-	solSE_current = ils_SIRP.getSolutionSE();
-	result_current = ils_SIRP.getResult();
-
-	return true;
-}
-
-bool Algorithms::runILSForSecondEchelon_EV(SolutionFirstEchelon &solFE_current, SolutionSecondEchelon_Deterministic &solSE_current_EV, Result &result_current)
-{
-	ILS_SIRP ils_SIRP(params, solFE_current, solSE_current_EV);
 	if (!ils_SIRP.run())
 	{
 		return false;
