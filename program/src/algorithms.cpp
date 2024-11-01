@@ -123,8 +123,16 @@ bool Algorithms::solve_EV()
 {
 	cout << "Start Solving The Expected Value (EV) Problem For the S2EPRP." << endl;
 	cout << "-------------------------------------------------------------------" << endl;
+	vector<vector<double>> deterministicDemand(params.numCustomers, vector<double>(params.numPeriods, 0.0));
+	for (int t = 0; t < params.numPeriods; ++t)
+	{
+		for (int i = 0; i < params.numCustomers; ++i)
+		{
+			deterministicDemand[i][t] = params.consumeRate[i];
+		}
+	}
 
-	solve_Deterministic_HILS();
+	solve_EV_HILS(deterministicDemand);
 
 	// Solve the EV problem using the Branch-and-Cut
 	EV_BC ev_bc(params);
@@ -144,7 +152,7 @@ bool Algorithms::solve_EV()
 	return true;
 }
 
-bool Algorithms::solve_EV_HILS()
+bool Algorithms::solve_EV_HILS(const vector<vector<double>> &deterministicDemand)
 {
 	cout << "Start Solving The Deterministic Two-Echelon Production Routing Problem With Hybrid-ILS For the EV Problem." << endl;
 	cout << "-------------------------------------------------------------------" << endl;
@@ -153,8 +161,8 @@ bool Algorithms::solve_EV_HILS()
 	SolutionSecondEchelon_Deterministic sol_SE_EV;
 	Result result_temp;
 
-	result_incumbent.objValue_Total = std::numeric_limits<double>::max();
-	result_incumbent.totalCPUTime = 0.0;
+	result_incumbent_EV.objValue_Total = std::numeric_limits<double>::max();
+	result_incumbent_EV.totalCPUTime = 0.0;
 
 	auto elapsedTime = 0.0;
 	auto currentTime = std::chrono::high_resolution_clock::now();
@@ -163,13 +171,13 @@ bool Algorithms::solve_EV_HILS()
 	// -----------------------------------------------------------------------------------------------------------------
 
 	// Solve the first-echelon problem
-	if (!solveFirstEchelon_EV(sol_FE))
+	if (!solveFirstEchelon_EV(sol_FE, deterministicDemand))
 	{
 		return EXIT_FAILURE;
 	}
 
 	// Run ILS for the second-echelon problem
-	if (!runILSForSecondEchelon_EV(sol_FE, sol_SE_EV, result_temp))
+	if (!runILSForSecondEchelon_EV(sol_FE, sol_SE_EV, result_temp, deterministicDemand))
 	{
 		return EXIT_FAILURE;
 	}
@@ -244,17 +252,9 @@ bool Algorithms::solveFirstEchelon(SolutionFirstEchelon &solFE)
 	return true;
 }
 
-bool Algorithms::solveFirstEchelon_EV(SolutionFirstEchelon &solFE)
+bool Algorithms::solveFirstEchelon_EV(SolutionFirstEchelon &solFE, const vector<vector<double>> &deterministicDemand)
 {
 	cout << "Solve The First-Echelon Problem For the EV Problem" << endl;
-	vector<vector<double>> deterministicDemand(params.numCustomers, vector<double>(params.numPeriods, 0.0));
-	for (int t = 0; t < params.numPeriods; ++t)
-	{
-		for (int i = 0; i < params.numCustomers; ++i)
-		{
-			deterministicDemand[i][t] = params.consumeRate[i];
-		}
-	}
 
 	MWPRP_FE_Deterministic mwprp_fe_det(params, deterministicDemand);
 	if (!mwprp_fe_det.Solve())
@@ -280,17 +280,20 @@ bool Algorithms::runILSForSecondEchelon(SolutionFirstEchelon &solFE_current, Sol
 	return true;
 }
 
-bool Algorithms::runILSForSecondEchelon_EV(SolutionFirstEchelon &solFE_current, SolutionSecondEchelon_Deterministic &solSE_current_EV, Result &result_current)
+bool Algorithms::runILSForSecondEchelon_EV(SolutionFirstEchelon &solFE_current, 
+									SolutionSecondEchelon_Deterministic &solSE_current_EV, 
+									Result &result_current
+									const vector<vector<double>> &deterministicDemand)
 {
-	ILS_SIRP ils_SIRP(params, solFE_current, solSE_current_EV);
-	if (!ils_SIRP.run())
+	ILS_SIRP_Deterministic ils_SIRP_det(params, solFE_current, solSE_current_EV, deterministicDemand);
+	if (!ils_SIRP_det.run())
 	{
 		return false;
 	}
 
-	solFE_current = ils_SIRP.getSolutionFE();
-	solSE_current = ils_SIRP.getSolutionSE();
-	result_current = ils_SIRP.getResult();
+	solFE_current = ils_SIRP_det.getSolutionFE();
+	solSE_current_EV = ils_SIRP_det.getSolutionSE();
+	result_current = ils_SIRP_det.getResult();
 
 	return true;
 }

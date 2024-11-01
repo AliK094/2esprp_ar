@@ -28,7 +28,8 @@ void ConstructHeuristic::orderCustomersByUnmetDemandToDeliveryRatio(vector<int> 
 	{
 		int customerIndex = i + params.numWarehouses;
 		double costRatio = (params.unmetDemandPenalty[i]) /
-							((params.setupCost / params.prodCapacity) +
+							( params.unitProdCost +
+							(params.setupCost / params.prodCapacity) +
 							((2 * params.transportationCost_FirstEchelon[0][sortedWarehouseByDistance[i][0] + 1]) / params.vehicleCapacity_Plant) +
 							((2 * params.transportationCost_SecondEchelon[sortedWarehouseByDistance[i][0]][customerIndex]) / params.vehicleCapacity_Warehouse));
 

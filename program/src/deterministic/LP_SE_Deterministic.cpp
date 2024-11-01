@@ -1,19 +1,23 @@
-#include "stochastic/LP_SE.h"
+#include "stochastic/LP_SE_Deterministic.h"
 
 // ------------------------------------------------------------------------------------------------------------------------
-LP_SE::LP_SE(const ParameterSetting &parameters,
+LP_SE_Deterministic::LP_SE_Deterministic(const ParameterSetting &parameters,
 			 const SolutionFirstEchelon &solFE,
-			 const SolutionSecondEchelon &solSE)
+			 const SolutionSecondEchelon_Deterministic &solSE,
+			 const vector<vector<double>> &deterministicDemand,
+			 bool shortageAllowed)
 	: params(parameters),
 	  sol_FE(solFE),
 	  sol_SE(solSE),
+	  demand(deterministicDemand),
+	  shortageAllowed(shortageAllowed),
 	  THRESHOLD(1e-2),
 	  save_lpFile(false),
 	  save_mpsResultFile(false)
 {
 }
 
-string LP_SE::solve()
+string LP_SE_Deterministic::solve()
 {
 	IloEnv env;
 	IloModel model(env);
@@ -35,7 +39,26 @@ string LP_SE::solve()
 	if (save_lpFile)
 	{
 		string directory = "../cplexFiles/lpModel/";
-		string lpFileName = directory + "LPSE_NW" + std::to_string(params.numWarehouses) + "_NC" + std::to_string(params.numCustomers) + "_KP" + std::to_string(params.numVehicles_Plant) + "_KW" + std::to_string(params.numVehicles_Warehouse) + "_T" + std::to_string(params.numPeriods) + "_S" + std::to_string(params.numScenarios) + "_Ins" + params.instance.c_str() + ".lp";
+		if (shortageAllowed)
+		{
+			string lpFileName = directory + "LPSE_Deterministic_NW" + std::to_string(params.numWarehouses) + 
+						"_NR" + std::to_string(params.numCustomers) + 
+						"_KP" + std::to_string(params.numVehicles_Plant) + 
+						"_KW" + std::to_string(params.numVehicles_Warehouse) + 
+						"_T" + std::to_string(params.numPeriods) + 
+						"_S" + std::to_string(params.numScenarios) + 
+						"_Ins" + params.instance.c_str() + ".lp";
+		}
+		else
+		{
+			string lpFileName = directory + "LPSE_Deterministic_NW" + std::to_string(params.numWarehouses) + 
+						"_NR" + std::to_string(params.numCustomers) + 
+						"_KP" + std::to_string(params.numVehicles_Plant) + 
+						"_KW" + std::to_string(params.numVehicles_Warehouse) + 
+						"_T" + std::to_string(params.numPeriods) + 
+						"_Ins" + params.instance.c_str() + ".lp";
+			
+		}
 
 		// Export the model to an LP file
 		cplex.exportModel(lpFileName.c_str());
@@ -44,7 +67,7 @@ string LP_SE::solve()
 	// Extract model
 	cplex.extract(model);
 
-	cout << "\nSolving LP_SE..." << endl;
+	cout << "\nSolving LP_SE_Deterministic..." << endl; 
 
 	// Solve the model
 	cplex.solve();
@@ -61,7 +84,26 @@ string LP_SE::solve()
 		if (save_mpsResultFile)
 		{
 			string directory = "../cplexFiles/solVal/";
-			string solFileName = directory + "LPSE_NW" + std::to_string(params.numWarehouses) + "_NR" + std::to_string(params.numCustomers) + "_KP" + std::to_string(params.numVehicles_Plant) + "_KW" + std::to_string(params.numVehicles_Warehouse) + "_T" + std::to_string(params.numPeriods) + "_S" + std::to_string(params.numScenarios) + "_Ins" + params.instance.c_str();
+			if (shortageAllowed)
+			{
+				string lpFileName = directory + "LPSE_Deterministic_NW" + std::to_string(params.numWarehouses) + 
+							"_NR" + std::to_string(params.numCustomers) + 
+							"_KP" + std::to_string(params.numVehicles_Plant) + 
+							"_KW" + std::to_string(params.numVehicles_Warehouse) + 
+							"_T" + std::to_string(params.numPeriods) + 
+							"_S" + std::to_string(params.numScenarios) + 
+							"_Ins" + params.instance.c_str() + ".lp";
+			}
+			else
+			{
+				string lpFileName = directory + "LPSE_Deterministic_NW" + std::to_string(params.numWarehouses) + 
+							"_NR" + std::to_string(params.numCustomers) + 
+							"_KP" + std::to_string(params.numVehicles_Plant) + 
+							"_KW" + std::to_string(params.numVehicles_Warehouse) + 
+							"_T" + std::to_string(params.numPeriods) + 
+							"_Ins" + params.instance.c_str() + ".lp";
+				
+			}
 
 			// Export the model to an LP file
 			cplex.writeSolution(solFileName.c_str());
@@ -71,9 +113,6 @@ string LP_SE::solve()
 	{
 		status = "Infeasible";
 		cout << "Problem is infeasible" << endl;
-
-		string directory = "../cplexFiles/lpModel/";
-		string lpFileName = directory + "LPSE_NW" + std::to_string(params.numWarehouses) + "_NR" + std::to_string(params.numCustomers) + "_KP" + std::to_string(params.numVehicles_Plant) + "_KW" + std::to_string(params.numVehicles_Warehouse) + "_T" + std::to_string(params.numPeriods) + "_S" + std::to_string(params.numScenarios) + "_Ins" + params.instance.c_str() + ".lp";
 
 		// Export the model to an LP file
 		cplex.exportModel(lpFileName.c_str());
@@ -113,7 +152,7 @@ string LP_SE::solve()
 	return status;
 }
 
-void LP_SE::DefineVariables(IloEnv &env, IloModel &model)
+void LP_SE_Deterministic::DefineVariables(IloEnv &env, IloModel &model)
 {
 	/* Define Decision Variables */
 	// Initialize Variable Manager
@@ -137,47 +176,40 @@ void LP_SE::DefineVariables(IloEnv &env, IloModel &model)
 		model.add(I_plant[t]);
 	}
 	// -------------------------------------------------------------------------------------------------------------------------------
-	// I_warehouse[w][t][s] variables (Warehouse w inventory in period t under scenario s)
-	I_warehouse = varManager.create3D(params.numWarehouses, params.numPeriods, params.numScenarios);
+	// I_warehouse[w][t] variables (Warehouse w inventory in period t)
+	I_warehouse = varManager.create2D(params.numWarehouses, params.numPeriods);
 	for (int w = 0; w < params.numWarehouses; ++w)
 	{
 		for (int t = 0; t < params.numPeriods; ++t)
 		{
-			for (int s = 0; s < params.numScenarios; ++s)
-			{
-				string varName = "I_warehouse[" + std::to_string(w + 1) + "][" + std::to_string(t + 1) + "][" + std::to_string(s + 1) + "]";
-				I_warehouse[w][t][s] = IloNumVar(env, 0.0, params.storageCapacity_Warehouse[w], IloNumVar::Float, varName.c_str());
-				model.add(I_warehouse[w][t][s]);
-			}
+			string varName = "I_warehouse[" + std::to_string(w + 1) + "][" + std::to_string(t + 1) + "]";
+			I_warehouse[w][t] = IloNumVar(env, 0.0, params.storageCapacity_Warehouse[w], IloNumVar::Float, varName.c_str());
+			model.add(I_warehouse[w][t]);
 		}
 	}
 	// -------------------------------------------------------------------------------------------------------------------------------
-	// I_customer[i][t][s] variables (Customer i inventory in period t under scenario s)
-	I_customer = varManager.create3D(params.numCustomers, params.numPeriods, params.numScenarios);
+	// I_customer[i][t] variables (Customer i inventory in period t)
+	I_customer = varManager.create2D(params.numCustomers, params.numPeriods);
 	for (int i = 0; i < params.numCustomers; ++i)
 	{
 		for (int t = 0; t < params.numPeriods; ++t)
 		{
-			for (int s = 0; s < params.numScenarios; ++s)
-			{
-				string varName = "I_customer[" + std::to_string(i + 1 + params.numWarehouses) + "][" + std::to_string(t + 1) + "][" + std::to_string(s + 1) + "]";
-				I_customer[i][t][s] = IloNumVar(env, 0.0, params.storageCapacity_Customer[i], IloNumVar::Float, varName.c_str());
-				model.add(I_customer[i][t][s]);
-			}
+			string varName = "I_customer[" + std::to_string(i + 1 + params.numWarehouses) + "][" + std::to_string(t + 1) + "]";
+			I_customer[i][t] = IloNumVar(env, 0.0, params.storageCapacity_Customer[i], IloNumVar::Float, varName.c_str());
+			model.add(I_customer[i][t]);
 		}
 	}
 	// -------------------------------------------------------------------------------------------------------------------------------
-	// b_customer[i][t][s] variables (Customer i unsatisfied demand in period t under scenario s)
-	b_customer = varManager.create3D(params.numCustomers, params.numPeriods, params.numScenarios);
-	for (int i = 0; i < params.numCustomers; ++i)
-	{
-		for (int t = 0; t < params.numPeriods; ++t)
+	if (shortageAllowed){
+		// b_customer[i][t] variables (Customer i unsatisfied demand in period t)
+		b_customer = varManager.create2D(params.numCustomers, params.numPeriods);
+		for (int i = 0; i < params.numCustomers; ++i)
 		{
-			for (int s = 0; s < params.numScenarios; ++s)
+			for (int t = 0; t < params.numPeriods; ++t)
 			{
-				string varName = "b_customer[" + std::to_string(i + 1 + params.numWarehouses) + "][" + std::to_string(t + 1) + "][" + std::to_string(s + 1) + "]";
-				b_customer[i][t][s] = IloNumVar(env, 0.0, params.demand[i][t][s], IloNumVar::Float, varName.c_str());
-				model.add(b_customer[i][t][s]);
+				string varName = "b_customer[" + std::to_string(i + 1 + params.numWarehouses) + "][" + std::to_string(t + 1) + "]";
+				b_customer[i][t] = IloNumVar(env, 0.0, params.demand[i][t], IloNumVar::Float, varName.c_str());
+				model.add(b_customer[i][t]);
 			}
 		}
 	}
@@ -197,27 +229,24 @@ void LP_SE::DefineVariables(IloEnv &env, IloModel &model)
 		}
 	}
 	// -------------------------------------------------------------------------------------------------------------------------------
-	// w_customer[i][k][t][s] variables (Delivery quantity to customer i by vehicle k in period t under scenario s)
-	w_customer = varManager.create4D(params.numCustomers, params.numVehicles_SecondEchelon, params.numPeriods, params.numScenarios);
+	// w_customer[i][k][t] variables (Delivery quantity to customer i by vehicle k in period t)
+	w_customer = varManager.create3D(params.numCustomers, params.numVehicles_SecondEchelon, params.numPeriods);
 	for (int i = 0; i < params.numCustomers; ++i)
 	{
 		for (int k = 0; k < params.numVehicles_SecondEchelon; ++k)
 		{
 			for (int t = 0; t < params.numPeriods; ++t)
 			{
-				for (int s = 0; s < params.numScenarios; ++s)
-				{
-					string varName = "w[" + std::to_string(i + 1 + params.numWarehouses) + "][" + std::to_string(k + 1) + "][" + std::to_string(t + 1) + "][" + std::to_string(s + 1) + "]";
-					w_customer[i][k][t][s] = IloNumVar(env, 0.0, params.demand[i][t][s], IloNumVar::Float, varName.c_str());
-					model.add(w_customer[i][k][t][s]);
-				}
+				string varName = "w[" + std::to_string(i + 1 + params.numWarehouses) + "][" + std::to_string(k + 1) + "][" + std::to_string(t + 1) + "]";
+				w_customer[i][k][t] = IloNumVar(env, 0.0, params.demand[i][t], IloNumVar::Float, varName.c_str());
+				model.add(w_customer[i][k][t]);
 			}
 		}
 	}
 	// -------------------------------------------------------------------------------------------------------------------------------
 }
 
-void LP_SE::DefineObjectiveFunction(IloEnv &env, IloModel &model)
+void LP_SE_Deterministic::DefineObjectiveFunction(IloEnv &env, IloModel &model)
 {
 	// Define objective function
 	IloExpr obj(env);
@@ -226,24 +255,21 @@ void LP_SE::DefineObjectiveFunction(IloEnv &env, IloModel &model)
 		obj += params.unitProdCost * p[t];
 		obj += params.unitHoldingCost_Plant * I_plant[t];
 
-		for (int s = 0; s < params.numScenarios; ++s)
+		for (int w = 0; w < params.numWarehouses; ++w)
 		{
-			for (int w = 0; w < params.numWarehouses; ++w)
-			{
-				obj += params.probability[s] * params.unitHoldingCost_Warehouse[w] * I_warehouse[w][t][s];
-			}
+			obj += params.unitHoldingCost_Warehouse[w] * I_warehouse[w][t];
+		}
 
-			for (int i = 0; i < params.numCustomers; ++i)
-			{
-				obj += params.probability[s] * params.unitHoldingCost_Customer[i] * I_customer[i][t][s];
-				obj += params.probability[s] * params.unmetDemandPenalty[i] * b_customer[i][t][s];
-			}
+		for (int i = 0; i < params.numCustomers; ++i)
+		{
+			obj += params.unitHoldingCost_Customer[i] * I_customer[i][t];
+			obj += params.unmetDemandPenalty[i] * b_customer[i][t];
 		}
 	}
 	model.add(IloMinimize(env, obj));
 }
 
-void LP_SE::DefineConstraints(IloEnv &env, IloModel &model)
+void LP_SE_Deterministic::DefineConstraints(IloEnv &env, IloModel &model)
 {
 	/* Define Constraints */
 	// ---------------------------------------------------------------------------------------------------------------------------
@@ -326,149 +352,146 @@ void LP_SE::DefineConstraints(IloEnv &env, IloModel &model)
 	// ---------------------------------------------------------------------------------------------------------------------------
 	/*
 		Warehouses Inventory Capacity Constraints:
-			I_warehouse[w][t][s] <= storageCapacity_warehouse 		for all w in W, t in T, s in S
+			I_warehouse[w][t] <= storageCapacity_warehouse 		for all w in W, t in T
 	*/
-	for (int s = 0; s < params.numScenarios; ++s)
+	for (int t = 0; t < params.numPeriods; ++t)
 	{
-		for (int t = 0; t < params.numPeriods; ++t)
+		for (int w = 0; w < params.numWarehouses; ++w)
 		{
-			for (int w = 0; w < params.numWarehouses; ++w)
-			{
-				string constraintName = "WarehouseInventoryCapacity(" + std::to_string(w + 1) + "," + std::to_string(t + 1) + "," + std::to_string(s + 1) + ")";
+			string constraintName = "WarehouseInventoryCapacity(" + std::to_string(w + 1) + "," + std::to_string(t + 1) + ")";
 
-				IloExpr expr(env);
-				expr += I_warehouse[w][t][s];
-				IloConstraint warehouseInventoryCapacityConstraint(expr <= params.storageCapacity_Warehouse[w]);
-				expr.end();
+			IloExpr expr(env);
+			expr += I_warehouse[w][t];
+			IloConstraint warehouseInventoryCapacityConstraint(expr <= params.storageCapacity_Warehouse[w]);
+			expr.end();
 
-				model.add(warehouseInventoryCapacityConstraint).setName(constraintName.c_str());
-			}
+			model.add(warehouseInventoryCapacityConstraint).setName(constraintName.c_str());
 		}
 	}
 	// ---------------------------------------------------------------------------------------------------------------------------
 	/*
 		Warehouse Inventory Balance Constraints:
-			I[w][t][s] = I[w][t-1][s] + sum(k in KP) q[w][k][t] - sum(i in N_c) sum(k in K_w) w_customer[i][k][t][s]	for all w in W, t in T, s in S
+			I[w][t] = I[w][t-1] + sum(k in KP) q[w][k][t] - sum(i in N_c) sum(k in K_w) w_customer[i][k][t]	for all w in W, t in T
 	*/
-	for (int s = 0; s < params.numScenarios; ++s)
+	for (int t = 0; t < params.numPeriods; ++t)
 	{
-		for (int t = 0; t < params.numPeriods; ++t)
+		for (int w = 0; w < params.numWarehouses; ++w)
 		{
-			for (int w = 0; w < params.numWarehouses; ++w)
+			string constraintName = "WarehouseInventoryBalance(" + std::to_string(w + 1) + "," + std::to_string(t + 1) + ")";
+
+			IloExpr expr(env);
+			if (t == 0)
 			{
-				string constraintName = "WarehouseInventoryBalance(" + std::to_string(w + 1) + "," + std::to_string(t + 1) + "," + std::to_string(s + 1) + ")";
+				expr += I_warehouse[w][t];
 
-				IloExpr expr(env);
-				if (t == 0)
+				for (int k = 0; k < params.numVehicles_Plant; ++k)
 				{
-					expr += I_warehouse[w][t][s];
-
-					for (int k = 0; k < params.numVehicles_Plant; ++k)
-					{
-						expr -= q[w][k][t];
-					}
-
-					for (int k : params.set_WarehouseVehicles[w])
-					{
-						for (int i = 0; i < params.numCustomers; ++i)
-						{
-							expr += w_customer[i][k][t][s];
-						}
-					}
-					IloConstraint WarehouseInventoryBalanceConstraint(expr == params.initialInventory_Warehouse[w]);
-					expr.end();
-
-					model.add(WarehouseInventoryBalanceConstraint).setName(constraintName.c_str());
+					expr -= q[w][k][t];
 				}
-				else
+
+				for (int k : params.set_WarehouseVehicles[w])
 				{
-					expr += I_warehouse[w][t][s];
-					expr -= I_warehouse[w][t - 1][s];
-
-					for (int k = 0; k < params.numVehicles_Plant; ++k)
+					for (int i = 0; i < params.numCustomers; ++i)
 					{
-						expr -= q[w][k][t];
+						expr += w_customer[i][k][t];
 					}
-
-					for (int k : params.set_WarehouseVehicles[w])
-					{
-						for (int i = 0; i < params.numCustomers; ++i)
-						{
-							expr += w_customer[i][k][t][s];
-						}
-					}
-					IloConstraint WarehouseInventoryBalanceConstraint(expr == 0);
-					expr.end();
-
-					model.add(WarehouseInventoryBalanceConstraint).setName(constraintName.c_str());
 				}
+				IloConstraint WarehouseInventoryBalanceConstraint(expr == params.initialInventory_Warehouse[w]);
+				expr.end();
+
+				model.add(WarehouseInventoryBalanceConstraint).setName(constraintName.c_str());
+			}
+			else
+			{
+				expr += I_warehouse[w][t];
+				expr -= I_warehouse[w][t - 1];
+
+				for (int k = 0; k < params.numVehicles_Plant; ++k)
+				{
+					expr -= q[w][k][t];
+				}
+
+				for (int k : params.set_WarehouseVehicles[w])
+				{
+					for (int i = 0; i < params.numCustomers; ++i)
+					{
+						expr += w_customer[i][k][t];
+					}
+				}
+				IloConstraint WarehouseInventoryBalanceConstraint(expr == 0);
+				expr.end();
+
+				model.add(WarehouseInventoryBalanceConstraint).setName(constraintName.c_str());
 			}
 		}
 	}
 	// ---------------------------------------------------------------------------------------------------------------------------
 	/*
 		Customers Inventory Balance Constraints:
-			I[i][t][s] = I[i][t-1][s] + sum(k in K) w_customer[i][k][t][s] - d[i][t][s] + b[i][t][s] 	for all i in N_w, t in T
+			I[i][t] = I[i][t-1] + sum(k in K) w_customer[i][k][t] - d[i][t] + b[i][t] 	for all i in N_w, t in T
 	*/
-	for (int s = 0; s < params.numScenarios; ++s)
+	for (int t = 0; t < params.numPeriods; ++t)
 	{
-		for (int t = 0; t < params.numPeriods; ++t)
+		for (int i = 0; i < params.numCustomers; ++i)
 		{
-			for (int i = 0; i < params.numCustomers; ++i)
+			string constraintName = "CustomerInventoryBalance(" + std::to_string(i + 1 + params.numWarehouses) + "," + std::to_string(t + 1) + ")";
+
+			IloExpr expr(env);
+			if (t == 0)
 			{
-				string constraintName = "CustomerInventoryBalance(" + std::to_string(i + 1 + params.numWarehouses) + "," + std::to_string(t + 1) + "," + std::to_string(s + 1) + ")";
-
-				IloExpr expr(env);
-				if (t == 0)
+				expr += I_customer[i][t];
+				for (int k = 0; k < params.numVehicles_SecondEchelon; ++k)
 				{
-					expr += I_customer[i][t][s];
-					for (int k = 0; k < params.numVehicles_SecondEchelon; ++k)
-					{
-						expr -= w_customer[i][k][t][s];
-					}
-					expr -= b_customer[i][t][s];
-					IloConstraint CustomerInventoryBalanceConstraint(expr == params.initialInventory_Customer[i] - params.demand[i][t][s]);
-					expr.end();
-
-					model.add(CustomerInventoryBalanceConstraint).setName(constraintName.c_str());
+					expr -= w_customer[i][k][t];
 				}
-				else
+
+				if (shortageAllowed)
 				{
-					expr += I_customer[i][t][s];
-					expr -= I_customer[i][t - 1][s];
-					for (int k = 0; k < params.numVehicles_SecondEchelon; ++k)
-					{
-						expr -= w_customer[i][k][t][s];
-					}
-					expr -= b_customer[i][t][s];
-					IloConstraint CustomerInventoryBalanceConstraint(expr == -params.demand[i][t][s]);
-					expr.end();
-
-					model.add(CustomerInventoryBalanceConstraint).setName(constraintName.c_str());
+					expr -= b_customer[i][t];
 				}
+				IloConstraint CustomerInventoryBalanceConstraint(expr == params.initialInventory_Customer[i] - demand[i][t]);
+				expr.end();
+
+				model.add(CustomerInventoryBalanceConstraint).setName(constraintName.c_str());
+			}
+			else
+			{
+				expr += I_customer[i][t];
+				expr -= I_customer[i][t - 1];
+				for (int k = 0; k < params.numVehicles_SecondEchelon; ++k)
+				{
+					expr -= w_customer[i][k][t];
+				}
+
+				if (shortageAllowed)
+				{
+					expr -= b_customer[i][t];
+				}
+
+				IloConstraint CustomerInventoryBalanceConstraint(expr == -demand[i][t]);
+				expr.end();
+
+				model.add(CustomerInventoryBalanceConstraint).setName(constraintName.c_str());
 			}
 		}
 	}
 	// ---------------------------------------------------------------------------------------------------------------------------
 	/*
 		Customers Inventory Capacity Constraints:
-			I[i][t][s] + d[i][t][s] <= params.storageCapacity_Customer[i] 		for all i in N_w, t in T
+			I[i][t] + d[i][t] <= params.storageCapacity_Customer[i] 		for all i in N_w, t in T
 	*/
-	for (int s = 0; s < params.numScenarios; ++s)
+	for (int t = 0; t < params.numPeriods; ++t)
 	{
-		for (int t = 0; t < params.numPeriods; ++t)
+		for (int i = 0; i < params.numCustomers; ++i)
 		{
-			for (int i = 0; i < params.numCustomers; ++i)
-			{
-				string constraintName = "CustomerInventoryCapacity(" + std::to_string(i + 1 + params.numWarehouses) + "," + std::to_string(t + 1) + "," + std::to_string(s + 1) + ")";
+			string constraintName = "CustomerInventoryCapacity(" + std::to_string(i + 1 + params.numWarehouses) + "," + std::to_string(t + 1) + ")";
 
-				IloExpr expr(env);
-				expr += I_customer[i][t][s];
-				IloConstraint CustomerInventoryCapacityConstraint(expr <= params.storageCapacity_Customer[i] - params.demand[i][t][s]);
-				expr.end();
+			IloExpr expr(env);
+			expr += I_customer[i][t];
+			IloConstraint CustomerInventoryCapacityConstraint(expr <= params.storageCapacity_Customer[i] - params.demand[i][t]);
+			expr.end();
 
-				model.add(CustomerInventoryCapacityConstraint).setName(constraintName.c_str());
-			}
+			model.add(CustomerInventoryCapacityConstraint).setName(constraintName.c_str());
 		}
 	}
 	// ---------------------------------------------------------------------------------------------------------------------------
@@ -555,45 +578,42 @@ void LP_SE::DefineConstraints(IloEnv &env, IloModel &model)
 	// ---------------------------------------------------------------------------------------------------------------------------
 	/*
 		Customer Visit Constraints (From Warehouse to Customer):
-			w_customer[i][k][t][s] <= DeliveryUB[i][t][s]		for all i in N_c, k in union K, t in T, s in S
+			w_customer[i][k][t] <= DeliveryUB[i][t]		for all i in N_c, k in union K, t in T
 
 	*/
-	for (int s = 0; s < params.numScenarios; ++s)
+	for (int w = 0; w < params.numWarehouses; ++w)
 	{
-		for (int w = 0; w < params.numWarehouses; ++w)
+		for (int t = 0; t < params.numPeriods; ++t)
 		{
-			for (int t = 0; t < params.numPeriods; ++t)
+			for (int k = 0; k < params.numVehicles_Warehouse; ++k)
 			{
-				for (int k = 0; k < params.numVehicles_Warehouse; ++k)
+				int vehicleIndex = k + (w * params.numVehicles_Warehouse);
+
+				vector<int> route = sol_SE.routesWarehouseToCustomer[w][t][k];
+				for (int i = 0; i < params.numCustomers; ++i)
 				{
-					int vehicleIndex = k + (w * params.numVehicles_Warehouse);
+					int customerIndex = i + params.numWarehouses;
+					auto it = std::find(route.begin(), route.end(), customerIndex);
 
-					vector<int> route = sol_SE.routesWarehouseToCustomer[s][w][t][k];
-					for (int i = 0; i < params.numCustomers; ++i)
+					string constraintName = "CustomerVisit(" + std::to_string(customerIndex + 1) + "," + std::to_string(vehicleIndex + 1) + "," + std::to_string(t + 1) + ")";
+					IloExpr expr(env);
+					expr += w_customer[i][vehicleIndex][t];
+
+					if (it != route.end())
 					{
-						int customerIndex = i + params.numWarehouses;
-						auto it = std::find(route.begin(), route.end(), customerIndex);
+						IloConstraint customerVisitConstraint(expr <= params.storageCapacity_Customer[i]);
 
-						string constraintName = "CustomerVisit(" + std::to_string(customerIndex + 1) + "," + std::to_string(vehicleIndex + 1) + "," + std::to_string(t + 1) + "," + std::to_string(s + 1) + ")";
-						IloExpr expr(env);
-						expr += w_customer[i][vehicleIndex][t][s];
+						expr.end();
 
-						if (it != route.end())
-						{
-							IloConstraint customerVisitConstraint(expr <= params.DeliveryUB_perCustomer[i][t][s]);
+						model.add(customerVisitConstraint).setName(constraintName.c_str());
+					}
+					else
+					{
+						IloConstraint customerVisitConstraint(expr == 0.0);
 
-							expr.end();
+						expr.end();
 
-							model.add(customerVisitConstraint).setName(constraintName.c_str());
-						}
-						else
-						{
-							IloConstraint customerVisitConstraint(expr == 0.0);
-
-							expr.end();
-
-							model.add(customerVisitConstraint).setName(constraintName.c_str());
-						}
+						model.add(customerVisitConstraint).setName(constraintName.c_str());
 					}
 				}
 			}
@@ -602,50 +622,47 @@ void LP_SE::DefineConstraints(IloEnv &env, IloModel &model)
 	// ---------------------------------------------------------------------------------------------------------------------------
 	/*
 		Vehicle Capacity Constraints (From Warehouse to Customer):
-			sum(i in N_c) w_customer[i][k][t][s] <= Q^w		for all w in N_w, k in K_w, t in T, s in S
+			sum(i in N_c) w_customer[i][k][t] <= Q^w		for all w in N_w, k in K_w, t in T
 
 	*/
-	for (int s = 0; s < params.numScenarios; ++s)
+	for (int t = 0; t < params.numPeriods; ++t)
 	{
-		for (int t = 0; t < params.numPeriods; ++t)
+		for (int w = 0; w < params.numWarehouses; ++w)
 		{
-			for (int w = 0; w < params.numWarehouses; ++w)
+			for (int k : params.set_WarehouseVehicles[w])
 			{
-				for (int k : params.set_WarehouseVehicles[w])
+				string constraintName = "VehicleCapacityWarehouse(" + std::to_string(w + 1) + "," + std::to_string(k + 1) + "," + std::to_string(t + 1) + ")";
+
+				IloExpr expr(env);
+				for (int i = 0; i < params.numCustomers; ++i)
 				{
-					string constraintName = "VehicleCapacityWarehouse(" + std::to_string(w + 1) + "," + std::to_string(k + 1) + "," + std::to_string(t + 1) + "," + std::to_string(s + 1) + ")";
-
-					IloExpr expr(env);
-					for (int i = 0; i < params.numCustomers; ++i)
-					{
-						expr += w_customer[i][k][t][s];
-					}
-					expr -= params.vehicleCapacity_Warehouse;
-					IloConstraint vehicleCapacityConstraint(expr <= 0);
-					expr.end();
-
-					model.add(vehicleCapacityConstraint).setName(constraintName.c_str());
+					expr += w_customer[i][k][t];
 				}
+				expr -= params.vehicleCapacity_Warehouse;
+				IloConstraint vehicleCapacityConstraint(expr <= 0);
+				expr.end();
+
+				model.add(vehicleCapacityConstraint).setName(constraintName.c_str());
 			}
 		}
 	}
 	/* End of Model Constraints */
 }
 
-void LP_SE::RetrieveSolutions(IloCplex &cplex)
+void LP_SE_Deterministic::RetrieveSolutions(IloCplex &cplex)
 {
 	// Retrieve solution
 	// initilize variables
 	sol_FE_temp.productionSetup = sol_FE.productionSetup;
 	sol_FE_temp.productionQuantity.assign(params.numPeriods, 0.0);
 	sol_FE_temp.plantInventory.assign(params.numPeriods, 0.0);
-	sol_SE_temp.warehouseInventory.assign(params.numWarehouses, vector<vector<double>>(params.numPeriods, vector<double>(params.numScenarios, 0.0)));
-	sol_SE_temp.customerInventory.assign(params.numCustomers, vector<vector<double>>(params.numPeriods, vector<double>(params.numScenarios, 0.0)));
-	sol_SE_temp.customerUnmetDemand.assign(params.numCustomers, vector<vector<double>>(params.numPeriods, vector<double>(params.numScenarios, 0.0)));
+	sol_SE_temp.warehouseInventory.assign(params.numWarehouses, vector<double>(params.numPeriods, 0.0));
+	sol_SE_temp.customerInventory.assign(params.numCustomers, vector<double>(params.numPeriods, 0.0));
+	sol_SE_temp.customerUnmetDemand.assign(params.numCustomers, vector<double>(params.numPeriods, 0.0));
 	sol_FE_temp.deliveryQuantityToWarehouse.assign(params.numWarehouses, vector<double>(params.numPeriods, 0.0));
 	sol_SE_temp.deliveryQuantityToCustomer.assign(params.numCustomers, vector<vector<double>>(params.numPeriods, vector<double>(params.numScenarios, 0.0)));
 
-	vector<vector<vector<double>>> deliveryQuantityToWarehouse_temp(params.numWarehouses, vector<vector<double>>(params.numPeriods, vector<double>(params.numScenarios, 0.0)));
+	vector<vector<double>> deliveryQuantityToWarehouse_temp(params.numWarehouses, vector<double>(params.numPeriods, 0.0));
 
 	// Get solution values of decision variables
 	for (int t = 0; t < params.numPeriods; ++t)
@@ -660,21 +677,18 @@ void LP_SE::RetrieveSolutions(IloCplex &cplex)
 				sol_FE_temp.deliveryQuantityToWarehouse[w][t] += cplex.getValue(q[w][k][t]);
 			}
 
-			for (int s = 0; s < params.numScenarios; ++s)
-			{
-				sol_SE_temp.warehouseInventory[w][t][s] = cplex.getValue(I_warehouse[w][t][s]);
-			}
+			sol_SE_temp.warehouseInventory[w][t] = cplex.getValue(I_warehouse[w][t]);
 		}
 
 		for (int i = 0; i < params.numCustomers; ++i)
 		{
 			for (int s = 0; s < params.numScenarios; ++s)
 			{
-				sol_SE_temp.customerInventory[i][t][s] = cplex.getValue(I_customer[i][t][s]);
-				sol_SE_temp.customerUnmetDemand[i][t][s] = cplex.getValue(b_customer[i][t][s]);
+				sol_SE_temp.customerInventory[i][t] = cplex.getValue(I_customer[i][t]);
+				sol_SE_temp.customerUnmetDemand[i][t] = cplex.getValue(b_customer[i][t]);
 				for (int k = 0; k < params.numVehicles_SecondEchelon; ++k)
 				{
-					sol_SE_temp.deliveryQuantityToCustomer[i][t][s] += cplex.getValue(w_customer[i][k][t][s]);
+					sol_SE_temp.deliveryQuantityToCustomer[i][t] += cplex.getValue(w_customer[i][k][t]);
 				}
 			}
 		}
@@ -685,7 +699,7 @@ void LP_SE::RetrieveSolutions(IloCplex &cplex)
 	sol_SE_temp.customerAssignmentToWarehouse = sol_SE.customerAssignmentToWarehouse;
 }
 
-void LP_SE::CalculateCostsForEachPart()
+void LP_SE_Deterministic::CalculateCostsForEachPart()
 {
 	sol_FE_temp.setupCost = sol_FE.setupCost;
 	sol_FE_temp.transportationCostPlantToWarehouse += sol_FE.transportationCostPlantToWarehouse;
@@ -695,38 +709,32 @@ void LP_SE::CalculateCostsForEachPart()
 		sol_FE_temp.productionCost += params.unitProdCost * sol_FE_temp.productionQuantity[t];
 		sol_FE_temp.holdingCostPlant += params.unitHoldingCost_Plant * sol_FE_temp.plantInventory[t];
 
-		for (int s = 0; s < params.numScenarios; ++s)
+		for (int w = 0; w < params.numWarehouses; ++w)
 		{
-			for (int w = 0; w < params.numWarehouses; ++w)
-			{
-				sol_SE_temp.holdingCostWarehouse_Avg += params.probability[s] * params.unitHoldingCost_Warehouse[w] * sol_SE_temp.warehouseInventory[w][t][s];
-			}
+			sol_SE_temp.holdingCostWarehouse_Avg += params.unitHoldingCost_Warehouse[w] * sol_SE_temp.warehouseInventory[w][t];
+		}
 
-			for (int i = 0; i < params.numCustomers; ++i)
-			{
-				sol_SE_temp.holdingCostCustomer_Avg += params.probability[s] * params.unitHoldingCost_Customer[i] * sol_SE_temp.customerInventory[i][t][s];
-				sol_SE_temp.costOfUnmetDemand_Avg += params.probability[s] * params.unmetDemandPenalty[i] * sol_SE_temp.customerUnmetDemand[i][t][s];
-			}
+		for (int i = 0; i < params.numCustomers; ++i)
+		{
+			sol_SE_temp.holdingCostCustomer_Avg += params.unitHoldingCost_Customer[i] * sol_SE_temp.customerInventory[i][t];
+			sol_SE_temp.costOfUnmetDemand_Avg += params.unmetDemandPenalty[i] * sol_SE_temp.customerUnmetDemand[i][t];
 		}
 	}
 
-	for (int s = 0; s < params.numScenarios; ++s)
+	for (int w = 0; w < params.numWarehouses; ++w)
 	{
-		for (int w = 0; w < params.numWarehouses; ++w)
+		for (int t = 0; t < params.numPeriods; ++t)
 		{
-			for (int t = 0; t < params.numPeriods; ++t)
+			for (int k = 0; k < params.numVehicles_Warehouse; ++k)
 			{
-				for (int k = 0; k < params.numVehicles_Warehouse; ++k)
+				int previousNode = w;
+				for (int j = 1; j < sol_SE_temp.routesWarehouseToCustomer[w][t][k].size(); ++j)
 				{
-					int previousNode = w;
-					for (int j = 1; j < sol_SE_temp.routesWarehouseToCustomer[s][w][t][k].size(); ++j)
-					{
-						int currentNode = sol_SE_temp.routesWarehouseToCustomer[s][w][t][k][j];
+					int currentNode = sol_SE_temp.routesWarehouseToCustomer[w][t][k][j];
 
-						sol_SE_temp.transportationCostWarehouseToCustomer_Avg += params.probability[s] * params.transportationCost_SecondEchelon[previousNode][currentNode];
+					sol_SE_temp.transportationCostWarehouseToCustomer_Avg += params.transportationCost_SecondEchelon[previousNode][currentNode];
 
-						previousNode = currentNode;
-					}
+					previousNode = currentNode;
 				}
 			}
 		}
@@ -755,7 +763,7 @@ void LP_SE::CalculateCostsForEachPart()
 	cout << "Objective value Total : " << result.objValue_Total << endl;
 }
 
-void LP_SE::DisplayProductionSetupVars()
+void LP_SE_Deterministic::DisplayProductionSetupVars()
 {
 	for (int t = 0; t < params.numPeriods; ++t)
 	{
@@ -766,7 +774,7 @@ void LP_SE::DisplayProductionSetupVars()
 	}
 }
 
-void LP_SE::DisplayProductionQuantVars()
+void LP_SE_Deterministic::DisplayProductionQuantVars()
 {
 	for (int t = 0; t < params.numPeriods; ++t)
 	{
@@ -777,7 +785,7 @@ void LP_SE::DisplayProductionQuantVars()
 	}
 }
 
-void LP_SE::DisplayPlantInventoryVars()
+void LP_SE_Deterministic::DisplayPlantInventoryVars()
 {
 	for (int t = 0; t < params.numPeriods; ++t)
 	{
@@ -788,24 +796,21 @@ void LP_SE::DisplayPlantInventoryVars()
 	}
 }
 
-void LP_SE::DisplayWarehouseInventoryVars()
+void LP_SE_Deterministic::DisplayWarehouseInventoryVars()
 {
-	for (int s = 0; s < params.numScenarios; ++s)
+	for (int t = 0; t < params.numPeriods; ++t)
 	{
-		for (int t = 0; t < params.numPeriods; ++t)
+		for (int w = 0; w < params.numWarehouses; ++w)
 		{
-			for (int w = 0; w < params.numWarehouses; ++w)
+			if (sol_SE_temp.warehouseInventory[w][t] > THRESHOLD)
 			{
-				if (sol_SE_temp.warehouseInventory[w][t][s] > THRESHOLD)
-				{
-					cout << "I_warehouse[" << w + 1 << "][" << t + 1 << "][" << s + 1 << "] = " << std::setprecision(0) << std::fixed << sol_SE_temp.warehouseInventory[w][t][s] << endl;
-				}
+				cout << "I_warehouse[" << w + 1 << "][" << t + 1 << "] = " << std::setprecision(0) << std::fixed << sol_SE_temp.warehouseInventory[w][t] << endl;
 			}
 		}
 	}
 }
 
-void LP_SE::DisplayFirstEchelonRouteVars()
+void LP_SE_Deterministic::DisplayFirstEchelonRouteVars()
 {
 	for (int t = 0; t < params.numPeriods; ++t)
 	{
@@ -826,7 +831,7 @@ void LP_SE::DisplayFirstEchelonRouteVars()
 	}
 }
 
-void LP_SE::DisplayDeliveryQuantityToWarehousesVars()
+void LP_SE_Deterministic::DisplayDeliveryQuantityToWarehousesVars()
 {
 	for (int t = 0; t < params.numPeriods; ++t)
 	{
@@ -840,97 +845,85 @@ void LP_SE::DisplayDeliveryQuantityToWarehousesVars()
 	}
 }
 
-void LP_SE::DisplayCustomerInventoryVars()
+void LP_SE_Deterministic::DisplayCustomerInventoryVars()
 {
-	for (int s = 0; s < params.numScenarios; ++s)
+	for (int t = 0; t < params.numPeriods; ++t)
 	{
-		for (int t = 0; t < params.numPeriods; ++t)
+		for (int i = 0; i < params.numCustomers; ++i)
 		{
-			for (int i = 0; i < params.numCustomers; ++i)
+			if (sol_SE_temp.customerInventory[i][t] > THRESHOLD)
 			{
-				if (sol_SE_temp.customerInventory[i][t][s] > THRESHOLD)
-				{
-					cout << "I_customer[" << i + params.numWarehouses + 1 << "][" << t + 1 << "][" << s + 1 << "] = " << sol_SE_temp.customerInventory[i][t][s] << endl;
-				}
+				cout << "I_customer[" << i + params.numWarehouses + 1 << "][" << t + 1 << "] = " << sol_SE_temp.customerInventory[i][t] << endl;
 			}
 		}
 	}
 }
 
-void LP_SE::DisplayCustomerUnmetDemandVars()
+void LP_SE_Deterministic::DisplayCustomerUnmetDemandVars()
 {
-	for (int s = 0; s < params.numScenarios; ++s)
+	for (int t = 0; t < params.numPeriods; ++t)
 	{
-		for (int t = 0; t < params.numPeriods; ++t)
+		for (int i = 0; i < params.numCustomers; ++i)
 		{
-			for (int i = 0; i < params.numCustomers; ++i)
+			if (sol_SE_temp.customerUnmetDemand[i][t] > THRESHOLD)
 			{
-				if (sol_SE_temp.customerUnmetDemand[i][t][s] > THRESHOLD)
-				{
-					cout << "b_customer[" << i + params.numWarehouses + 1 << "][" << t + 1 << "][" << s + 1 << "] = " << sol_SE_temp.customerUnmetDemand[i][t][s] << endl;
-				}
+				cout << "b_customer[" << i + params.numWarehouses + 1 << "][" << t + 1 << "] = " << sol_SE_temp.customerUnmetDemand[i][t] << endl;
 			}
 		}
 	}
 }
 
-void LP_SE::DisplayDeliveryQuantityToCustomersVars()
+void LP_SE_Deterministic::DisplayDeliveryQuantityToCustomersVars()
 {
-	for (int s = 0; s < params.numScenarios; ++s)
+	for (int t = 0; t < params.numPeriods; ++t)
 	{
-		for (int t = 0; t < params.numPeriods; ++t)
+		for (int i = 0; i < params.numCustomers; ++i)
 		{
-			for (int i = 0; i < params.numCustomers; ++i)
+			if (sol_SE_temp.deliveryQuantityToCustomer[i][t] > THRESHOLD)
 			{
-				if (sol_SE_temp.deliveryQuantityToCustomer[i][t][s] > THRESHOLD)
-				{
-					cout << "deliveryQuantityToCustomer[" << i + params.numWarehouses << "][" << t + 1 << "][" << s + 1 << "] = " << sol_SE_temp.deliveryQuantityToCustomer[i][t][s] << endl;
-				}
+				cout << "deliveryQuantityToCustomer[" << i + params.numWarehouses << "][" << t + 1 << "] = " << sol_SE_temp.deliveryQuantityToCustomer[i][t] << endl;
 			}
 		}
 	}
 }
 
-void LP_SE::DisplayRoutesWarehouseToCustomersVars()
+void LP_SE_Deterministic::DisplayRoutesWarehouseToCustomersVars()
 {
-	for (int s = 0; s < params.numScenarios; ++s)
+	for (int w = 0; w < params.numWarehouses; ++w)
 	{
-		for (int w = 0; w < params.numWarehouses; ++w)
+		for (int t = 0; t < params.numPeriods; ++t)
 		{
-			for (int t = 0; t < params.numPeriods; ++t)
+			for (int k = 0; k < params.numVehicles_Warehouse; ++k)
 			{
-				for (int k = 0; k < params.numVehicles_Warehouse; ++k)
+				if (!sol_SE_temp.routesWarehouseToCustomer[s][w][t][k].empty())
 				{
-					if (!sol_SE_temp.routesWarehouseToCustomer[s][w][t][k].empty())
+					cout << "route[" << s + 1 << "][" << w + 1 << "][" << t + 1 << "][" << k + 1 << "] : [";
+					for (auto it = sol_SE_temp.routesWarehouseToCustomer[w][t][k].begin(); it != sol_SE_temp.routesWarehouseToCustomer[w][t][k].end(); ++it)
 					{
-						cout << "route[" << s + 1 << "][" << w + 1 << "][" << t + 1 << "][" << k + 1 << "] : [";
-						for (auto it = sol_SE_temp.routesWarehouseToCustomer[s][w][t][k].begin(); it != sol_SE_temp.routesWarehouseToCustomer[s][w][t][k].end(); ++it)
+						if (it != sol_SE_temp.routesWarehouseToCustomer[w][t][k].begin())
 						{
-							if (it != sol_SE_temp.routesWarehouseToCustomer[s][w][t][k].begin())
-							{
-								cout << " -> ";
-							}
-							cout << *it;
+							cout << " -> ";
 						}
-						cout << "]" << endl;
+						cout << *it;
 					}
+					cout << "]" << endl;
 				}
 			}
 		}
 	}
 }
 
-SolutionFirstEchelon LP_SE::getSolutionFE()
+SolutionFirstEchelon LP_SE_Deterministic::getSolutionFE()
 {
 	return sol_FE_temp;
 }
 
-SolutionSecondEchelon LP_SE::getSolutionSE()
+SolutionSecondEchelon_Deterministic LP_SE_Deterministic::getSolutionSE()
 {
 	return sol_SE_temp;
 }
 
-Result LP_SE::getResult()
+Result LP_SE_Deterministic::getResult()
 {
 	return result;
 }

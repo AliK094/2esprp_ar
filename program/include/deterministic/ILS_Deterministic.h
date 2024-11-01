@@ -15,16 +15,13 @@
 #include <unordered_map>
 #include <tuple>
 
-#include <thread>
-#include <atomic>
-#include <memory>
-
 class ILS_SIRP_Deterministic
 {
 public:
     ILS_SIRP_Deterministic(const ParameterSetting &parameters,
              const SolutionFirstEchelon &sol_FE,
-             const SolutionSecondEchelon_Deterministic &sol_SE = {});
+             const SolutionSecondEchelon_Deterministic &sol_SE = {},
+             const vector<vector<double>> &deterministicDemand = {});
 
     bool run();
 
@@ -43,7 +40,7 @@ private:
 
     bool createInitSol;
 
-    vector<vector<vector<vector<int>>>> CATW;
+    vector<vector<vector<int>>> CATW;
 
     double Tolerance;
 

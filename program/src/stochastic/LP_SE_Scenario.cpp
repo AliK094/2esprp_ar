@@ -2,9 +2,9 @@
 
 // ------------------------------------------------------------------------------------------------------------------------
 LP_SE_Scenario::LP_SE_Scenario(const ParameterSetting &parameters,
-			 const SolutionFirstEchelon &sol_FE, 
-			 const ScenarioSolutionSecondEchelon &sol_SE_scenario,
-			 int s)
+							   const SolutionFirstEchelon &sol_FE,
+							   const ScenarioSolutionSecondEchelon &sol_SE_scenario,
+							   int s)
 	: params(parameters),
 	  sol_FE(sol_FE),
 	  sol_SE_scenario(sol_SE_scenario),
@@ -12,7 +12,8 @@ LP_SE_Scenario::LP_SE_Scenario(const ParameterSetting &parameters,
 	  THRESHOLD(1e-2),
 	  save_lpFile(false),
 	  save_mpsResultFile(false)
-{}
+{
+}
 
 string LP_SE_Scenario::solve()
 {
@@ -46,7 +47,7 @@ string LP_SE_Scenario::solve()
 	// Extract model
 	cplex.extract(model);
 
-	// cout << "Solving LP_SE_Scenario...\n" << endl; 
+	// cout << "Solving LP_SE_Scenario...\n" << endl;
 	// Solve the model
 	cplex.solve();
 
@@ -105,7 +106,6 @@ string LP_SE_Scenario::solve()
 		// DisplayCustomerInventoryVars();
 		// DisplayCustomerUnmetDemandVars();
 		// DisplayDeliveryQuantityToCustomersVars();
-		
 	}
 
 	env.end();
@@ -529,14 +529,14 @@ void LP_SE_Scenario::DefineConstraints(IloEnv &env, IloModel &model)
 
 						IloConstraint WarehouseDelivery(expr <= 0);
 						expr.end();
-					
+
 						model.add(WarehouseDelivery).setName(constraintName.c_str());
 					}
 					else
 					{
 						IloConstraint WarehouseDelivery(expr == 0);
 						expr.end();
-					
+
 						model.add(WarehouseDelivery).setName(constraintName.c_str());
 					}
 				}
@@ -555,7 +555,6 @@ void LP_SE_Scenario::DefineConstraints(IloEnv &env, IloModel &model)
 
 					model.add(WarehouseDelivery).setName(constraintName.c_str());
 				}
-
 			}
 		}
 	}
@@ -608,10 +607,11 @@ void LP_SE_Scenario::DefineConstraints(IloEnv &env, IloModel &model)
 
 					if (it != route.end())
 					{
-						// cout << "Customer " << customerIndex << " is visited in route for scenario " << s + 1 << ", warehouse " << w + 1 << ", period " << t + 1 << ", vehicle " << k + 1 << endl;
+						IloConstraint customerVisitConstraint(expr <= params.DeliveryUB_perCustomer[i][t][scenario]);
 
-						expr -= params.DeliveryUB_perCustomer[i][t][scenario];
-						IloConstraint customerVisitConstraint(expr <= 0.0);							
+						expr.end();
+
+						model.add(customerVisitConstraint).setName(constraintName.c_str());
 					}
 					else
 					{
@@ -667,7 +667,7 @@ void LP_SE_Scenario::RetrieveSolutions(IloCplex &cplex)
 	sol_SE_scenario_temp.warehouseInventory_Scenario.assign(params.numWarehouses, vector<double>(params.numPeriods, 0.0));
 	sol_SE_scenario_temp.customerInventory_Scenario.assign(params.numCustomers, vector<double>(params.numPeriods, 0.0));
 	sol_SE_scenario_temp.customerUnmetDemand_Scenario.assign(params.numCustomers, vector<double>(params.numPeriods, 0.0));
-	sol_SE_scenario_temp.deliveryQuantityToCustomer_Scenario.assign(params.numCustomers, vector<double>(params.numPeriods, 0.0));	
+	sol_SE_scenario_temp.deliveryQuantityToCustomer_Scenario.assign(params.numCustomers, vector<double>(params.numPeriods, 0.0));
 
 	vector<vector<double>> deliveryQuantityToWarehouse_temp(params.numWarehouses, vector<double>(params.numPeriods, 0.0));
 
@@ -757,7 +757,7 @@ void LP_SE_Scenario::CalculateObjValue_Scenario()
 	// cout << "Holding Cost Customer : " << sol_SE_scenario_temp.holdingCostCustomer_Scenario << endl;
 	// cout << "Cost of Unmet Demand : " << sol_SE_scenario_temp.costOfUnmetDemand_Scenario << endl;
 	// cout << "Transportation Cost Warehouse to Customer : " << sol_SE_scenario_temp.transportationCostWarehouseToCustomer_Scenario << endl;
-	
+
 	objVal_Scenario = objValue_FE + objValue_SE;
 
 	// cout << "\nObjective value FE : " << objValue_FE << endl;
@@ -931,7 +931,6 @@ ScenarioSolutionSecondEchelon LP_SE_Scenario::getSolutionSE_Scenario()
 {
 	return sol_SE_scenario_temp;
 }
-
 
 double LP_SE_Scenario::getObjVal_Scenario()
 {
