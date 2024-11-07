@@ -8,7 +8,9 @@
 class MWPRP_FE_Deterministic
 {
 public:
-    MWPRP_FE_Deterministic(const ParameterSetting &parameters, const vector<vector<int>> &deterministicDemand, bool shortageAllowed = true);
+    MWPRP_FE_Deterministic(const ParameterSetting &parameters, 
+                           const vector<vector<double>> &deterministicDemand, 
+                           bool shortageAllowed = true);
 
     bool Solve();
 

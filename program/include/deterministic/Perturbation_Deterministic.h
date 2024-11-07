@@ -4,22 +4,21 @@
 #include "ParameterSetting.h"
 #include "VariableManager.h"
 #include "CplexParameterManager.h"
-#include "stochastic/LP_SE.h"
-#include "stochastic/LP_SE_Scenario.h"
+#include "deterministic/LP_SE_Deterministic.h"
 #include <functional>
 #include <set>
 #include <unordered_set>
 #include <unordered_map>
 #include <tuple>
 
-class Perturbation
+class Perturbation_Deterministic
 {
 public:
-    Perturbation(const ParameterSetting &parameters, 
-                const SolutionFirstEchelon &sol_FE, 
-                const SolutionSecondEchelon_Deterministic &sol_SE,
-                const vector<vector<double>> &deterministicDemand,
-                bool shortageAllowed = true);
+    Perturbation_Deterministic(const ParameterSetting &parameters, 
+                 const SolutionFirstEchelon &sol_FE, 
+                 const SolutionSecondEchelon_Deterministic &sol_SE,
+                 const vector<vector<double>> &deterministicDemand,
+                 bool shortageAllowed = true);
 
     bool run();
 

@@ -279,29 +279,29 @@ struct SolutionWarmStart
     }
 };
 
-struct SolutionWarmStart_EV
+struct SolutionWarmStart_Deterministic
 {
-    vector<int> productionSetup_WarmStart_EV;
-    vector<vector<vector<int>>> routesPlantToWarehouse_WarmStart_EV;
-    vector<vector<vector<vector<vector<int>>>>> routesWarehouseToCustomer_WarmStart_EV;
-    vector<vector<vector<vector<int>>>> customerAssignmentToWarehouse_WarmStart_EV;
+    vector<int> productionSetup_WarmStart;
+    vector<vector<vector<int>>> routesPlantToWarehouse_WarmStart;
+    vector<vector<vector<vector<int>>>> routesWarehouseToCustomer_WarmStart;
+    vector<vector<vector<int>>> customerAssignmentToWarehouse_WarmStart;
 
     // Check if the solution is empty
     bool empty() const
     {
-        return productionSetup_WarmStart_EV.empty() &&
-               routesPlantToWarehouse_WarmStart_EV.empty() &&
-               routesWarehouseToCustomer_WarmStart_EV.empty() &&
-               customerAssignmentToWarehouse_WarmStart_EV.empty();
+        return productionSetup_WarmStart.empty() &&
+               routesPlantToWarehouse_WarmStart.empty() &&
+               routesWarehouseToCustomer_WarmStart.empty() &&
+               customerAssignmentToWarehouse_WarmStart.empty();
     }
 
     void clear()
     {
         // Clear all vectors
-        productionSetup_WarmStart_EV.clear();
-        routesPlantToWarehouse_WarmStart_EV.clear();
-        routesWarehouseToCustomer_WarmStart_EV.clear();
-        customerAssignmentToWarehouse_WarmStart_EV.clear();
+        productionSetup_WarmStart.clear();
+        routesPlantToWarehouse_WarmStart.clear();
+        routesWarehouseToCustomer_WarmStart.clear();
+        customerAssignmentToWarehouse_WarmStart.clear();
     }
 };
 

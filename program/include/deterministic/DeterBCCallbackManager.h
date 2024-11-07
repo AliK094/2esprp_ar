@@ -13,8 +13,8 @@ public:
     SEC_2EPRP(
         IloEnv &env,
         const ParameterSetting &parameters,
-        const IloArray<IloArray<IloArray<IloNumVarArray>>> &x,
-        const IloArray<IloArray<IloArray<IloNumVarArray>>> &z);
+        const IloArray<IloArray<IloNumVarArray>> &x,
+        const IloArray<IloArray<IloNumVarArray>> &z);
 
     virtual void main() override;
 

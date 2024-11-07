@@ -70,10 +70,8 @@ bool TSP::solve()
         cplex.setParam(IloCplex::Param::MIP::Strategy::Search, CPX_MIPSEARCH_TRADITIONAL);
         cplex.setParam(IloCplex::Param::Preprocessing::Reduce, 0);
         cplex.setOut(env.getNullStream());
-<<<<<<< HEAD
+        
         cplex.setWarning(env.getNullStream());
-=======
->>>>>>> 3ba477c (Remove .o files and update .gitignore)
 
         // Create an instance of the callback manager
         // SEC_TSP LegacyCallback(env, numNodes, x);

@@ -3,7 +3,7 @@
 MWPRP_FE::MWPRP_FE(const ParameterSetting &parameters)
     : params(parameters),
       THRESHOLD(1e-2),
-      save_lpFilefalse(false),
+      save_lpFile(false),
       save_mpsResultFile(false)
 {
 	routeMatrix_FirstEchelon = params.getRouteMatrix();

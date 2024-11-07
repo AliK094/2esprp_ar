@@ -1,6 +1,6 @@
-#include "stochastic/ConsInitSol_Deterministic.h"
+#include "deterministic/ConsInitSol_Deterministic.h"
 
-ConstructHeuristic_deterministic::ConstructHeuristic_deterministic(const ParameterSetting &parameters, 
+ConstructHeuristic_Deterministic::ConstructHeuristic_Deterministic(const ParameterSetting &parameters, 
 			const SolutionFirstEchelon &sol_FE, 
 			const vector<vector<double>> &deterministicDemand, 
 			vector<vector<vector<int>>> &CATW,
@@ -28,8 +28,6 @@ ConstructHeuristic_deterministic::ConstructHeuristic_deterministic(const Paramet
 			sorted_Customers_byPenaltyCostRatio.push_back(i);
 		}
 	}
-	
-	CATW = params.getCustomersAssignedToWarehouse();
 
 	bestObjValue = 0.0;
 	Inv_Customers_bestSolution.resize(params.numCustomers, vector<double>(params.numPeriods, 0.0));
@@ -38,7 +36,7 @@ ConstructHeuristic_deterministic::ConstructHeuristic_deterministic(const Paramet
 	routes_bestSolution.resize(params.numWarehouses, vector<vector<vector<int>>>(params.numPeriods, vector<vector<int>>(params.numVehicles_Warehouse, vector<int>())));
 }
 
-void ConstructHeuristic_deterministic::orderCustomersByUnmetDemandToDeliveryRatio(vector<int> &sorted_customer_costRatio)
+void ConstructHeuristic_Deterministic::orderCustomersByUnmetDemandToDeliveryRatio(vector<int> &sorted_customer_costRatio)
 {
 	// calculate the stockout to demand satisfaction cost ratio using: Ratio = penaltyCost[i] / u + F/C + 2c[0][closest warehouse] + 2c[closest warehouse][i]
 	vector<std::pair<int, double>> customer_costRatio;
@@ -63,7 +61,7 @@ void ConstructHeuristic_deterministic::orderCustomersByUnmetDemandToDeliveryRati
 	}
 }
 
-void ConstructHeuristic_deterministic::calculateDecisionVariables(int w, vector<vector<double>> &Inv_Customers, vector<vector<double>> &unmetDemand_Customers, vector<vector<double>> &deliveryQuantity_Customers)
+void ConstructHeuristic_Deterministic::calculateDecisionVariables(int w, vector<vector<double>> &Inv_Customers, vector<vector<double>> &unmetDemand_Customers, vector<vector<double>> &deliveryQuantity_Customers)
 {
 	for (int t = 0; t < params.numPeriods; ++t)
 	{
@@ -94,7 +92,7 @@ void ConstructHeuristic_deterministic::calculateDecisionVariables(int w, vector<
 	}
 }
 
-void ConstructHeuristic_deterministic::defineSetOne(int w, int t, vector<int> &setOne, vector<vector<double>> &Inv_Customers, const vector<vector<double>> &unmetDemand_Customers, vector<double> &tempDeliveryQuantity)
+void ConstructHeuristic_Deterministic::defineSetOne(int w, int t, vector<int> &setOne, vector<vector<double>> &Inv_Customers, const vector<vector<double>> &unmetDemand_Customers, vector<double> &tempDeliveryQuantity)
 {
 	for (int i : sorted_Customers_byPenaltyCostRatio)
 	{
@@ -120,7 +118,7 @@ void ConstructHeuristic_deterministic::defineSetOne(int w, int t, vector<int> &s
 	}
 }
 
-void ConstructHeuristic_deterministic::defineSetTwo(int w, int t, int look_ahead, vector<int> &setOne, vector<int> &setTwo, vector<vector<double>> &Inv_Customers, const vector<vector<double>> &unmetDemand_Customers, vector<double> &tempDeliveryQuantity)
+void ConstructHeuristic_Deterministic::defineSetTwo(int w, int t, int look_ahead, vector<int> &setOne, vector<int> &setTwo, vector<vector<double>> &Inv_Customers, const vector<vector<double>> &unmetDemand_Customers, vector<double> &tempDeliveryQuantity)
 {
 	for (int i : sorted_Customers_byPenaltyCostRatio)
 	{
@@ -165,7 +163,7 @@ void ConstructHeuristic_deterministic::defineSetTwo(int w, int t, int look_ahead
 	}
 }
 
-void ConstructHeuristic_deterministic::nearestNeighourInsertion(int w, int t, vector<int> &setOne, vector<int> &setTwo, vector<vector<double>> &deliveryQuantity_Customers, vector<double> &tempDeliveryQuantity, vector<vector<int>> &routesPeriod)
+void ConstructHeuristic_Deterministic::nearestNeighourInsertion(int w, int t, vector<int> &setOne, vector<int> &setTwo, vector<vector<double>> &deliveryQuantity_Customers, vector<double> &tempDeliveryQuantity, vector<vector<int>> &routesPeriod)
 {
 	int numRoutes = params.numVehicles_Warehouse;
 
@@ -338,7 +336,7 @@ void ConstructHeuristic_deterministic::nearestNeighourInsertion(int w, int t, ve
 	}
 }
 
-int ConstructHeuristic_deterministic::findNextNodeToVisit(int current_node, vector<int> &setOne, vector<double> &tempDeliveryQuantity, double remainingVehicleCapacityWarehouse, double remainingAvailInventoryWarehouse)
+int ConstructHeuristic_Deterministic::findNextNodeToVisit(int current_node, vector<int> &setOne, vector<double> &tempDeliveryQuantity, double remainingVehicleCapacityWarehouse, double remainingAvailInventoryWarehouse)
 {
 	double minVisitCost = std::numeric_limits<double>::max();
 	int nearestNode = -1;
@@ -364,7 +362,7 @@ int ConstructHeuristic_deterministic::findNextNodeToVisit(int current_node, vect
 	return nearestNode;
 }
 
-std::pair<int, double> ConstructHeuristic_deterministic::minInsertionCost(const vector<int> &routesPeriod, int i)
+std::pair<int, double> ConstructHeuristic_Deterministic::minInsertionCost(const vector<int> &routesPeriod, int i)
 {
 	double minInsertionCost = std::numeric_limits<double>::max();
 	int minInsertionPos = -1;
@@ -384,7 +382,7 @@ std::pair<int, double> ConstructHeuristic_deterministic::minInsertionCost(const 
 	return std::make_pair(minInsertionPos, minInsertionCost);
 }
 
-double ConstructHeuristic_deterministic::calculateObjFuncValue(int s, int w, const vector<vector<double>> &Inv_Customers, const vector<vector<double>> &unmetDemand_Customers, const vector<vector<vector<int>>> &routesPeriod)
+double ConstructHeuristic_Deterministic::calculateObjFuncValue(int w, const vector<vector<double>> &Inv_Customers, const vector<vector<double>> &unmetDemand_Customers, const vector<vector<vector<int>>> &routesPeriod)
 {
 	double objFuncValue = 0.0;
 
@@ -418,7 +416,7 @@ double ConstructHeuristic_deterministic::calculateObjFuncValue(int s, int w, con
 	return objFuncValue;
 }
 
-bool ConstructHeuristic_deterministic::Construct_InitialSolution()
+bool ConstructHeuristic_Deterministic::Construct_InitialSolution()
 {
 	auto elapsedTime_InitialSolution = 0.0;
 	auto startTime_InitialSolution = std::chrono::high_resolution_clock::now();
@@ -497,7 +495,7 @@ bool ConstructHeuristic_deterministic::Construct_InitialSolution()
 
 					
 
-					calculateDecisionVariables(s, w, Inv_Customers, unmetDemand_Customers, deliveryQuantity_Customers);
+					calculateDecisionVariables(w, Inv_Customers, unmetDemand_Customers, deliveryQuantity_Customers);
 				}
 
 				// calculate objective cost of the second echelon for the current warehouse and scenario
@@ -555,11 +553,10 @@ bool ConstructHeuristic_deterministic::Construct_InitialSolution()
 				}
 			}
 		}
+
+		auto currentTime_InitialSolution = std::chrono::high_resolution_clock::now();
+		elapsedTime_InitialSolution = std::chrono::duration_cast<std::chrono::duration<double>>(currentTime_InitialSolution - startTime_InitialSolution).count();
 	}
-
-	auto currentTime_InitialSolution = std::chrono::high_resolution_clock::now();
-	elapsedTime_InitialSolution = std::chrono::duration_cast<std::chrono::duration<double>>(currentTime_InitialSolution - startTime_InitialSolution).count();
-
 	catch (std::exception &e)
 	{
 		return false;
@@ -570,27 +567,27 @@ bool ConstructHeuristic_deterministic::Construct_InitialSolution()
 	return true;
 }
 
-vector<vector<double>> ConstructHeuristic_deterministic::getInvCustomers()
+vector<vector<double>> ConstructHeuristic_Deterministic::getInvCustomers()
 {
 	return Inv_Customers_bestSolution;
 }
 
-vector<vector<double>> ConstructHeuristic_deterministic::getUnmetDemandCustomers()
+vector<vector<double>> ConstructHeuristic_Deterministic::getUnmetDemandCustomers()
 {
 	return unmetDemand_Customers_bestSolution;
 }
 
-vector<vector<double>> ConstructHeuristic_deterministic::getDeliveryQuantityCustomers()
+vector<vector<double>> ConstructHeuristic_Deterministic::getDeliveryQuantityCustomers()
 {
 	return deliveryQuantity_Customers_bestSolution;
 }
 
-vector<vector<vector<vector<int>>>> ConstructHeuristic_deterministic::getRoutesWarehouseToCustomer()
+vector<vector<vector<vector<int>>>> ConstructHeuristic_Deterministic::getRoutesWarehouseToCustomer()
 {
 	return routes_bestSolution;
 }
 
-double ConstructHeuristic_deterministic::getBestObjValue()
+double ConstructHeuristic_Deterministic::getBestObjValue()
 {
 	return bestObjValue;
 }

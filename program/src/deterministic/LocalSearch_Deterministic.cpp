@@ -1,16 +1,25 @@
-#include "stochastic/LocalSearch.h"
+#include "deterministic/LocalSearch_Deterministic.h"
 
-LocalSearch::LocalSearch(const int s, const ParameterSetting &parameters, const SolutionFirstEchelon &sol_FE, const ScenarioSolutionSecondEchelon &sol_SE_scenario, const double objVal_Scenario)
-	: scenario(s), params(parameters), sol_FE_temp(sol_FE), sol_SE_temp_scenario(sol_SE_scenario), objVal_Scenario(objVal_Scenario), rng(std::random_device{}())
+LocalSearch_Deterministic::LocalSearch_Deterministic(const ParameterSetting &parameters, 
+													 const SolutionFirstEchelon &sol_FE, 
+													 const SolutionSecondEchelon_Deterministic &sol_SE, 
+													 const double objVal,
+													 const vector<vector<double>> &deterministicDemand,
+													 bool shortageAllowed)
+	: params(parameters), 
+	  sol_FE_temp(sol_FE), 
+	  sol_SE_temp(sol_SE), 
+	  objVal(objVal), 
+	  rng(std::random_device{}())
 {
 	// ----------------------------------------------------------------------------------------------------------
-	// cout << "\nLocal Search for scenario " << scenario + 1 << endl;
+	// cout << "\nLocal Search for " << endl;
 	// ----------------------------------------------------------------------------------------------------------
 }
 
-void LocalSearch::RVND()
+void LocalSearch_Deterministic::RVND()
 {
-	// cout << "\nCurrent Objective Value : " << objVal_Scenario << endl;
+	// cout << "\nCurrent Objective Value : " << objVal << endl;
 
 	// Initialize the operators
 	vector<std::function<bool()>> operators;
@@ -21,22 +30,22 @@ void LocalSearch::RVND()
 	// Uniform distribution for operator selection
     std::uniform_int_distribution<int> operator_dist;
 
-	sol_SE_best_scenario = sol_SE_temp_scenario;
-	objVal_best_scenario = objVal_Scenario;
+	sol_SE_best = sol_SE_temp;
+	objVal_best = objVal;
 
 	// We can make it a multistart RVND by applying maxIterRVND times
-	while (iter < maxIterRVND)
+	for (int i = 0; i < maxIterRVND; ++i)
 	{
 		// cout << "\nRVND Iteration : " << iter + 1 << endl;
 		operators = setOperators();
 
-		sol_SE_best_scenario_currStart = sol_SE_temp_scenario;
-		objVal_best_scenario_currStart = objVal_Scenario;
+		sol_SE_best_currStart = sol_SE_temp;
+		objVal_best_currStart = objVal;
 
 		while (!operators.empty())
 		{
-			sol_SE_scenario_feasible = sol_SE_best_scenario_currStart;
-			objVal_feasible_scenario = objVal_best_scenario_currStart;
+			sol_SE_feasible = sol_SE_best_currStart;
+			objVal_feasible = objVal_best_currStart;
 
 			// printAllRoutes();
 
@@ -56,19 +65,19 @@ void LocalSearch::RVND()
 			operators = setOperators();
 		}
 
-		if (objVal_best_scenario_currStart < objVal_best_scenario - 0.001)
+		if (objVal_best_currStart < objVal_best - 0.001)
 		{
-			sol_SE_best_scenario = sol_SE_best_scenario_currStart;
-			objVal_best_scenario = objVal_best_scenario_currStart;
+			sol_SE_best = sol_SE_best_currStart;
+			objVal_best = objVal_best_currStart;
 		}
 		++iter;
 	}
 
 	// printAllRoutes();
-	// cout << "\nBest Objective Value : " << objVal_best_scenario << endl;
+	// cout << "\nBest Objective Value : " << objVal_best << endl;
 }
 
-vector<std::function<bool()>> LocalSearch::setOperators()
+vector<std::function<bool()>> LocalSearch_Deterministic::setOperators()
 {
 	return {
 		[this]()
@@ -103,7 +112,7 @@ vector<std::function<bool()>> LocalSearch::setOperators()
 }
 
 // Or-Opt Operator
-bool LocalSearch::OrOpt(int v)
+bool LocalSearch_Deterministic::OrOpt(int v)
 {
 	// cout << "\nOr-Opt(" << v << ")" << endl;
 
@@ -134,15 +143,14 @@ bool LocalSearch::OrOpt(int v)
 	for (const auto &[t, k] : allCombinations)
 	{
 		// Check if indices are within bounds
-		if (scenario >= sol_SE_scenario_feasible.routesWarehouseToCustomer_Scenario.size() ||
-			warehouse >= sol_SE_scenario_feasible.routesWarehouseToCustomer_Scenario.size() ||
-			t >= sol_SE_scenario_feasible.routesWarehouseToCustomer_Scenario[warehouse].size() ||
-			k >= sol_SE_scenario_feasible.routesWarehouseToCustomer_Scenario[warehouse][t].size())
+		if (warehouse >= sol_SE_feasible.routesWarehouseToCustomer.size() ||
+			t >= sol_SE_feasible.routesWarehouseToCustomer[warehouse].size() ||
+			k >= sol_SE_feasible.routesWarehouseToCustomer[warehouse][t].size())
 		{
 			continue; // Skip invalid combinations
 		}
 
-		const auto &route = sol_SE_scenario_feasible.routesWarehouseToCustomer_Scenario[warehouse][t][k];
+		const auto &route = sol_SE_feasible.routesWarehouseToCustomer[warehouse][t][k];
 
 		if (route.size() >= static_cast<size_t>(v + 3))
 		{
@@ -185,13 +193,13 @@ bool LocalSearch::OrOpt(int v)
 	// 	 << " to position " << newPos << " in route " << selectedVehicle + 1 << endl;
 
 	// Update the route in the feasible solution
-	sol_SE_scenario_feasible.routesWarehouseToCustomer_Scenario[warehouse][selectedPeriod][selectedVehicle] = selectedRoute;
+	sol_SE_feasible.routesWarehouseToCustomer[warehouse][selectedPeriod][selectedVehicle] = selectedRoute;
 
 	// Print the updated route
 	// printRoute(warehouse, selectedPeriod, selectedVehicle, selectedRoute, "Updated Route");
 
 	// Attempt to solve the LP with the updated route
-	if (!solveLP_Scenario())
+	if (!solveLP())
 	{
 		return false;
 	}
@@ -200,7 +208,7 @@ bool LocalSearch::OrOpt(int v)
 }
 
 // Shift Operator
-bool LocalSearch::Shift(int v)
+bool LocalSearch_Deterministic::Shift(int v)
 {
 	// cout << "\nShift(" << v << ")" << endl;
 
@@ -222,7 +230,7 @@ bool LocalSearch::Shift(int v)
 		vector<int> sourceVehicles;
 		for (int sourceVehicle = 0; sourceVehicle < params.numVehicles_Warehouse; ++sourceVehicle)
 		{
-			vector<int> &sourceRoute = sol_SE_scenario_feasible.routesWarehouseToCustomer_Scenario[sourceWarehouse][t][sourceVehicle];
+			vector<int> &sourceRoute = sol_SE_feasible.routesWarehouseToCustomer[sourceWarehouse][t][sourceVehicle];
 
 			// Check if the source route has enough customers to shift (assuming depots at both ends)
 			if (sourceRoute.size() >= static_cast<size_t>(v + 2)) // 2 depots + v customers
@@ -239,7 +247,7 @@ bool LocalSearch::Shift(int v)
 
 		for (const int sourceVehicle : sourceVehicles)
 		{
-			vector<int> &sourceRoute = sol_SE_scenario_feasible.routesWarehouseToCustomer_Scenario[sourceWarehouse][t][sourceVehicle];
+			vector<int> &sourceRoute = sol_SE_feasible.routesWarehouseToCustomer[sourceWarehouse][t][sourceVehicle];
 
 			// Select a random destination warehouse (could be the same as the source warehouse)
 			int destWarehouse = warehouse_dist(rng);
@@ -251,7 +259,7 @@ bool LocalSearch::Shift(int v)
 				if (destWarehouse == sourceWarehouse && destVehicle == sourceVehicle)
 					continue; // Skip same route
 
-				vector<int> &destRoute = sol_SE_scenario_feasible.routesWarehouseToCustomer_Scenario[destWarehouse][t][destVehicle];
+				vector<int> &destRoute = sol_SE_feasible.routesWarehouseToCustomer[destWarehouse][t][destVehicle];
 
 				// No specific size constraints for destination routes, but can add if needed
 				destVehicles.push_back(destVehicle);
@@ -265,7 +273,7 @@ bool LocalSearch::Shift(int v)
 
 			for (const int destVehicle : destVehicles)
 			{
-				vector<int> &destRoute = sol_SE_scenario_feasible.routesWarehouseToCustomer_Scenario[destWarehouse][t][destVehicle];
+				vector<int> &destRoute = sol_SE_feasible.routesWarehouseToCustomer[destWarehouse][t][destVehicle];
 
 				if (sourceRoute.size() == static_cast<size_t>(v + 2) && destRoute.size() == static_cast<size_t>(v + 2) 
 					&& sourceWarehouse == destWarehouse)
@@ -321,10 +329,10 @@ bool LocalSearch::Shift(int v)
 						for (const int customer : segment)
 						{
 							// Set previous warehouse assignment to 0
-							sol_SE_scenario_feasible.customerAssignmentToWarehouse_Scenario[t][sourceWarehouse][customer - params.numWarehouses] = 0;
+							sol_SE_feasible.customerAssignmentToWarehouse[t][sourceWarehouse][customer - params.numWarehouses] = 0;
 
 							// Set new warehouse assignment to 1
-							sol_SE_scenario_feasible.customerAssignmentToWarehouse_Scenario[t][destWarehouse][customer - params.numWarehouses] = 1;
+							sol_SE_feasible.customerAssignmentToWarehouse[t][destWarehouse][customer - params.numWarehouses] = 1;
 						}
 
 						// If sourceRoute has only depots left, clear it
@@ -357,7 +365,7 @@ bool LocalSearch::Shift(int v)
 						// printRoute(destWarehouse, t, destVehicle, destRoute, "Updated Dest Route");
 
 						// Attempt to solve the LP with the updated routes
-						if (solveLP_Scenario())
+						if (solveLP())
 						{
 							return true;
 						} 
@@ -377,7 +385,7 @@ bool LocalSearch::Shift(int v)
 }
 
 // Swap Operator
-bool LocalSearch::Swap(int v1, int v2)
+bool LocalSearch_Deterministic::Swap(int v1, int v2)
 {
 	// cout << "\nSwap(" << v1 << ", " << v2 << ")" << endl;
 
@@ -399,7 +407,7 @@ bool LocalSearch::Swap(int v1, int v2)
 		vector<int> sourceVehicles;
 		for (int sourceVehicle = 0; sourceVehicle < params.numVehicles_Warehouse; ++sourceVehicle)
 		{
-			vector<int> &sourceRoute = sol_SE_scenario_feasible.routesWarehouseToCustomer_Scenario[sourceWarehouse][t][sourceVehicle];
+			vector<int> &sourceRoute = sol_SE_feasible.routesWarehouseToCustomer[sourceWarehouse][t][sourceVehicle];
 
 			// Check if the source route has enough customers to perform a swap
 			// Assuming depots are at positions 0 and sourceRoute.size() - 1
@@ -417,7 +425,7 @@ bool LocalSearch::Swap(int v1, int v2)
 
 		for (const int sourceVehicle : sourceVehicles)
 		{
-			vector<int> &sourceRoute = sol_SE_scenario_feasible.routesWarehouseToCustomer_Scenario[sourceWarehouse][t][sourceVehicle];
+			vector<int> &sourceRoute = sol_SE_feasible.routesWarehouseToCustomer[sourceWarehouse][t][sourceVehicle];
 
 			// Select a random destination warehouse (could be the same as the source warehouse)
 			int destWarehouse = warehouse_dist(rng);
@@ -430,7 +438,7 @@ bool LocalSearch::Swap(int v1, int v2)
 				if (sourceWarehouse == destWarehouse && sourceVehicle == destVehicle)
 					continue; // Skip if source and destination routes are the same
 
-				vector<int> &destRoute = sol_SE_scenario_feasible.routesWarehouseToCustomer_Scenario[destWarehouse][t][destVehicle];
+				vector<int> &destRoute = sol_SE_feasible.routesWarehouseToCustomer[destWarehouse][t][destVehicle];
 
 				// Check if the destination route has enough customers to perform a swap
 				if (destRoute.size() >= static_cast<size_t>(v2 + 2)) // At least 1 customer + 2 depots
@@ -447,7 +455,7 @@ bool LocalSearch::Swap(int v1, int v2)
 
 			for (const int destVehicle : destVehicles)
 			{
-				vector<int> &destRoute = sol_SE_scenario_feasible.routesWarehouseToCustomer_Scenario[destWarehouse][t][destVehicle];
+				vector<int> &destRoute = sol_SE_feasible.routesWarehouseToCustomer[destWarehouse][t][destVehicle];
 
 				if (sourceRoute.size() == static_cast<size_t>(v1 + 2) && destRoute.size() == static_cast<size_t>(v2 + 2)
 					&& sourceWarehouse == destWarehouse)
@@ -483,19 +491,19 @@ bool LocalSearch::Swap(int v1, int v2)
 				for (const int customer : sourceSegment)
 				{
 					// Set previous warehouse assignment to 0
-					sol_SE_scenario_feasible.customerAssignmentToWarehouse_Scenario[t][sourceWarehouse][customer - params.numWarehouses] = 0;
+					sol_SE_feasible.customerAssignmentToWarehouse[t][sourceWarehouse][customer - params.numWarehouses] = 0;
 
 					// Set new warehouse assignment to 1
-					sol_SE_scenario_feasible.customerAssignmentToWarehouse_Scenario[t][destWarehouse][customer - params.numWarehouses] = 1;
+					sol_SE_feasible.customerAssignmentToWarehouse[t][destWarehouse][customer - params.numWarehouses] = 1;
 				}
 
 				for (const int customer : destSegment)
 				{
 					// Set previous warehouse assignment to 0
-					sol_SE_scenario_feasible.customerAssignmentToWarehouse_Scenario[t][destWarehouse][customer - params.numWarehouses] = 0;
+					sol_SE_feasible.customerAssignmentToWarehouse[t][destWarehouse][customer - params.numWarehouses] = 0;
 
 					// Set new warehouse assignment to 1
-					sol_SE_scenario_feasible.customerAssignmentToWarehouse_Scenario[t][sourceWarehouse][customer - params.numWarehouses] = 1;
+					sol_SE_feasible.customerAssignmentToWarehouse[t][sourceWarehouse][customer - params.numWarehouses] = 1;
 				}
 
 				// Log the swap operation
@@ -508,7 +516,7 @@ bool LocalSearch::Swap(int v1, int v2)
 				// printRoute(destWarehouse, t, destVehicle, destRoute, "Updated Dest route");
 
 				// Attempt to solve the LP with the updated routes
-				if (solveLP_Scenario())
+				if (solveLP())
 				{
 					// Successful swap leading to improvement
 					return true;
@@ -527,7 +535,7 @@ bool LocalSearch::Swap(int v1, int v2)
 }
 
 // Insert Operator
-bool LocalSearch::Insert()
+bool LocalSearch_Deterministic::Insert()
 {
 	// cout << "\nInsert" << endl;
 
@@ -561,7 +569,7 @@ bool LocalSearch::Insert()
 		for (int w = 0; w < params.numWarehouses; ++w)
 		{
 			int rtIndex = 0;
-			for (auto &route : sol_SE_scenario_feasible.routesWarehouseToCustomer_Scenario[w][t])
+			for (auto &route : sol_SE_feasible.routesWarehouseToCustomer[w][t])
 			{
 				if (route.size() > 2)
 				{
@@ -587,7 +595,7 @@ bool LocalSearch::Insert()
 			{
 				for (int w = 0; w < params.numWarehouses; ++w)
 				{
-					if (sol_SE_scenario_feasible.customerAssignmentToWarehouse_Scenario[t][w][i] == 1)
+					if (sol_SE_feasible.customerAssignmentToWarehouse[t][w][i] == 1)
 					{
 						unvisitedNodesWithWarehouse.emplace_back(node, w); // Store the unvisited node with its warehouse
 						break;
@@ -615,7 +623,7 @@ bool LocalSearch::Insert()
 		int routeInd = 0;
 
 		// Iterate over all routes in the selected warehouse to find the best insertion point
-		for (auto &route : sol_SE_scenario_feasible.routesWarehouseToCustomer_Scenario[selectedWarehouse][t])
+		for (auto &route : sol_SE_feasible.routesWarehouseToCustomer[selectedWarehouse][t])
 		{
 			if (route.empty())
 			{
@@ -648,16 +656,16 @@ bool LocalSearch::Insert()
 		}
 
 		// Insert the node if a position was found
-		if (routeToIns != -1 && !sol_SE_scenario_feasible.routesWarehouseToCustomer_Scenario[selectedWarehouse][t][routeToIns].empty())
+		if (routeToIns != -1 && !sol_SE_feasible.routesWarehouseToCustomer[selectedWarehouse][t][routeToIns].empty())
 		{
 			// Insert node into the non-empty route
-			sol_SE_scenario_feasible.routesWarehouseToCustomer_Scenario[selectedWarehouse][t][routeToIns].insert(sol_SE_scenario_feasible.routesWarehouseToCustomer_Scenario[selectedWarehouse][t][routeToIns].begin() + minInsertionPos, unvisitedNode);
+			sol_SE_feasible.routesWarehouseToCustomer[selectedWarehouse][t][routeToIns].insert(sol_SE_feasible.routesWarehouseToCustomer[selectedWarehouse][t][routeToIns].begin() + minInsertionPos, unvisitedNode);
 			inserted = true;
 		}
-		else if (routeToIns != -1 && sol_SE_scenario_feasible.routesWarehouseToCustomer_Scenario[selectedWarehouse][t][routeToIns].empty())
+		else if (routeToIns != -1 && sol_SE_feasible.routesWarehouseToCustomer[selectedWarehouse][t][routeToIns].empty())
 		{
 			// If the route is empty, add warehouse -> node -> warehouse
-			sol_SE_scenario_feasible.routesWarehouseToCustomer_Scenario[selectedWarehouse][t][routeToIns] = {selectedWarehouse, unvisitedNode, selectedWarehouse};
+			sol_SE_feasible.routesWarehouseToCustomer[selectedWarehouse][t][routeToIns] = {selectedWarehouse, unvisitedNode, selectedWarehouse};
 			inserted = true;
 		}
 
@@ -670,13 +678,13 @@ bool LocalSearch::Insert()
 		// Update the customerAssignmentToWarehouse matrix
 		if (assignedWarehouse != selectedWarehouse)
 		{
-			sol_SE_scenario_feasible.customerAssignmentToWarehouse_Scenario[t][assignedWarehouse][unvisitedNode - params.numWarehouses] = 0;
-			sol_SE_scenario_feasible.customerAssignmentToWarehouse_Scenario[t][selectedWarehouse][unvisitedNode - params.numWarehouses] = 1;
+			sol_SE_feasible.customerAssignmentToWarehouse[t][assignedWarehouse][unvisitedNode - params.numWarehouses] = 0;
+			sol_SE_feasible.customerAssignmentToWarehouse[t][selectedWarehouse][unvisitedNode - params.numWarehouses] = 1;
 		}
 
 		// Output updated routes for the selected warehouse and period
 		int rtIndex = 0;
-		for (auto &route : sol_SE_scenario_feasible.routesWarehouseToCustomer_Scenario[selectedWarehouse][t])
+		for (auto &route : sol_SE_feasible.routesWarehouseToCustomer[selectedWarehouse][t])
 		{
 			// printRoute(selectedWarehouse, t, rtIndex, route, "Updated Route");
 			rtIndex++;
@@ -685,7 +693,7 @@ bool LocalSearch::Insert()
 		// cout << "Inserted unvisited node " << unvisitedNode << " at period " << t + 1 << " in warehouse " << selectedWarehouse + 1 << " with minimum cost." << endl;
 
 		// Solve the linear program to check for improvement
-		if (!solveLP_Scenario())
+		if (!solveLP())
 		{
 			// The LP did not find an improvement
 			return false;
@@ -701,7 +709,7 @@ bool LocalSearch::Insert()
 }
 
 // Remove Operator
-bool LocalSearch::Remove()
+bool LocalSearch_Deterministic::Remove()
 {
 	// cout << "\nRemove" << endl;
 
@@ -714,7 +722,7 @@ bool LocalSearch::Remove()
 	vector<int> candidateRoutes;
 
 	// int rtIndex = 0;
-	// for (auto &route : sol_SE_scenario_feasible.routesWarehouseToCustomer_Scenario[selectedWarehouse][t])
+	// for (auto &route : sol_SE_feasible.routesWarehouseToCustomer[selectedWarehouse][t])
 	// {
 	// 	printRoute(selectedWarehouse, t, rtIndex, route, "Old Route");
 
@@ -722,9 +730,9 @@ bool LocalSearch::Remove()
 	// }
 
 	// Gather routes that have more than just the warehouse start and end node
-	for (int r = 0; r < sol_SE_scenario_feasible.routesWarehouseToCustomer_Scenario[selectedWarehouse][t].size(); ++r)
+	for (int r = 0; r < sol_SE_feasible.routesWarehouseToCustomer[selectedWarehouse][t].size(); ++r)
 	{
-		if (sol_SE_scenario_feasible.routesWarehouseToCustomer_Scenario[selectedWarehouse][t][r].size() > 2)
+		if (sol_SE_feasible.routesWarehouseToCustomer[selectedWarehouse][t][r].size() > 2)
 		{ // Ensure there's more than just the warehouse nodes
 			candidateRoutes.push_back(r);
 		}
@@ -739,7 +747,7 @@ bool LocalSearch::Remove()
 
 	// Randomly select a route from candidate routes
 	int routeIndex = candidateRoutes[rand() % candidateRoutes.size()];
-	auto &selectedRoute = sol_SE_scenario_feasible.routesWarehouseToCustomer_Scenario[selectedWarehouse][t][routeIndex];
+	auto &selectedRoute = sol_SE_feasible.routesWarehouseToCustomer[selectedWarehouse][t][routeIndex];
 
 	// Randomly select a customer node to remove, avoiding the warehouse nodes at the start and end if present
 	int nodeIndex = rand() % (selectedRoute.size() - 2) + 1; // Avoid first and last positions if they are warehouses
@@ -752,7 +760,7 @@ bool LocalSearch::Remove()
 	}
 
 	// rtIndex = 0;
-	// for (auto &route : sol_SE_scenario_feasible.routesWarehouseToCustomer_Scenario[selectedWarehouse][t])
+	// for (auto &route : sol_SE_feasible.routesWarehouseToCustomer[selectedWarehouse][t])
 	// {
 	// 	printRoute(selectedWarehouse, t, rtIndex, route, "New Route");
 
@@ -763,7 +771,7 @@ bool LocalSearch::Remove()
 	// cout << "Removed customer " << removedCustomer << " from period " << t + 1 
 	// 	 << ", warehouse " << selectedWarehouse + 1 << ", route " << routeIndex + 1 << endl;
 
-	if (!solveLP_Scenario())
+	if (!solveLP())
 	{
 		// Successful swap leading to improvement
 		return false;
@@ -773,7 +781,7 @@ bool LocalSearch::Remove()
 }
 
 // Merge Operator
-bool LocalSearch::Merge()
+bool LocalSearch_Deterministic::Merge()
 {
 	// cout << "\nMerge" << endl;
 
@@ -793,7 +801,7 @@ bool LocalSearch::Merge()
 		{
 			std::unordered_set<int> periodCustomers; // Temporarily store unique customers for this period and warehouse
 
-			for (const auto &route : sol_SE_scenario_feasible.routesWarehouseToCustomer_Scenario[w][t])
+			for (const auto &route : sol_SE_feasible.routesWarehouseToCustomer[w][t])
 			{
 				if (route.size() > 2)
 				{
@@ -875,9 +883,9 @@ bool LocalSearch::Merge()
 		if (periodWarehouse.first == mergeFromPeriod)
 		{
 			mergeFromWarehouse = periodWarehouse.second; // Get the warehouse for mergeFrom
-			for (int r = 0; r < sol_SE_scenario_feasible.routesWarehouseToCustomer_Scenario[mergeFromWarehouse][mergeFromPeriod].size(); ++r)
+			for (int r = 0; r < sol_SE_feasible.routesWarehouseToCustomer[mergeFromWarehouse][mergeFromPeriod].size(); ++r)
 			{
-				vector<int>& route = sol_SE_scenario_feasible.routesWarehouseToCustomer_Scenario[mergeFromWarehouse][mergeFromPeriod][r];
+				vector<int>& route = sol_SE_feasible.routesWarehouseToCustomer[mergeFromWarehouse][mergeFromPeriod][r];
 				auto it = std::find(route.begin() + 1,
 									route.end() - 1,
 									selectedCustomer);
@@ -903,9 +911,9 @@ bool LocalSearch::Merge()
 		if (periodWarehouse.first == mergeToPeriod)
 		{
 			mergeToWarehouse = periodWarehouse.second; // Get the warehouse for mergeTo
-			for (int r = 0; r < sol_SE_scenario_feasible.routesWarehouseToCustomer_Scenario[mergeToWarehouse][mergeToPeriod].size(); ++r)
+			for (int r = 0; r < sol_SE_feasible.routesWarehouseToCustomer[mergeToWarehouse][mergeToPeriod].size(); ++r)
 			{
-				vector<int>& route = sol_SE_scenario_feasible.routesWarehouseToCustomer_Scenario[mergeToWarehouse][mergeToPeriod][r];
+				vector<int>& route = sol_SE_feasible.routesWarehouseToCustomer[mergeToWarehouse][mergeToPeriod][r];
 				auto it = std::find(route.begin() + 1,
 									route.end() - 1,
 									selectedCustomer);
@@ -926,8 +934,8 @@ bool LocalSearch::Merge()
 	}
 
 	// Print routes before merge
-	// printRoute(mergeFromWarehouse, mergeFromPeriod, mergeFromRouteIndex, sol_SE_scenario_feasible.routesWarehouseToCustomer_Scenario[mergeFromWarehouse][mergeFromPeriod][mergeFromRouteIndex], "Old Route (Merge From)");
-	// printRoute(mergeToWarehouse, mergeToPeriod, mergeToRouteIndex, sol_SE_scenario_feasible.routesWarehouseToCustomer_Scenario[mergeToWarehouse][mergeToPeriod][mergeToRouteIndex], "Old Route (Merge To)");
+	// printRoute(mergeFromWarehouse, mergeFromPeriod, mergeFromRouteIndex, sol_SE_feasible.routesWarehouseToCustomer[mergeFromWarehouse][mergeFromPeriod][mergeFromRouteIndex], "Old Route (Merge From)");
+	// printRoute(mergeToWarehouse, mergeToPeriod, mergeToRouteIndex, sol_SE_feasible.routesWarehouseToCustomer[mergeToWarehouse][mergeToPeriod][mergeToRouteIndex], "Old Route (Merge To)");
 
 	// cout << "Merging customer " << selectedCustomer + 1 << " from period " << mergeFromPeriod + 1
 	// 	 << " and warehouse " << mergeFromWarehouse + 1
@@ -935,7 +943,7 @@ bool LocalSearch::Merge()
 	// 	 << " and warehouse " << mergeToWarehouse + 1 << endl;
 
 	// Remove customer from mergeFrom period
-	auto &fromRoute = sol_SE_scenario_feasible.routesWarehouseToCustomer_Scenario[mergeFromWarehouse][mergeFromPeriod][mergeFromRouteIndex];
+	auto &fromRoute = sol_SE_feasible.routesWarehouseToCustomer[mergeFromWarehouse][mergeFromPeriod][mergeFromRouteIndex];
 	fromRoute.erase(std::remove(fromRoute.begin(), fromRoute.end(), selectedCustomer), fromRoute.end());
 
 	// If route is empty (only warehouse nodes), clear it
@@ -947,16 +955,16 @@ bool LocalSearch::Merge()
 	// // Update customer assignment matrix if warehouses are different
 	// if (mergeFromWarehouse != mergeToWarehouse)
 	// {
-	// 	sol_SE_scenario_feasible.customerAssignmentToWarehouse_Scenario[mergeFromPeriod][mergeFromWarehouse][selectedCustomer - params.numWarehouses] = 0;
-	// 	sol_SE_scenario_feasible.customerAssignmentToWarehouse_Scenario[mergeToPeriod][mergeToWarehouse][selectedCustomer - params.numWarehouses] = 1;
+	// 	sol_SE_feasible.customerAssignmentToWarehouse[mergeFromPeriod][mergeFromWarehouse][selectedCustomer - params.numWarehouses] = 0;
+	// 	sol_SE_feasible.customerAssignmentToWarehouse[mergeToPeriod][mergeToWarehouse][selectedCustomer - params.numWarehouses] = 1;
 	// }
 
 	// Output new routes after the merge
 	// printRoute(mergeFromWarehouse, mergeFromPeriod, mergeFromRouteIndex, fromRoute, "New Route (Merge From)");
-	// printRoute(mergeToWarehouse, mergeToPeriod, mergeToRouteIndex, sol_SE_scenario_feasible.routesWarehouseToCustomer_Scenario[mergeToWarehouse][mergeToPeriod][mergeToRouteIndex], "New Route (Merge To)");
+	// printRoute(mergeToWarehouse, mergeToPeriod, mergeToRouteIndex, sol_SE_feasible.routesWarehouseToCustomer[mergeToWarehouse][mergeToPeriod][mergeToRouteIndex], "New Route (Merge To)");
 
 	// Solve LP after merge to check for improvement
-	if (!solveLP_Scenario())
+	if (!solveLP())
 	{
 		return false;
 	}
@@ -965,7 +973,7 @@ bool LocalSearch::Merge()
 }
 
 // Transfer Operator
-bool LocalSearch::Transfer()
+bool LocalSearch_Deterministic::Transfer()
 {
     // cout << "\nTransfer" << endl;
 
@@ -991,9 +999,9 @@ bool LocalSearch::Transfer()
         for (int w = 0; w < params.numWarehouses; ++w)
         {
             bool found = false;
-            if (sol_SE_scenario_feasible.customerAssignmentToWarehouse_Scenario[t][w][customer - params.numWarehouses] == 1)
+            if (sol_SE_feasible.customerAssignmentToWarehouse[t][w][customer - params.numWarehouses] == 1)
             {
-                for (auto &route : sol_SE_scenario_feasible.routesWarehouseToCustomer_Scenario[w][t])
+                for (auto &route : sol_SE_feasible.routesWarehouseToCustomer[w][t])
                 {
                     if (std::find(route.begin(), route.end(), customer) != route.end())
                     {
@@ -1031,7 +1039,7 @@ bool LocalSearch::Transfer()
         int periodToRemove = entry.first;
         int warehouseToRemove = entry.second;
 
-        for (auto &route : sol_SE_scenario_feasible.routesWarehouseToCustomer_Scenario[warehouseToRemove][periodToRemove])
+        for (auto &route : sol_SE_feasible.routesWarehouseToCustomer[warehouseToRemove][periodToRemove])
         {
             auto it = std::remove(route.begin(), route.end(), customer);
             if (it != route.end())
@@ -1066,7 +1074,7 @@ bool LocalSearch::Transfer()
         int routeIndex = 0;
 
         // Iterate over all routes in the selected warehouse and period to find the best insertion position
-        for (auto &route : sol_SE_scenario_feasible.routesWarehouseToCustomer_Scenario[warehouseToInsert][periodToInsert])
+        for (auto &route : sol_SE_feasible.routesWarehouseToCustomer[warehouseToInsert][periodToInsert])
         {
             if (route.empty())
             {
@@ -1107,26 +1115,26 @@ bool LocalSearch::Transfer()
             {
                 if (w != warehouseToInsert)
                 {
-                    sol_SE_scenario_feasible.customerAssignmentToWarehouse_Scenario[periodToInsert][w][customer - params.numWarehouses] = 0;
+                    sol_SE_feasible.customerAssignmentToWarehouse[periodToInsert][w][customer - params.numWarehouses] = 0;
                 }
             }
 
             // Insert the customer into the selected position
-            if (sol_SE_scenario_feasible.routesWarehouseToCustomer_Scenario[warehouseToInsert][periodToInsert][routeToInsert].empty())
+            if (sol_SE_feasible.routesWarehouseToCustomer[warehouseToInsert][periodToInsert][routeToInsert].empty())
             {
                 // Insert into an empty route
-                sol_SE_scenario_feasible.routesWarehouseToCustomer_Scenario[warehouseToInsert][periodToInsert][routeToInsert] = {warehouseToInsert, customer, warehouseToInsert};
+                sol_SE_feasible.routesWarehouseToCustomer[warehouseToInsert][periodToInsert][routeToInsert] = {warehouseToInsert, customer, warehouseToInsert};
             }
             else
             {
                 // Insert into a non-empty route
-                sol_SE_scenario_feasible.routesWarehouseToCustomer_Scenario[warehouseToInsert][periodToInsert][routeToInsert].insert(
-                    sol_SE_scenario_feasible.routesWarehouseToCustomer_Scenario[warehouseToInsert][periodToInsert][routeToInsert].begin() + minInsertionPos,
+                sol_SE_feasible.routesWarehouseToCustomer[warehouseToInsert][periodToInsert][routeToInsert].insert(
+                    sol_SE_feasible.routesWarehouseToCustomer[warehouseToInsert][periodToInsert][routeToInsert].begin() + minInsertionPos,
                     customer);
             }
 
             // Update the customerAssignmentToWarehouse matrix for the new warehouse
-            sol_SE_scenario_feasible.customerAssignmentToWarehouse_Scenario[periodToInsert][warehouseToInsert][customer - params.numWarehouses] = 1;
+            sol_SE_feasible.customerAssignmentToWarehouse[periodToInsert][warehouseToInsert][customer - params.numWarehouses] = 1;
         }
     }
 
@@ -1138,7 +1146,7 @@ bool LocalSearch::Transfer()
     // cout << endl;
 
     // Solve the linear program to check for improvement
-    if (solveLP_Scenario())
+    if (solveLP())
     {
         return true;
     }
@@ -1147,7 +1155,7 @@ bool LocalSearch::Transfer()
 }
 
 // Remove/Insert Operator
-bool LocalSearch::Remove_Insert()
+bool LocalSearch_Deterministic::Remove_Insert()
 {
     // cout << "\nRemove/Insert" << endl;
 
@@ -1167,7 +1175,7 @@ bool LocalSearch::Remove_Insert()
 
         for (int w = 0; w < params.numWarehouses; ++w)
         {
-            for (const auto &route : sol_SE_scenario_feasible.routesWarehouseToCustomer_Scenario[w][t])
+            for (const auto &route : sol_SE_feasible.routesWarehouseToCustomer[w][t])
             {
                 for (int node : route)
                 {
@@ -1207,9 +1215,9 @@ bool LocalSearch::Remove_Insert()
         bool found = false;
         for (int w = 0; w < params.numWarehouses; ++w)
         {
-            if (sol_SE_scenario_feasible.customerAssignmentToWarehouse_Scenario[t][w][selectedCustomer - params.numWarehouses] == 1)
+            if (sol_SE_feasible.customerAssignmentToWarehouse[t][w][selectedCustomer - params.numWarehouses] == 1)
             {
-                for (const auto &route : sol_SE_scenario_feasible.routesWarehouseToCustomer_Scenario[w][t])
+                for (const auto &route : sol_SE_feasible.routesWarehouseToCustomer[w][t])
                 {
                     if (std::find(route.begin(), route.end(), selectedCustomer) != route.end())
                     {
@@ -1234,7 +1242,7 @@ bool LocalSearch::Remove_Insert()
     int toPeriod = targetPeriods[rand() % targetPeriods.size()];
 
     // Step 4: Remove the customer from the original warehouse and period
-    for (auto &route : sol_SE_scenario_feasible.routesWarehouseToCustomer_Scenario[warehouseFrom][fromPeriod])
+    for (auto &route : sol_SE_feasible.routesWarehouseToCustomer[warehouseFrom][fromPeriod])
     {
         auto it = std::find(route.begin(), route.end(), selectedCustomer);
         if (it != route.end())
@@ -1258,7 +1266,7 @@ bool LocalSearch::Remove_Insert()
     int routeToInsert = -1;
     int routeIndex = 0;
 
-    for (auto &route : sol_SE_scenario_feasible.routesWarehouseToCustomer_Scenario[warehouseToInsert][toPeriod])
+    for (auto &route : sol_SE_feasible.routesWarehouseToCustomer[warehouseToInsert][toPeriod])
     {
         if (route.empty())
         {
@@ -1299,31 +1307,31 @@ bool LocalSearch::Remove_Insert()
         {
             if (w != warehouseToInsert)
             {
-                sol_SE_scenario_feasible.customerAssignmentToWarehouse_Scenario[toPeriod][w][selectedCustomer - params.numWarehouses] = 0;
+                sol_SE_feasible.customerAssignmentToWarehouse[toPeriod][w][selectedCustomer - params.numWarehouses] = 0;
             }
         }
 
-        if (sol_SE_scenario_feasible.routesWarehouseToCustomer_Scenario[warehouseToInsert][toPeriod][routeToInsert].empty())
+        if (sol_SE_feasible.routesWarehouseToCustomer[warehouseToInsert][toPeriod][routeToInsert].empty())
         {
             // Insert into an empty route
-            sol_SE_scenario_feasible.routesWarehouseToCustomer_Scenario[warehouseToInsert][toPeriod][routeToInsert] = {warehouseToInsert, selectedCustomer, warehouseToInsert};
+            sol_SE_feasible.routesWarehouseToCustomer[warehouseToInsert][toPeriod][routeToInsert] = {warehouseToInsert, selectedCustomer, warehouseToInsert};
         }
         else
         {
             // Insert into a non-empty route
-            sol_SE_scenario_feasible.routesWarehouseToCustomer_Scenario[warehouseToInsert][toPeriod][routeToInsert].insert(
-                sol_SE_scenario_feasible.routesWarehouseToCustomer_Scenario[warehouseToInsert][toPeriod][routeToInsert].begin() + minInsertionPos,
+            sol_SE_feasible.routesWarehouseToCustomer[warehouseToInsert][toPeriod][routeToInsert].insert(
+                sol_SE_feasible.routesWarehouseToCustomer[warehouseToInsert][toPeriod][routeToInsert].begin() + minInsertionPos,
                 selectedCustomer);
         }
 
         // Update the customerAssignmentToWarehouse matrix for the new warehouse
-        sol_SE_scenario_feasible.customerAssignmentToWarehouse_Scenario[toPeriod][warehouseToInsert][selectedCustomer - params.numWarehouses] = 1;
+        sol_SE_feasible.customerAssignmentToWarehouse[toPeriod][warehouseToInsert][selectedCustomer - params.numWarehouses] = 1;
     }
 
     // cout << "Moved customer " << selectedCustomer << " from period " << fromPeriod + 1 << " to period " << toPeriod + 1 << " in warehouse " << warehouseToInsert + 1 << "." << endl;
 
     // Step 8: Solve the LP to check for improvements
-    if (solveLP_Scenario())
+    if (solveLP())
     {
         return true;
     }
@@ -1331,35 +1339,40 @@ bool LocalSearch::Remove_Insert()
     return false;
 }
 
-bool LocalSearch::solveLP_Scenario()
+bool LocalSearch_Deterministic::solveLP()
 {
 	// solve LP to get the value of the continuous variables
-	LP_SE_Scenario lpse_scenario(params, sol_FE_temp, sol_SE_scenario_feasible, scenario);		
-	string status = lpse_scenario.solve();
+	LP_SE_Deterministic lpse(params, 
+							 sol_FE_temp, 
+							 sol_SE_feasible,
+							 demand,
+							 shortageAllowed);
+
+	string status = lpse.solve();
 	if (status != "Optimal")
 	{
 		// cerr << "LP solver failed with status: " << status << endl;
 		return false;
 	}
 	
-	objVal_feasible_scenario = lpse_scenario.getObjVal_Scenario();
+	objVal_feasible = lpse.getResult().objValue_Total;
 
 	// Log the objective values for comparison
-	// cout << "\nBest objective value (Current Iteration): " << objVal_best_scenario_currStart << endl;
-	// cout << "New objective value after operation: " << objVal_feasible_scenario << endl;
+	// cout << "\nBest objective value (Current Iteration): " << objVal_best_currStart << endl;
+	// cout << "New objective value after operation: " << objVal_feasible << endl;
 
 	// Define the improvement threshold
 	const double improvementThreshold = 1e-2;
 
 	// Determine if the new solution is significantly better than the best known
-	if (objVal_feasible_scenario < objVal_best_scenario_currStart - improvementThreshold)
+	if (objVal_feasible < objVal_best_currStart - improvementThreshold)
 	{
 		// cout << "A better solution found!\n"
 		// 	 << endl;
 
 		// Update the best known solution
-		sol_SE_best_scenario_currStart = lpse_scenario.getSolutionSE_Scenario();
-		objVal_best_scenario_currStart = lpse_scenario.getObjVal_Scenario();
+		sol_SE_best_currStart = lpse.getSolutionSE();
+		objVal_best_currStart = lpse.getResult().objValue_Total;
 		return true;
 	}
 	// cout << "No improvement found.\n"
@@ -1370,9 +1383,9 @@ bool LocalSearch::solveLP_Scenario()
 }
 
 // Helper function to print a route with a label
-void LocalSearch::printRoute(int ware, int per, int rI, const vector<int> &route, const std::string &label) const
+void LocalSearch_Deterministic::printRoute(int ware, int per, int rI, const vector<int> &route, const std::string &label) const
 {
-	cout << label << "[" << scenario + 1 << "][" << ware + 1 << "][" << per + 1 << "][" << rI + 1 << "]: [";
+	cout << label << "[" << ware + 1 << "][" << per + 1 << "][" << rI + 1 << "]: [";
 	if (!route.empty()){
 		for (size_t i = 0; i < route.size(); ++i)
 		{
@@ -1384,7 +1397,7 @@ void LocalSearch::printRoute(int ware, int per, int rI, const vector<int> &route
 	cout << "]" << endl;
 }
 
-void LocalSearch::printAllRoutes() const
+void LocalSearch_Deterministic::printAllRoutes() const
 {
 	for (int w = 0; w < params.numWarehouses; ++w)
 	{
@@ -1392,19 +1405,19 @@ void LocalSearch::printAllRoutes() const
 		{
 			for (int k = 0; k < params.numVehicles_Warehouse; ++k)
 			{
-				const auto &route = sol_SE_scenario_feasible.routesWarehouseToCustomer_Scenario[w][t][k];
+				const auto &route = sol_SE_feasible.routesWarehouseToCustomer[w][t][k];
 				printRoute(w, t, k, route, "Route");
 			}
 		}
 	}
 	cout << "\n";
 }
-ScenarioSolutionSecondEchelon LocalSearch::getSolutionSE_Scenario()
+SolutionSecondEchelon_Deterministic LocalSearch_Deterministic::getSolutionSE()
 {
-	return sol_SE_best_scenario;
+	return sol_SE_best;
 }
 
-double LocalSearch::getObjVal_Scenario()
+double LocalSearch_Deterministic::getObjVal()
 {
-	return objVal_best_scenario;
+	return objVal_best;
 }

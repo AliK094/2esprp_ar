@@ -1,15 +1,18 @@
-#ifndef EV_BC_H
-#define EV_BC_H
+#ifndef BC_DETERMINISTIC_H
+#define BC_DETERMINISTIC_H
 
 #include "ParameterSetting.h"
 #include "VariableManager.h"
 #include "CplexParameterManager.h"
-#include "DeterBCCallbackManager.h"
+#include "deterministic/DeterBCCallbackManager.h"
 
-class EV_BC
+class BC_Deterministic
 {
 public:
-    EV_BC(const ParameterSetting &parameters, const SolutionWarmStart &warmStartSol = {});
+    BC_Deterministic(const ParameterSetting &parameters, 
+                    const vector<vector<double>> &deterministicDemand, 
+                    const SolutionWarmStart_Deterministic &warmStartSol = {}, 
+                    bool shortageAllowed = true);
 
     bool Solve();
 
@@ -18,7 +21,7 @@ public:
         return solFE;
     }
 
-    SolutionSecondEchelon getSolutionSE() const
+    SolutionSecondEchelon_Deterministic getSolutionSE() const
     {
         return solSE;
     }
@@ -32,10 +35,13 @@ private:
     double THRESHOLD;
 
     ParameterSetting params; // Member variable to hold the ParameterSetting object
-    SolutionWarmStart warmStart;
+
+    vector<vector<double>> demand;
+    SolutionWarmStart_Deterministic warmStart;
+    bool shortageAllowed;
 
     SolutionFirstEchelon solFE;
-    SolutionSecondEchelon solSE;
+    SolutionSecondEchelon_Deterministic solSE;
     Result result;
 
     // Decision Variables
@@ -84,4 +90,4 @@ private:
 
 };
 
-#endif // EV_BC_H
+#endif // BC_DETERMINISTIC_H

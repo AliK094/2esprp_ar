@@ -9,7 +9,10 @@
 #include "stochastic/S2EPRP_BC.h"
 #include "stochastic/RS2EPRP.h"
 
-#include "eval/EV_BC.h"
+#include "deterministic/MWPRP_FE_Deterministic.h"
+#include "deterministic/ILS_Deterministic.h"
+#include "deterministic/R2EPRP.h"
+#include "deterministic/BC_Deterministic.h"
 
 class Algorithms
 {
@@ -18,8 +21,10 @@ public:
 
     bool solve_S2EPRP_BC();
     bool solve_S2EPRP_HILS();
+
     bool solve_EV();
-    bool solve_Deterministic_HILS();
+    // bool solve_WS();
+    bool solve_Deterministic_HILS(const vector<vector<double>> &deterministicDemand, bool shortageAllowed = true, int scenarioIndex = -1);
 
 private:
     ParameterSetting params; // Member variable to hold the ParameterSetting object
@@ -29,6 +34,10 @@ private:
     SolutionFirstEchelon sol_FE_incumbent;
     SolutionSecondEchelon sol_SE_incumbent;
     Result result_incumbent;
+
+    SolutionFirstEchelon sol_FE_incumbent_Deterministic;
+    SolutionSecondEchelon_Deterministic sol_SE_incumbent_Deterministic;
+    Result result_incumbent_Deterministic;
    
    // Solves the first-echelon problem
     bool solveFirstEchelon(SolutionFirstEchelon &solFE_current);
@@ -73,6 +82,40 @@ private:
 
     void printSolution();
     void organizeSolution();
+
+
+    // Deterministic
+    bool solveFirstEchelon_Deterministic(SolutionFirstEchelon &solFE_current, const vector<vector<double>> &deterministicDemand, bool shortageAllowed);
+    bool runILSForSecondEchelon_Deterministic(SolutionFirstEchelon &solFE_current, 
+                                            SolutionSecondEchelon_Deterministic &solSE_current, 
+                                            Result &result_current, 
+                                            const vector<vector<double>> &deterministicDemand, 
+                                            bool shortageAllowed);
+    void update_incumbent_Deterministic(SolutionFirstEchelon &solFE_current, SolutionSecondEchelon_Deterministic &solSE_current, Result &result_current);
+    void optimizeUnmetDemandAndRoutes_Deterministic(SolutionSecondEchelon_Deterministic &sol_SE, const vector<vector<double>> &deterministicDemand);
+    bool solveRestrictedProblemAndFinalize_Deterministic(SolutionFirstEchelon &sol_FE, SolutionSecondEchelon_Deterministic &sol_SE, 
+                                                         const vector<vector<double>> &deterministicDemand, bool shortageAllowed);
+
+    void sortCustomersByUnmetDemand_Deterministic(SolutionSecondEchelon_Deterministic &sol_SE, vector<tuple<int, double>> &unmetDemand_Descending, int t);
+    void handleUnmetDemandForCustomer_Deterministic(const vector<vector<double>> &deterministicDemand, SolutionSecondEchelon_Deterministic &sol_SE, 
+                                                                                                        int t, int customerIndex, double unmetDemand);
+    int findCurrentWarehouse_Deterministic(SolutionSecondEchelon_Deterministic &sol_SE, int t, int customerIndex);
+    void attemptToInsertCustomerIntoWarehouse_Deterministic(const vector<vector<double>> &deterministicDemand, SolutionSecondEchelon_Deterministic &sol_SE, 
+                                                            int t, int currentWarehouse, int customerIndex, double unmetDemand, double unmetDemCost);
+
+    void updateRemainingCapacities_Deterministic(SolutionSecondEchelon_Deterministic &sol_SE, int t, 
+                                                 int wareToInsert, vector<double> &remainingVehicleCapacityWarehouse,double &remainingWarehouseCapacity);
+
+    void findBestInsertionPosition_Deterministic(const vector<vector<double>> &deterministicDemand, SolutionSecondEchelon_Deterministic &sol_SE, 
+                                                 int t, int wareToInsert, int customerIndex, vector<double> &remainingVehicleCapacityWarehouse, 
+                                                 double &remainingWarehouseCapacity, int &routeToInsert, int &posToInsert, double &minCostToInsert);
+
+    void applyInsertion_Deterministic(SolutionSecondEchelon_Deterministic &sol_SE, int t, int wareToInsert, int currentWarehouse, 
+                                      int customerIndex, int routeToInsert, int posToInsert, double tempDeliveryQuantity);
+    void removeCustomerFromCurrentRoute_Deterministic(SolutionSecondEchelon_Deterministic &sol_SE, int t, int currentWarehouse, int customerIndex);
+
+    void printSolution_Deterministic();
+    void organizeSolution_Deterministic();
 };
 
 #endif // ALGORITHMS_H

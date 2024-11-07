@@ -1,10 +1,12 @@
-#include "MWPRP_FE_Deterministic.h"
+#include "deterministic/MWPRP_FE_Deterministic.h"
 
-MWPRP_FE_Deterministic::MWPRP_FE_Deterministic(const ParameterSetting &parameters, const vector<vector<int>> &deterministicDemand, bool shortageAllowed)
+MWPRP_FE_Deterministic::MWPRP_FE_Deterministic(const ParameterSetting &parameters, 
+											   const vector<vector<double>> &deterministicDemand, 
+											   bool shortageAllowed)
 	: params(parameters),
 	  demand(deterministicDemand),
-	  THRESHOLD(1e-2),
 	  shortageAllowed(shortageAllowed),
+	  THRESHOLD(1e-2),
 	  save_lpFile(false),
 	  save_mpsResultFile(false)
 {
@@ -15,11 +17,11 @@ MWPRP_FE_Deterministic::MWPRP_FE_Deterministic(const ParameterSetting &parameter
 
 	vector<vector<int>> sorted_warehouses_by_distance = params.getSortedWarehousesByDistance();
 	CATW.assign(params.numPeriods, vector<vector<int>>(params.numWarehouses, vector<int>(params.numCustomers, -1)));
-	for (int t = 0; t < numPeriods; ++t)
+	for (int t = 0; t < params.numPeriods; ++t)
 	{
-		for (int w = 0; w < numWarehouses; ++w)
+		for (int w = 0; w < params.numWarehouses; ++w)
 		{
-			for (int i = 0; i < numCustomers; ++i)
+			for (int i = 0; i < params.numCustomers; ++i)
 			{
 				if (w == sorted_warehouses_by_distance[i][0])
 				{
@@ -49,7 +51,7 @@ MWPRP_FE_Deterministic::MWPRP_FE_Deterministic(const ParameterSetting &parameter
 		}
 	}
 
-	demand_warehouse.resize(params.numWarehouses, ector<double>(params.numPeriods, 0.0));
+	demand_warehouse.resize(params.numWarehouses, vector<double>(params.numPeriods, 0.0));
 	for (int t = 0; t < params.numPeriods; ++t)
 	{
 		for (int w = 0; w < params.numWarehouses; ++w)
@@ -114,24 +116,25 @@ bool MWPRP_FE_Deterministic::Solve()
 		if (save_lpFile)
 		{
 			string directory = "../cplexFiles/lpModel/";
+			string lpFileName;
 			if (shortageAllowed)
 			{
-				string lpFileName = directory + "MWPRP_FE_Deterministic_NW" + std::to_string(params.numWarehouses) + 
-							"_NR" + std::to_string(params.numCustomers) + 
-							"_KP" + std::to_string(params.numVehicles_Plant) + 
-							"_KW" + std::to_string(params.numVehicles_Warehouse) + 
-							"_T" + std::to_string(params.numPeriods) + 
-							"_S" + std::to_string(params.numScenarios) + 
-							"_Ins" + params.instance.c_str() + ".lp";
+				lpFileName = directory + "MWPRP_FE_Deterministic_NW" + std::to_string(params.numWarehouses) + 
+						"_NR" + std::to_string(params.numCustomers) + 
+						"_KP" + std::to_string(params.numVehicles_Plant) + 
+						"_KW" + std::to_string(params.numVehicles_Warehouse) + 
+						"_T" + std::to_string(params.numPeriods) + 
+						"_S" + std::to_string(params.numScenarios) + 
+						"_Ins" + params.instance.c_str() + ".lp";
 			}
 			else
 			{
-				string lpFileName = directory + "MWPRP_FE_Deterministic_NW" + std::to_string(params.numWarehouses) + 
-							"_NR" + std::to_string(params.numCustomers) + 
-							"_KP" + std::to_string(params.numVehicles_Plant) + 
-							"_KW" + std::to_string(params.numVehicles_Warehouse) + 
-							"_T" + std::to_string(params.numPeriods) + 
-							"_Ins" + params.instance.c_str() + ".lp";
+				lpFileName = directory + "MWPRP_FE_Deterministic_NW" + std::to_string(params.numWarehouses) + 
+						"_NR" + std::to_string(params.numCustomers) + 
+						"_KP" + std::to_string(params.numVehicles_Plant) + 
+						"_KW" + std::to_string(params.numVehicles_Warehouse) + 
+						"_T" + std::to_string(params.numPeriods) + 
+						"_Ins" + params.instance.c_str() + ".lp";
 				
 			}
 			// Export the model to an LP file
@@ -159,24 +162,25 @@ bool MWPRP_FE_Deterministic::Solve()
 			if (save_mpsResultFile)
 			{
 				string directory = "../cplexFiles/solVal/";
+				string solFileName;
 				if (shortageAllowed)
 				{
-					string solFileName = directory + "MWPRP_FE_Deterministic_NW" + std::to_string(params.numWarehouses) + 
-									"_NR" + std::to_string(params.numCustomers) + 
-									"_KP" + std::to_string(params.numVehicles_Plant) + 
-									"_KW" + std::to_string(params.numVehicles_Warehouse) + 
-									"_T" + std::to_string(params.numPeriods) + 
-									"_S" + std::to_string(params.numScenarios) + 
-									"_Ins" + params.instance.c_str();
+					solFileName = directory + "MWPRP_FE_Deterministic_NW" + std::to_string(params.numWarehouses) + 
+								"_NR" + std::to_string(params.numCustomers) + 
+								"_KP" + std::to_string(params.numVehicles_Plant) + 
+								"_KW" + std::to_string(params.numVehicles_Warehouse) + 
+								"_T" + std::to_string(params.numPeriods) + 
+								"_S" + std::to_string(params.numScenarios) + 
+								"_Ins" + params.instance.c_str();
 				}
 				else
 				{
-					string solFileName = directory + "MWPRP_FE_Deterministic_NW" + std::to_string(params.numWarehouses) + 
-									"_NR" + std::to_string(params.numCustomers) + 
-									"_KP" + std::to_string(params.numVehicles_Plant) + 
-									"_KW" + std::to_string(params.numVehicles_Warehouse) + 
-									"_T" + std::to_string(params.numPeriods) + 
-									"_Ins" + params.instance.c_str();
+					solFileName = directory + "MWPRP_FE_Deterministic_NW" + std::to_string(params.numWarehouses) + 
+								"_NR" + std::to_string(params.numCustomers) + 
+								"_KP" + std::to_string(params.numVehicles_Plant) + 
+								"_KW" + std::to_string(params.numVehicles_Warehouse) + 
+								"_T" + std::to_string(params.numPeriods) + 
+								"_Ins" + params.instance.c_str();
 				}
 
 				// Export the model to an LP file
@@ -196,25 +200,26 @@ bool MWPRP_FE_Deterministic::Solve()
 			if (save_mpsResultFile)
 			{
 				string directory = "../cplexFiles/solVal/";
+				string solFileName;
 				if (shortageAllowed)
 				{
-					string solFileName = directory + "MWPRP_FE_Deterministic_NW" + std::to_string(params.numWarehouses) + 
-									"_NR" + std::to_string(params.numCustomers) + 
-									"_KP" + std::to_string(params.numVehicles_Plant) + 
-									"_KW" + std::to_string(params.numVehicles_Warehouse) + 
-									"_T" + std::to_string(params.numPeriods) + 
-									"_S" + std::to_string(params.numScenarios) + 
-									"_Ins" + params.instance.c_str();
+					solFileName = directory + "MWPRP_FE_Deterministic_NW" + std::to_string(params.numWarehouses) + 
+								"_NR" + std::to_string(params.numCustomers) + 
+								"_KP" + std::to_string(params.numVehicles_Plant) + 
+								"_KW" + std::to_string(params.numVehicles_Warehouse) + 
+								"_T" + std::to_string(params.numPeriods) + 
+								"_S" + std::to_string(params.numScenarios) + 
+								"_Ins" + params.instance.c_str();
 				}
 				else
 				{
-					string solFileName = directory + "MWPRP_FE_Deterministic_NW" + std::to_string(params.numWarehouses) + 
-									"_NR" + std::to_string(params.numCustomers) + 
-									"_KP" + std::to_string(params.numVehicles_Plant) + 
-									"_KW" + std::to_string(params.numVehicles_Warehouse) + 
-									"_T" + std::to_string(params.numPeriods) + 
-									"_Ins" + params.instance.c_str();
-				}
+					solFileName = directory + "MWPRP_FE_Deterministic_NW" + std::to_string(params.numWarehouses) + 
+								"_NR" + std::to_string(params.numCustomers) + 
+								"_KP" + std::to_string(params.numVehicles_Plant) + 
+								"_KW" + std::to_string(params.numVehicles_Warehouse) + 
+								"_T" + std::to_string(params.numPeriods) + 
+								"_Ins" + params.instance.c_str();
+			}
 
 				// Export the model to an LP file
 				cplex.writeSolution(solFileName.c_str());
@@ -728,7 +733,7 @@ void MWPRP_FE_Deterministic::DisplayWarehouseInventoryVars()
 	{
 		for (int w = 0; w < params.numWarehouses; ++w)
 		{
-			if (warehouseInventory[w][t][s] > THRESHOLD)
+			if (warehouseInventory[w][t] > THRESHOLD)
 			{
 				cout << "I_warehouse[" << w + 1 << "][" << t + 1 << "] = " << std::setprecision(0) << std::fixed << warehouseInventory[w][t] << endl;
 			}

@@ -1,4 +1,4 @@
-#include "stochastic/LP_SE_Deterministic.h"
+#include "deterministic/LP_SE_Deterministic.h"
 
 // ------------------------------------------------------------------------------------------------------------------------
 LP_SE_Deterministic::LP_SE_Deterministic(const ParameterSetting &parameters,
@@ -39,9 +39,10 @@ string LP_SE_Deterministic::solve()
 	if (save_lpFile)
 	{
 		string directory = "../cplexFiles/lpModel/";
+		string lpFileName;
 		if (shortageAllowed)
 		{
-			string lpFileName = directory + "LPSE_Deterministic_NW" + std::to_string(params.numWarehouses) + 
+			lpFileName = directory + "LPSE_Deterministic_NW" + std::to_string(params.numWarehouses) + 
 						"_NR" + std::to_string(params.numCustomers) + 
 						"_KP" + std::to_string(params.numVehicles_Plant) + 
 						"_KW" + std::to_string(params.numVehicles_Warehouse) + 
@@ -51,7 +52,7 @@ string LP_SE_Deterministic::solve()
 		}
 		else
 		{
-			string lpFileName = directory + "LPSE_Deterministic_NW" + std::to_string(params.numWarehouses) + 
+			lpFileName = directory + "LPSE_Deterministic_NW" + std::to_string(params.numWarehouses) + 
 						"_NR" + std::to_string(params.numCustomers) + 
 						"_KP" + std::to_string(params.numVehicles_Plant) + 
 						"_KW" + std::to_string(params.numVehicles_Warehouse) + 
@@ -84,9 +85,10 @@ string LP_SE_Deterministic::solve()
 		if (save_mpsResultFile)
 		{
 			string directory = "../cplexFiles/solVal/";
+			string solFileName;
 			if (shortageAllowed)
 			{
-				string lpFileName = directory + "LPSE_Deterministic_NW" + std::to_string(params.numWarehouses) + 
+				solFileName = directory + "LPSE_Deterministic_NW" + std::to_string(params.numWarehouses) + 
 							"_NR" + std::to_string(params.numCustomers) + 
 							"_KP" + std::to_string(params.numVehicles_Plant) + 
 							"_KW" + std::to_string(params.numVehicles_Warehouse) + 
@@ -96,7 +98,7 @@ string LP_SE_Deterministic::solve()
 			}
 			else
 			{
-				string lpFileName = directory + "LPSE_Deterministic_NW" + std::to_string(params.numWarehouses) + 
+				solFileName = directory + "LPSE_Deterministic_NW" + std::to_string(params.numWarehouses) + 
 							"_NR" + std::to_string(params.numCustomers) + 
 							"_KP" + std::to_string(params.numVehicles_Plant) + 
 							"_KW" + std::to_string(params.numVehicles_Warehouse) + 
@@ -113,9 +115,6 @@ string LP_SE_Deterministic::solve()
 	{
 		status = "Infeasible";
 		cout << "Problem is infeasible" << endl;
-
-		// Export the model to an LP file
-		cplex.exportModel(lpFileName.c_str());
 	}
 	else
 	{
@@ -208,7 +207,7 @@ void LP_SE_Deterministic::DefineVariables(IloEnv &env, IloModel &model)
 			for (int t = 0; t < params.numPeriods; ++t)
 			{
 				string varName = "b_customer[" + std::to_string(i + 1 + params.numWarehouses) + "][" + std::to_string(t + 1) + "]";
-				b_customer[i][t] = IloNumVar(env, 0.0, params.demand[i][t], IloNumVar::Float, varName.c_str());
+				b_customer[i][t] = IloNumVar(env, 0.0, demand[i][t], IloNumVar::Float, varName.c_str());
 				model.add(b_customer[i][t]);
 			}
 		}
@@ -238,7 +237,7 @@ void LP_SE_Deterministic::DefineVariables(IloEnv &env, IloModel &model)
 			for (int t = 0; t < params.numPeriods; ++t)
 			{
 				string varName = "w[" + std::to_string(i + 1 + params.numWarehouses) + "][" + std::to_string(k + 1) + "][" + std::to_string(t + 1) + "]";
-				w_customer[i][k][t] = IloNumVar(env, 0.0, params.demand[i][t], IloNumVar::Float, varName.c_str());
+				w_customer[i][k][t] = IloNumVar(env, 0.0, demand[i][t], IloNumVar::Float, varName.c_str());
 				model.add(w_customer[i][k][t]);
 			}
 		}
@@ -488,7 +487,7 @@ void LP_SE_Deterministic::DefineConstraints(IloEnv &env, IloModel &model)
 
 			IloExpr expr(env);
 			expr += I_customer[i][t];
-			IloConstraint CustomerInventoryCapacityConstraint(expr <= params.storageCapacity_Customer[i] - params.demand[i][t]);
+			IloConstraint CustomerInventoryCapacityConstraint(expr <= params.storageCapacity_Customer[i] - demand[i][t]);
 			expr.end();
 
 			model.add(CustomerInventoryCapacityConstraint).setName(constraintName.c_str());
@@ -660,7 +659,7 @@ void LP_SE_Deterministic::RetrieveSolutions(IloCplex &cplex)
 	sol_SE_temp.customerInventory.assign(params.numCustomers, vector<double>(params.numPeriods, 0.0));
 	sol_SE_temp.customerUnmetDemand.assign(params.numCustomers, vector<double>(params.numPeriods, 0.0));
 	sol_FE_temp.deliveryQuantityToWarehouse.assign(params.numWarehouses, vector<double>(params.numPeriods, 0.0));
-	sol_SE_temp.deliveryQuantityToCustomer.assign(params.numCustomers, vector<vector<double>>(params.numPeriods, vector<double>(params.numScenarios, 0.0)));
+	sol_SE_temp.deliveryQuantityToCustomer.assign(params.numCustomers, vector<double>(params.numPeriods, 0.0));
 
 	vector<vector<double>> deliveryQuantityToWarehouse_temp(params.numWarehouses, vector<double>(params.numPeriods, 0.0));
 
@@ -682,14 +681,11 @@ void LP_SE_Deterministic::RetrieveSolutions(IloCplex &cplex)
 
 		for (int i = 0; i < params.numCustomers; ++i)
 		{
-			for (int s = 0; s < params.numScenarios; ++s)
+			sol_SE_temp.customerInventory[i][t] = cplex.getValue(I_customer[i][t]);
+			sol_SE_temp.customerUnmetDemand[i][t] = cplex.getValue(b_customer[i][t]);
+			for (int k = 0; k < params.numVehicles_SecondEchelon; ++k)
 			{
-				sol_SE_temp.customerInventory[i][t] = cplex.getValue(I_customer[i][t]);
-				sol_SE_temp.customerUnmetDemand[i][t] = cplex.getValue(b_customer[i][t]);
-				for (int k = 0; k < params.numVehicles_SecondEchelon; ++k)
-				{
-					sol_SE_temp.deliveryQuantityToCustomer[i][t] += cplex.getValue(w_customer[i][k][t]);
-				}
+				sol_SE_temp.deliveryQuantityToCustomer[i][t] += cplex.getValue(w_customer[i][k][t]);
 			}
 		}
 	}
@@ -711,13 +707,13 @@ void LP_SE_Deterministic::CalculateCostsForEachPart()
 
 		for (int w = 0; w < params.numWarehouses; ++w)
 		{
-			sol_SE_temp.holdingCostWarehouse_Avg += params.unitHoldingCost_Warehouse[w] * sol_SE_temp.warehouseInventory[w][t];
+			sol_SE_temp.holdingCostWarehouse += params.unitHoldingCost_Warehouse[w] * sol_SE_temp.warehouseInventory[w][t];
 		}
 
 		for (int i = 0; i < params.numCustomers; ++i)
 		{
-			sol_SE_temp.holdingCostCustomer_Avg += params.unitHoldingCost_Customer[i] * sol_SE_temp.customerInventory[i][t];
-			sol_SE_temp.costOfUnmetDemand_Avg += params.unmetDemandPenalty[i] * sol_SE_temp.customerUnmetDemand[i][t];
+			sol_SE_temp.holdingCostCustomer += params.unitHoldingCost_Customer[i] * sol_SE_temp.customerInventory[i][t];
+			sol_SE_temp.costOfUnmetDemand += params.unmetDemandPenalty[i] * sol_SE_temp.customerUnmetDemand[i][t];
 		}
 	}
 
@@ -732,7 +728,7 @@ void LP_SE_Deterministic::CalculateCostsForEachPart()
 				{
 					int currentNode = sol_SE_temp.routesWarehouseToCustomer[w][t][k][j];
 
-					sol_SE_temp.transportationCostWarehouseToCustomer_Avg += params.transportationCost_SecondEchelon[previousNode][currentNode];
+					sol_SE_temp.transportationCostWarehouseToCustomer += params.transportationCost_SecondEchelon[previousNode][currentNode];
 
 					previousNode = currentNode;
 				}
@@ -746,15 +742,15 @@ void LP_SE_Deterministic::CalculateCostsForEachPart()
 	cout << "Holding Cost Plant : " << sol_FE_temp.holdingCostPlant << endl;
 	cout << "Transportation Cost Plant to Warehouse : " << sol_FE_temp.transportationCostPlantToWarehouse << endl;
 
-	result.objValue_secondEchelon = sol_SE_temp.holdingCostWarehouse_Avg +
-									sol_SE_temp.holdingCostCustomer_Avg +
-									sol_SE_temp.costOfUnmetDemand_Avg +
-									sol_SE_temp.transportationCostWarehouseToCustomer_Avg;
+	result.objValue_secondEchelon = sol_SE_temp.holdingCostWarehouse +
+									sol_SE_temp.holdingCostCustomer +
+									sol_SE_temp.costOfUnmetDemand +
+									sol_SE_temp.transportationCostWarehouseToCustomer;
 
-	cout << "Holding Cost Warehouse : " << sol_SE_temp.holdingCostWarehouse_Avg << endl;
-	cout << "Holding Cost Customer : " << sol_SE_temp.holdingCostCustomer_Avg << endl;
-	cout << "Cost of Unmet Demand : " << sol_SE_temp.costOfUnmetDemand_Avg << endl;
-	cout << "Transportation Cost Warehouse to Customer : " << sol_SE_temp.transportationCostWarehouseToCustomer_Avg << endl;
+	cout << "Holding Cost Warehouse : " << sol_SE_temp.holdingCostWarehouse << endl;
+	cout << "Holding Cost Customer : " << sol_SE_temp.holdingCostCustomer << endl;
+	cout << "Cost of Unmet Demand : " << sol_SE_temp.costOfUnmetDemand << endl;
+	cout << "Transportation Cost Warehouse to Customer : " << sol_SE_temp.transportationCostWarehouseToCustomer << endl;
 
 	result.objValue_Total = result.objValue_firstEchelon + result.objValue_secondEchelon;
 
@@ -895,9 +891,9 @@ void LP_SE_Deterministic::DisplayRoutesWarehouseToCustomersVars()
 		{
 			for (int k = 0; k < params.numVehicles_Warehouse; ++k)
 			{
-				if (!sol_SE_temp.routesWarehouseToCustomer[s][w][t][k].empty())
+				if (!sol_SE_temp.routesWarehouseToCustomer[w][t][k].empty())
 				{
-					cout << "route[" << s + 1 << "][" << w + 1 << "][" << t + 1 << "][" << k + 1 << "] : [";
+					cout << "route[" << w + 1 << "][" << t + 1 << "][" << k + 1 << "] : [";
 					for (auto it = sol_SE_temp.routesWarehouseToCustomer[w][t][k].begin(); it != sol_SE_temp.routesWarehouseToCustomer[w][t][k].end(); ++it)
 					{
 						if (it != sol_SE_temp.routesWarehouseToCustomer[w][t][k].begin())

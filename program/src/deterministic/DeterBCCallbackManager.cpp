@@ -1,4 +1,4 @@
-#include "DeterBCCallbackManager.h"
+#include "deterministic/DeterBCCallbackManager.h"
 
 SEC_2EPRP::SEC_2EPRP(
     IloEnv &env,

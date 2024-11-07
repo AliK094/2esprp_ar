@@ -1,12 +1,15 @@
-#include "ILS_Deterministic.h"
+#include "deterministic/ILS_Deterministic.h"
 
 ILS_SIRP_Deterministic::ILS_SIRP_Deterministic(const ParameterSetting &parameters, 
 	const SolutionFirstEchelon &sol_FE, 
-	const SolutionSecondEchelon_Deterministic &sol_SE_Deterministic
-	const vector<vector<double>> &deterministicDemand)
+	const SolutionSecondEchelon_Deterministic &sol_SE_Deterministic,
+	const vector<vector<double>> &deterministicDemand,
+	bool shortageAllowed)
 	: params(parameters),
 	  sol_FE(sol_FE),
-	  sol_SE(sol_SE)
+	  sol_SE(sol_SE_Deterministic),
+	  demand(deterministicDemand),
+	  shortageAllowed(shortageAllowed)
 {
 	// Initialize random seed
 	srand(static_cast<unsigned int>(time(NULL)));
@@ -34,11 +37,11 @@ bool ILS_SIRP_Deterministic::run()
 
 		vector<vector<int>> sorted_warehouses_by_distance = params.getSortedWarehousesByDistance();
 		CATW.assign(params.numPeriods, vector<vector<int>>(params.numWarehouses, vector<int>(params.numCustomers, -1)));
-		for (int t = 0; t < numPeriods; ++t)
+		for (int t = 0; t < params.numPeriods; ++t)
 		{
-			for (int w = 0; w < numWarehouses; ++w)
+			for (int w = 0; w < params.numWarehouses; ++w)
 			{
-				for (int i = 0; i < numCustomers; ++i)
+				for (int i = 0; i < params.numCustomers; ++i)
 				{
 					if (w == sorted_warehouses_by_distance[i][0])
 					{
@@ -55,7 +58,7 @@ bool ILS_SIRP_Deterministic::run()
 
 		cout << "Construct Initial Solution" << endl;
 
-		ConstructHeuristic_Deterministic consHeuristic_det(params, sol_FE_temp, deterministicDemand, CATW);
+		ConstructHeuristic_Deterministic consHeuristic_det(params, sol_FE_temp, demand, CATW);
 		bool status = consHeuristic_det.Construct_InitialSolution();
 		if (!status)
 		{
@@ -72,13 +75,13 @@ bool ILS_SIRP_Deterministic::run()
 	}
 
 	// Initialize the LP solver with current parameters and feasible solution
-	if (!solveLP(sol_FE_temp, sol_SE_temp, result_temp, deterministicDemand))
+	if (!solveLP(sol_FE_temp, sol_SE_temp, result_temp))
 	{
 		cerr << "Initial solution is not feasible" << endl;
 		return false;
 	}
 
-	if (!checkSolutionFeasiblity(sol_FE_temp, sol_SE_temp, deterministicDemand))
+	if (!checkSolutionFeasiblity(sol_FE_temp, sol_SE_temp))
 	{
 		cerr << "Initial solution is not feasible" << endl;
 		return false;
@@ -88,6 +91,7 @@ bool ILS_SIRP_Deterministic::run()
 	sol_SE_incumbent = sol_SE_temp;
 	result_incumbent = result_temp;
 
+
 	cout << "\nStart to run ILS..." << endl;
 
 	// Initialize ILS for a specific Scenario
@@ -95,11 +99,8 @@ bool ILS_SIRP_Deterministic::run()
 	int numIterILS = 0;
 	bool stop = false;
 	auto maxTime_ILS = 120.0;
-
-	// Start the timer
-	auto startTime_ILS = std::chrono::high_resolution_clock::now();
-	auto elapsedTime_ILS = 0.0;
-
+	
+	double best_objValue = result_incumbent.objValue_Total;
 	double objValue = best_objValue;
 	while (!stop && numIterILS < maxIterILS && elapsedTime_ILS < maxTime_ILS)
 	{
@@ -111,7 +112,7 @@ bool ILS_SIRP_Deterministic::run()
 			/*
 				Perturbation
 			*/
-			Perturbation_Deterministic perturb(params, sol_FE_incumbent, sol_SE_temp, deterministicDemand);
+			Perturbation_Deterministic perturb(params, sol_FE_incumbent, sol_SE_temp, demand);
 			bool perturbSuccess = perturb.run();
 			if (!perturbSuccess)
 			{
@@ -125,7 +126,7 @@ bool ILS_SIRP_Deterministic::run()
 		/*
 			Local Search
 		*/
-		LocalSearch_Deterministic ls(params, sol_FE_incumbent, sol_SE_temp, objValue, deterministicDemand);
+		LocalSearch_Deterministic ls(params, sol_FE_incumbent, sol_SE_temp, objValue, demand);
 		ls.RVND();
 
 		double objval_new = ls.getObjVal();
@@ -142,21 +143,17 @@ bool ILS_SIRP_Deterministic::run()
 		elapsedTime_ILS = std::chrono::duration_cast<std::chrono::duration<double>>(currentTime_ILS - startTime_ILS).count();
 	}
 
-	// Update the incumbent solution
-	sol_SE_incumbent.routesWarehouseToCustomer[s] = sol_SE_incumbent.routesWarehouseToCustomer;
-	sol_SE_incumbent.customerAssignmentToWarehouse[s] = sol_SE_incumbent.customerAssignmentToWarehouse;
-
 	// ----------------------------------------------------------------------------------------------------------
 	sol_FE_temp = sol_FE_incumbent;
 	sol_SE_temp = sol_SE_incumbent;
 	result_temp = result_incumbent;
-	if (!solveLP(sol_FE_temp, sol_SE_temp, result_temp, deterministicDemand))
+	if (!solveLP(sol_FE_temp, sol_SE_temp, result_temp))
 	{
 		cerr << "Failed to solve LP" << endl;
 		return false;
 	}
 	
-	if (!checkSolutionFeasiblity(sol_FE_temp, sol_SE_temp, deterministicDemand))
+	if (!checkSolutionFeasiblity(sol_FE_temp, sol_SE_temp))
 	{
 		cerr << "Initial solution is not feasible" << endl;
 		return false;
@@ -175,7 +172,7 @@ bool ILS_SIRP_Deterministic::run()
 	return true;
 }
 
-bool ILS_SIRP_Deterministic::checkSolutionFeasiblity(SolutionFirstEchelon sol_FE_temp, SolutionSecondEchelon sol_SE_temp)
+bool ILS_SIRP_Deterministic::checkSolutionFeasiblity(SolutionFirstEchelon sol_FE_temp, SolutionSecondEchelon_Deterministic sol_SE_temp)
 {
 	for (int t = 0; t < params.numPeriods; ++t)
 	{
@@ -186,6 +183,8 @@ bool ILS_SIRP_Deterministic::checkSolutionFeasiblity(SolutionFirstEchelon sol_FE
 			cerr << "Constraint Violated: " << constraintName
 				 << " | Production Quantity = " << sol_FE_temp.productionQuantity[t]
 				 << " exceeds Production Capacity = " << params.prodCapacity << endl;
+
+			return false;
 		}
 	}
 
@@ -199,6 +198,8 @@ bool ILS_SIRP_Deterministic::checkSolutionFeasiblity(SolutionFirstEchelon sol_FE
 			cerr << "Constraint Violated: " << constraintName
 				 << " | Plant Inventory = " << sol_FE_temp.plantInventory[t]
 				 << " exceeds Storage Capacity = " << params.storageCapacity_Plant << endl;
+
+			return false;
 		}
 	}
 
@@ -229,183 +230,193 @@ bool ILS_SIRP_Deterministic::checkSolutionFeasiblity(SolutionFirstEchelon sol_FE
 			cerr << "Constraint Violated: " << constraintName
 				 << " | Expected Plant Inventory = " << expectedInventory
 				 << ", Actual Plant Inventory = " << sol_FE_temp.plantInventory[t] << endl;
+
+			return false;
 		}
 	}
 
-	for (int s = 0; s < params.numScenarios; ++s)
-	{
-		for (int t = 0; t < params.numPeriods; ++t)
-		{
-			for (int w = 0; w < params.numWarehouses; ++w)
-			{
-				string constraintName = "WarehouseInventoryCapacity(" + std::to_string(w + 1) + "," + std::to_string(t + 1) + "," + std::to_string(s + 1) + ")";
-
-				// Assuming sol_SE_temp.warehouseInventory[w][t][s] represents I_warehouse[w][t][s]
-				if (sol_SE_temp.warehouseInventory[w][t][s] > params.storageCapacity_Warehouse[w])
-				{
-					cerr << "Constraint Violated: " << constraintName
-						 << " | Warehouse Inventory = " << sol_SE_temp.warehouseInventory[w][t][s]
-						 << " exceeds Storage Capacity = " << params.storageCapacity_Warehouse[w] << endl;
-				}
-			}
-		}
-	}
-
-	for (int s = 0; s < params.numScenarios; ++s)
-	{
-		for (int t = 0; t < params.numPeriods; ++t)
-		{
-			for (int w = 0; w < params.numWarehouses; ++w)
-			{
-				string constraintName = "WarehouseInventoryBalance(" + std::to_string(w + 1) + "," + std::to_string(t + 1) + "," + std::to_string(s + 1) + ")";
-
-				// calculate sum of delivery quantities to all customer
-				double sumDeliveryQuantityToCustomers = 0.0;
-				for (int i = 0; i < params.numCustomers; ++i)
-				{
-					if (sol_SE_temp.customerAssignmentToWarehouse[s][t][w][i] == 1)
-					{
-						sumDeliveryQuantityToCustomers += sol_SE_temp.deliveryQuantityToCustomer[i][t][s];
-					}
-				}
-
-				// Determine expected inventory based on period
-				double netInventoryChange;
-				if (t == 0)
-				{
-					netInventoryChange = params.initialInventory_Warehouse[w] - sumDeliveryQuantityToCustomers + sol_FE_temp.deliveryQuantityToWarehouse[w][t];
-				}
-				else
-				{
-					netInventoryChange = sol_SE_temp.warehouseInventory[w][t - 1][s] - sumDeliveryQuantityToCustomers + sol_FE_temp.deliveryQuantityToWarehouse[w][t];
-				}
-
-				// Check if the actual inventory matches the expected net inventory change
-				if (sol_SE_temp.warehouseInventory[w][t][s] != netInventoryChange)
-				{
-					cerr << "Constraint Violated: " << constraintName
-						 << " | Expected Warehouse Inventory = " << netInventoryChange
-						 << ", Actual Warehouse Inventory = " << sol_SE_temp.warehouseInventory[w][t][s] << endl;
-				}
-			}
-		}
-	}
-
-	for (int s = 0; s < params.numScenarios; ++s)
-	{
-		for (int t = 0; t < params.numPeriods; ++t)
-		{
-			for (int i = 0; i < params.numCustomers; ++i)
-			{
-				string constraintName = "CustomerInventoryBalance(" + std::to_string(i + params.numWarehouses) + "," + std::to_string(t + 1) + "," + std::to_string(s + 1) + ")";
-
-				// Determine expected inventory based on period
-				int expectedInventory;
-				if (t == 0)
-				{
-					expectedInventory = params.initialInventory_Customer[i] + sol_SE_temp.deliveryQuantityToCustomer[i][t][s] - params.demand[i][t][s] + sol_SE_temp.customerUnmetDemand[i][t][s];
-				}
-				else
-				{
-					expectedInventory = sol_SE_temp.customerInventory[i][t - 1][s] + sol_SE_temp.deliveryQuantityToCustomer[i][t][s] - params.demand[i][t][s] + sol_SE_temp.customerUnmetDemand[i][t][s];
-				}
-
-				// Check if the actual inventory matches the expected inventory
-				if (sol_SE_temp.customerInventory[i][t][s] != expectedInventory)
-				{
-					cerr << "Constraint Violated: " << constraintName
-						 << " | Expected Customer Inventory = " << expectedInventory
-						 << ", Actual Customer Inventory = " << sol_SE_temp.customerInventory[i][t][s] << endl;
-				}
-			}
-		}
-	}
-
-	for (int s = 0; s < params.numScenarios; ++s)
-	{
-		for (int t = 0; t < params.numPeriods; ++t)
-		{
-			for (int i = 0; i < params.numCustomers; ++i)
-			{
-				string constraintName = "CustomerInventoryCapacity(" + std::to_string(i + params.numWarehouses) + "," + std::to_string(t + 1) + "," + std::to_string(s + 1) + ")";
-
-				// Calculate the maximum allowable inventory for the customer considering the demand
-				int maxAllowableInventory = params.storageCapacity_Customer[i] - params.demand[i][t][s];
-
-				// Check if the actual inventory exceeds this maximum allowable inventory
-				if (sol_SE_temp.customerInventory[i][t][s] > maxAllowableInventory)
-				{
-					cerr << "Constraint Violated: " << constraintName
-						 << " | Customer Inventory = " << sol_SE_temp.customerInventory[i][t][s]
-						 << " exceeds Max Allowable Inventory = " << maxAllowableInventory << endl;
-				}
-			}
-		}
-	}
-
-	for (int s = 0; s < params.numScenarios; ++s)
-	{
-		for (int t = 0; t < params.numPeriods; ++t)
-		{
-			for (int w = 0; w < params.numWarehouses; ++w)
-			{
-				for (int k = 0; k < params.numVehicles_Warehouse; ++k)
-				{
-					string constraintName = "VehicleCapacityWarehouse(" + std::to_string(w + 1) + "," + std::to_string(k + 1) + "," + std::to_string(t + 1) + "," + std::to_string(s + 1) + ")";
-
-					// Sum the deliveries assigned to vehicle k from warehouse w at time t in scenario s
-					int totalDeliveriesByVehicle = 0;
-					for (int i = 0; i < params.numCustomers; ++i)
-					{
-						auto it = std::find(sol_SE_temp.routesWarehouseToCustomer[s][w][t][k].begin(), sol_SE_temp.routesWarehouseToCustomer[s][w][t][k].end(), i + params.numWarehouses);
-						if (it != sol_SE_temp.routesWarehouseToCustomer[s][w][t][k].end())
-						{
-							totalDeliveriesByVehicle += sol_SE_temp.deliveryQuantityToCustomer[i][t][s];
-						}
-					}
-
-					// Check if the total deliveries exceed the vehicle capacity
-					if (totalDeliveriesByVehicle > params.vehicleCapacity_Warehouse)
-					{
-						cerr << "Constraint Violated: " << constraintName
-							 << " | Total Deliveries by Vehicle = " << totalDeliveriesByVehicle
-							 << " exceeds Vehicle Capacity = " << params.vehicleCapacity_Warehouse << endl;
-					}
-				}
-			}
-		}
-	}
-
-	for (int s = 0; s < params.numScenarios; ++s)
+	for (int t = 0; t < params.numPeriods; ++t)
 	{
 		for (int w = 0; w < params.numWarehouses; ++w)
 		{
-			for (int t = 0; t < params.numPeriods; ++t)
+			string constraintName = "WarehouseInventoryCapacity(" + std::to_string(w + 1) + "," + std::to_string(t + 1) + ")";
+
+			// Assuming sol_SE_temp.warehouseInventory[w][t] represents I_warehouse[w][t]
+			if (sol_SE_temp.warehouseInventory[w][t] > params.storageCapacity_Warehouse[w])
 			{
+				cerr << "Constraint Violated: " << constraintName
+						<< " | Warehouse Inventory = " << sol_SE_temp.warehouseInventory[w][t]
+						<< " exceeds Storage Capacity = " << params.storageCapacity_Warehouse[w] << endl;
+
+				return false;
+			}
+		}
+	}
+
+	for (int t = 0; t < params.numPeriods; ++t)
+	{
+		for (int w = 0; w < params.numWarehouses; ++w)
+		{
+			string constraintName = "WarehouseInventoryBalance(" + std::to_string(w + 1) + "," + std::to_string(t + 1) + ")";
+
+			// calculate sum of delivery quantities to all customer
+			double sumDeliveryQuantityToCustomers = 0.0;
+			for (int i = 0; i < params.numCustomers; ++i)
+			{
+				if (sol_SE_temp.customerAssignmentToWarehouse[t][w][i] == 1)
+				{
+					sumDeliveryQuantityToCustomers += sol_SE_temp.deliveryQuantityToCustomer[i][t];
+				}
+			}
+
+			// Determine expected inventory based on period
+			double netInventoryChange;
+			if (t == 0)
+			{
+				netInventoryChange = params.initialInventory_Warehouse[w] - sumDeliveryQuantityToCustomers + sol_FE_temp.deliveryQuantityToWarehouse[w][t];
+			}
+			else
+			{
+				netInventoryChange = sol_SE_temp.warehouseInventory[w][t - 1] - sumDeliveryQuantityToCustomers + sol_FE_temp.deliveryQuantityToWarehouse[w][t];
+			}
+
+			// Check if the actual inventory matches the expected net inventory change
+			if (sol_SE_temp.warehouseInventory[w][t] != netInventoryChange)
+			{
+				cerr << "Constraint Violated: " << constraintName
+						<< " | Expected Warehouse Inventory = " << netInventoryChange
+						<< ", Actual Warehouse Inventory = " << sol_SE_temp.warehouseInventory[w][t] << endl;
+
+				return false;
+			}
+		}
+	}
+
+	for (int t = 0; t < params.numPeriods; ++t)
+	{
+		for (int i = 0; i < params.numCustomers; ++i)
+		{
+			string constraintName = "CustomerInventoryBalance(" + std::to_string(i + params.numWarehouses) + "," + std::to_string(t + 1) + ")";
+
+			// Determine expected inventory based on period
+			double expectedInventory = 0.0;
+			if (shortageAllowed)
+			{
+				if (t == 0)
+				{
+					expectedInventory = params.initialInventory_Customer[i] + sol_SE_temp.deliveryQuantityToCustomer[i][t] - demand[i][t] + sol_SE_temp.customerUnmetDemand[i][t];
+				}
+				else
+				{
+					expectedInventory = sol_SE_temp.customerInventory[i][t - 1] + sol_SE_temp.deliveryQuantityToCustomer[i][t] - demand[i][t] + sol_SE_temp.customerUnmetDemand[i][t];
+				}
+			}
+			else
+			{
+				if (t == 0)
+				{
+					expectedInventory = params.initialInventory_Customer[i] + sol_SE_temp.deliveryQuantityToCustomer[i][t] - demand[i][t];
+				}
+				else
+				{
+					expectedInventory = sol_SE_temp.customerInventory[i][t - 1] + sol_SE_temp.deliveryQuantityToCustomer[i][t] - demand[i][t];
+				}
+			}
+
+			// Check if the actual inventory matches the expected inventory
+			if (sol_SE_temp.customerInventory[i][t] != expectedInventory)
+			{
+				cerr << "Constraint Violated: " << constraintName
+						<< " | Expected Customer Inventory = " << expectedInventory
+						<< ", Actual Customer Inventory = " << sol_SE_temp.customerInventory[i][t] << endl;
+
+				return false;
+			}
+		}
+	}
+
+	for (int t = 0; t < params.numPeriods; ++t)
+	{
+		for (int i = 0; i < params.numCustomers; ++i)
+		{
+			string constraintName = "CustomerInventoryCapacity(" + std::to_string(i + params.numWarehouses) + "," + std::to_string(t + 1) + ")";
+
+			// Calculate the maximum allowable inventory for the customer considering the demand
+			int maxAllowableInventory = params.storageCapacity_Customer[i] - demand[i][t];
+
+			// Check if the actual inventory exceeds this maximum allowable inventory
+			if (sol_SE_temp.customerInventory[i][t] > maxAllowableInventory)
+			{
+				cerr << "Constraint Violated: " << constraintName
+						<< " | Customer Inventory = " << sol_SE_temp.customerInventory[i][t]
+						<< " exceeds Max Allowable Inventory = " << maxAllowableInventory << endl;
+
+				return false;
+			}
+		}
+	}
+
+	for (int t = 0; t < params.numPeriods; ++t)
+	{
+		for (int w = 0; w < params.numWarehouses; ++w)
+		{
+			for (int k = 0; k < params.numVehicles_Warehouse; ++k)
+			{
+				string constraintName = "VehicleCapacityWarehouse(" + std::to_string(w + 1) + "," + std::to_string(k + 1) + "," + std::to_string(t + 1) + ")";
+
+				// Sum the deliveries assigned to vehicle k from warehouse w at time t in scenario s
+				int totalDeliveriesByVehicle = 0;
 				for (int i = 0; i < params.numCustomers; ++i)
 				{
-					bool found = false;
-					for (int k = 0; k < params.numVehicles_Warehouse; ++k)
+					auto it = std::find(sol_SE_temp.routesWarehouseToCustomer[w][t][k].begin(), sol_SE_temp.routesWarehouseToCustomer[w][t][k].end(), i + params.numWarehouses);
+					if (it != sol_SE_temp.routesWarehouseToCustomer[w][t][k].end())
 					{
-						vector<int> &route = sol_SE_temp.routesWarehouseToCustomer[s][w][t][k];
-						auto it = std::find(route.begin(), route.end(), i + params.numWarehouses);
-						if (it != route.end())
-						{
-							found = true;
-							break;
-						}
+						totalDeliveriesByVehicle += sol_SE_temp.deliveryQuantityToCustomer[i][t];
 					}
+				}
 
-					if (!found && sol_SE_temp.deliveryQuantityToCustomer[i][t][s] > 0.0 && sol_SE_temp.customerAssignmentToWarehouse[s][t][w][i] == 1)
+				// Check if the total deliveries exceed the vehicle capacity
+				if (totalDeliveriesByVehicle > params.vehicleCapacity_Warehouse)
+				{
+					cerr << "Constraint Violated: " << constraintName
+							<< " | Total Deliveries by Vehicle = " << totalDeliveriesByVehicle
+							<< " exceeds Vehicle Capacity = " << params.vehicleCapacity_Warehouse << endl;
+
+					return false;
+				}
+			}
+		}
+	}
+
+	for (int w = 0; w < params.numWarehouses; ++w)
+	{
+		for (int t = 0; t < params.numPeriods; ++t)
+		{
+			for (int i = 0; i < params.numCustomers; ++i)
+			{
+				bool found = false;
+				for (int k = 0; k < params.numVehicles_Warehouse; ++k)
+				{
+					vector<int> &route = sol_SE_temp.routesWarehouseToCustomer[w][t][k];
+					auto it = std::find(route.begin(), route.end(), i + params.numWarehouses);
+					if (it != route.end())
 					{
-						string constraintName = "CustomerVisit(" + std::to_string(i + params.numWarehouses) + "," + std::to_string(t + 1) + "," + std::to_string(s + 1) + ")";
-
-						cerr << "Constraint Violated: " << constraintName
-							 << " | Customer " << i + params.numWarehouses
-							 << " is not visited in the route" << endl;
-
-						cout << "Delivery Quantity: " << sol_SE_temp.deliveryQuantityToCustomer[i][t][s] << endl;
+						found = true;
+						break;
 					}
+				}
+
+				if (!found && sol_SE_temp.deliveryQuantityToCustomer[i][t] > 0.0 && sol_SE_temp.customerAssignmentToWarehouse[t][w][i] == 1)
+				{
+					string constraintName = "CustomerVisit(" + std::to_string(i + params.numWarehouses) + "," + std::to_string(t + 1) + ")";
+
+					cerr << "Constraint Violated: " << constraintName
+							<< " | Customer " << i + params.numWarehouses
+							<< " is not visited in the route" << endl;
+
+					cout << "Delivery Quantity: " << sol_SE_temp.deliveryQuantityToCustomer[i][t] << endl;
+
+					return false;
 				}
 			}
 		}
@@ -417,10 +428,9 @@ bool ILS_SIRP_Deterministic::checkSolutionFeasiblity(SolutionFirstEchelon sol_FE
 // Initialize the LP solver with current parameters and feasible solution
 bool ILS_SIRP_Deterministic::solveLP(SolutionFirstEchelon &sol_FE_temp, 
 			SolutionSecondEchelon_Deterministic &sol_SE_temp, 
-			Result &result_temp, 
-			const vector<vector<double>> &deterministicDemand)
+			Result &result_temp)
 {
-	LP_SE_Deterministic lpse_det(params, sol_FE_temp, sol_SE_temp, deterministicDemand);
+	LP_SE_Deterministic lpse_det(params, sol_FE_temp, sol_SE_temp, demand);
 	string statusLP = lpse_det.solve();
 	if (statusLP != "Optimal")
 	{

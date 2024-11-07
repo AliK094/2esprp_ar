@@ -1,10 +1,10 @@
-#include "stochastic/Perturbation.h"
+#include "deterministic/Perturbation_Deterministic.h"
 
-Perturbation::Perturbation(const ParameterSetting &parameters,
-						   const SolutionFirstEchelon &sol_FE,
-						   const SolutionSecondEchelon_Deterministic &sol_SE,
-						   const vector<vector<double>> &deterministicDemand,
-						   bool shortageAllowed)
+Perturbation_Deterministic::Perturbation_Deterministic(const ParameterSetting &parameters,
+						   							   const SolutionFirstEchelon &sol_FE,
+						   							   const SolutionSecondEchelon_Deterministic &sol_SE,
+						   							   const vector<vector<double>> &deterministicDemand,
+						  							   bool shortageAllowed)
 	: params(parameters),
 	  sol_FE_temp(sol_FE),
 	  sol_SE_temp(sol_SE),
@@ -13,11 +13,11 @@ Perturbation::Perturbation(const ParameterSetting &parameters,
 	  rng(std::random_device{}())
 {
 	// ----------------------------------------------------------------------------------------------------------
-	// cout << "\nInitializing Perturbation for " << endl;
+	// cout << "\nInitializing Perturbation_Deterministic for " << endl;
 	// ----------------------------------------------------------------------------------------------------------
 }
 
-bool Perturbation::run()
+bool Perturbation_Deterministic::run()
 {
 	// --------------------------------------------------------------------------------------------------------------------------
 	// Initialize the operators
@@ -27,7 +27,7 @@ bool Perturbation::run()
 	// --------------------------------------------------------------------------------------------------------------------------
 	while (perturbIteration < max_perturb)
 	{
-		// cout << "Perturbation...: " << endl;
+		// cout << "Perturbation_Deterministic...: " << endl;
 		sol_SE_feasible = sol_SE_temp;
 		int index = rand() % perturbOperators.size();
 
@@ -55,14 +55,14 @@ bool Perturbation::run()
 		}
 		sol_SE_feasible.clear();
 		sol_SE_feasible = lpse_deter.getSolutionSE();
-		objVal_feasible = lpse_deter.getObjVal();
+		objVal_feasible = lpse_deter.getResult().objValue_Total;
 
 		return true;
 	}
 	return false;
 }
 
-vector<std::function<bool()>> Perturbation::setPerturbOperators()
+vector<std::function<bool()>> Perturbation_Deterministic::setPerturbOperators()
 {
 	return {
 		[this]()
@@ -75,10 +75,10 @@ vector<std::function<bool()>> Perturbation::setPerturbOperators()
 		{ return randomRemoval(); }};
 }
 
-// Random Shift Perturbation
-bool Perturbation::randomShift(int v)
+// Random Shift Perturbation_Deterministic
+bool Perturbation_Deterministic::randomShift(int v)
 {
-	// cout << "\nRandom Shift Perturbation" << endl;
+	// cout << "\nRandom Shift Perturbation_Deterministic" << endl;
 
 	// Collect all eligible periods
 	vector<int> periods(params.numPeriods);
@@ -235,13 +235,13 @@ bool Perturbation::randomShift(int v)
 		} // End of sourceVehicle loop
 	} // End of period loop
 
-	// cerr << "Random Insertion Perturbation failed" << endl;
+	// cerr << "Random Insertion Perturbation_Deterministic failed" << endl;
 	return false;
 }
 
-bool Perturbation::randomSwap(int v1, int v2)
+bool Perturbation_Deterministic::randomSwap(int v1, int v2)
 {
-	// cout << "\nRnadom Swap Perturbation" << endl;
+	// cout << "\nRnadom Swap Perturbation_Deterministic" << endl;
 
 	// Collect all eligible periods
 	vector<int> periods(params.numPeriods);
@@ -373,13 +373,13 @@ bool Perturbation::randomSwap(int v1, int v2)
 		} // End of sourceVehicle loop
 	} // End of period loop
 
-	// cerr << "Random Swap Perturbation Failed" << endl;
+	// cerr << "Random Swap Perturbation_Deterministic Failed" << endl;
 	return false;
 }
 
-bool Perturbation::randomInsertion()
+bool Perturbation_Deterministic::randomInsertion()
 {
-	// cout << "\nRandom Insertion Perturbation" << endl;
+	// cout << "\nRandom Insertion Perturbation_Deterministic" << endl;
 
 	// Collect and shuffle periods
 	vector<int> periods(params.numPeriods);
@@ -538,13 +538,13 @@ bool Perturbation::randomInsertion()
 		return true;
 	}
 
-	// cerr << "Random Insertion Perturbation failed." << endl;
+	// cerr << "Random Insertion Perturbation_Deterministic failed." << endl;
 	return false;
 }
 
-bool Perturbation::randomRemoval()
+bool Perturbation_Deterministic::randomRemoval()
 {
-	// cout << "\nRandom Removal Perturbation" << endl;
+	// cout << "\nRandom Removal Perturbation_Deterministic" << endl;
 
 	int t = rand() % params.numPeriods; // Randomly choose a period
 
@@ -608,7 +608,7 @@ bool Perturbation::randomRemoval()
 }
 
 // Helper function to print a route with a label
-void Perturbation::printRoute(int ware, int per, int rI, const vector<int> &route, const std::string &label) const
+void Perturbation_Deterministic::printRoute(int ware, int per, int rI, const vector<int> &route, const std::string &label) const
 {
 	cout << label << "[" << ware + 1 << "][" << per + 1 << "][" << rI + 1 << "]: [";
 	if (!route.empty())
@@ -623,7 +623,7 @@ void Perturbation::printRoute(int ware, int per, int rI, const vector<int> &rout
 	cout << "]" << endl;
 }
 
-void Perturbation::printAllRoutes() const
+void Perturbation_Deterministic::printAllRoutes() const
 {
 	for (int w = 0; w < params.numWarehouses; ++w)
 	{
@@ -638,12 +638,12 @@ void Perturbation::printAllRoutes() const
 	}
 }
 
-SolutionSecondEchelon_Deterministic Perturbation::getSolutionSE()
+SolutionSecondEchelon_Deterministic Perturbation_Deterministic::getSolutionSE()
 {
 	return sol_SE_feasible;
 }
 
-double Perturbation::getObjVal()
+double Perturbation_Deterministic::getObjVal()
 {
 	return objVal_feasible;
 }

@@ -16,12 +16,9 @@ int main(int argc, char *argv[])
 	// Check if scenario index is provided
     int scenarioIndex = (argc == 14) ? std::stoi(argv[13]) : -1;  // Default to -1 if not provided
 
-<<<<<<< HEAD
 	// Read the required parameters
     string solutionAlgorithm = argv[1];
-=======
 	cout << "\n\nSolve The Stochastic Two-Echelon PRP with Adaptive Routing. " << endl;
->>>>>>> 3ba477c (Remove .o files and update .gitignore)
 
     ParameterSetting params(argc, argv);
     if (!params.setParameters())
@@ -52,20 +49,20 @@ int main(int argc, char *argv[])
     else if (solutionAlgorithm == "EV") {
         return runAlgorithm(alg.solve_EV());
     } 
-    else if (solutionAlgorithm == "EEV") {
-        if (s < 0) {
-            cerr << "Scenario index required for EEV." << endl;
-            return EXIT_FAILURE;
-        }
-        return runAlgorithm(alg.solve_EEV(s));
-    } 
-    else if (solutionAlgorithm == "WS") {
-        if (s < 0) {
-            cerr << "Scenario index required for WS." << endl;
-            return EXIT_FAILURE;
-        }
-        return runAlgorithm(alg.solve_WS(s));
-    } 
+    // else if (solutionAlgorithm == "EEV") {
+    //     if (scenarioIndex < 0) {
+    //         cerr << "Scenario index required for EEV." << endl;
+    //         return EXIT_FAILURE;
+    //     }
+    //     return runAlgorithm(alg.solve_EEV(scenarioIndex));
+    // } 
+    // else if (solutionAlgorithm == "WS") {
+    //     if (scenarioIndex < 0) {
+    //         cerr << "Scenario index required for WS." << endl;
+    //         return EXIT_FAILURE;
+    //     }
+    //     return runAlgorithm(alg.solve_WS(scenarioIndex));
+    // } 
     else {
         cerr << "Invalid solution algorithm: " << solutionAlgorithm << endl;
         return EXIT_FAILURE;

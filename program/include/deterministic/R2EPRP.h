@@ -1,39 +1,44 @@
-#ifndef LPSE_Deterministic_H
-#define LPSE_Deterministic_H
+#ifndef R2EPRP_H
+#define R2EPRP_H
 
 #include "ParameterSetting.h"
 #include "VariableManager.h"
 #include "CplexParameterManager.h"
-#include <functional>
-#include <set>
-#include <unordered_set>
-#include <unordered_map>
-#include <tuple>
+#include "deterministic/DeterBCCallbackManager.h"
 
-class LP_SE_Deterministic
+class R2EPRP
 {
 public:
-    LP_SE_Deterministic(const ParameterSetting &parameters, 
-             const SolutionFirstEchelon &solFE,
-			 const SolutionSecondEchelon_Deterministic &solSE,
-             const vector<vector<double>> &deterministicDemand,
-			 bool shortageAllowed = true);
+    R2EPRP(const ParameterSetting &parameters, 
+            const vector<vector<double>> &deterministicDemand,
+            bool shortageAllowed = true,
+            const SolutionWarmStart_Deterministic &warmStart = {});
 
-    string solve();
+    bool Solve();
 
-    SolutionFirstEchelon getSolutionFE();
-    SolutionSecondEchelon_Deterministic getSolutionSE();
-    Result getResult();
+    SolutionFirstEchelon getSolutionFE() const
+    {
+        return solFE;
+    }
+
+    SolutionSecondEchelon_Deterministic getSolutionSE() const
+    {
+        return solSE;
+    }
+
+    Result getResult() const
+    {
+        return result;
+    }
 
 private:
     ParameterSetting params; // Member variable to hold the ParameterSetting object
-    SolutionFirstEchelon sol_FE;
-    SolutionSecondEchelon_Deterministic sol_SE;
+
+    SolutionFirstEchelon solFE;
+    SolutionSecondEchelon_Deterministic solSE;
     vector<vector<double>> demand;
     bool shortageAllowed;
-
-    SolutionFirstEchelon sol_FE_temp;
-    SolutionSecondEchelon_Deterministic sol_SE_temp;
+    SolutionWarmStart_Deterministic warmStart;
     Result result;
 
     double THRESHOLD;
@@ -41,19 +46,31 @@ private:
     bool save_lpFile;
     bool save_mpsResultFile;
 
+    vector<vector<int>> routeMatrix_FirstEchelon;
+    int numRoutes_FirstEchelon;
+    vector<vector<int>> optimalRoutes_FirstEchelon;
+    vector<double> routeCosts_FirstEchelon;
+
+
     // Decision Variables
+    IloNumVarArray y;
     IloNumVarArray p;
     IloNumVarArray I_plant;
     IloArray<IloNumVarArray> I_warehouse;
     IloArray<IloNumVarArray> I_customer;
     IloArray<IloNumVarArray> b_customer;
     IloArray<IloArray<IloNumVarArray>> q;
+    IloArray<IloNumVarArray> o;
     IloArray<IloArray<IloNumVarArray>> w_customer;
+
+    vector<vector<int>> selectedRoute;
 
     void DefineVariables(IloEnv &env, IloModel &model);
     void DefineObjectiveFunction(IloEnv &env, IloModel &model);
     void DefineConstraints(IloEnv &env, IloModel &model);
     void RetrieveSolutions(IloCplex &cplex);
+    void DefineWarmStartSolution(IloEnv &env, IloCplex &cplex);
+    void DisplayVariables();
     void CalculateCostsForEachPart();
 
     void DisplayProductionSetupVars();
@@ -66,6 +83,8 @@ private:
     void DisplayCustomerUnmetDemandVars();
     void DisplayDeliveryQuantityToCustomersVars();
     void DisplayRoutesWarehouseToCustomersVars();
+
+
 };
 
-#endif // LPSE_Deterministic_H
+#endif // R2EPRP_H

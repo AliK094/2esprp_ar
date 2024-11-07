@@ -15,7 +15,7 @@ class ConstructHeuristic_Deterministic
 public:
     ConstructHeuristic_Deterministic(const ParameterSetting &parameters, 
                 const SolutionFirstEchelon &sol_FE, 
-                const vector<vector<double>> &deterministicDemand
+                const vector<vector<double>> &deterministicDemand,
                 vector<vector<vector<int>>> &CATW,
 			    bool shortageAllowed = true);
 

@@ -1,45 +1,48 @@
-#ifndef LOCALSEARCH_H
-#define LOCALSEARCH_H
+#ifndef LocalSearch_Deterministic_H
+#define LocalSearch_Deterministic_H
 
 #include "ParameterSetting.h"
 #include "VariableManager.h"
 #include "CplexParameterManager.h"
-#include "stochastic/LP_SE.h"
-#include "stochastic/LP_SE_Scenario.h"
+#include "deterministic/LP_SE_Deterministic.h"
 #include <functional>
 #include <set>
 #include <unordered_set>
 #include <unordered_map>
 #include <tuple>
 
-class LocalSearch
+class LocalSearch_Deterministic
 {
 public:
-    LocalSearch(const int s, const ParameterSetting &parameters, 
-                const SolutionFirstEchelon &sol_FE, 
-                const ScenarioSolutionSecondEchelon &sol_SE_scenario,
-                const double objVal_Scenario);
+    LocalSearch_Deterministic(const ParameterSetting &parameters, 
+                              const SolutionFirstEchelon &sol_FE, 
+                              const SolutionSecondEchelon_Deterministic &sol_SE,
+                              const double objVal,
+                              const vector<vector<double>> &deterministicDemand,
+						      bool shortageAllowed = true);
 
     void RVND();
 
-    ScenarioSolutionSecondEchelon getSolutionSE_Scenario();
-    double getObjVal_Scenario();
+    SolutionSecondEchelon_Deterministic getSolutionSE();
+    double getObjVal();
 
 private:
     int scenario;
     ParameterSetting params; // Member variable to hold the ParameterSetting object
     SolutionFirstEchelon sol_FE_temp;
-    ScenarioSolutionSecondEchelon sol_SE_temp_scenario;
-    double objVal_Scenario;
+    SolutionSecondEchelon_Deterministic sol_SE_temp;
+    double objVal;
+    vector<vector<double>> demand;
+    bool shortageAllowed;
 
-    ScenarioSolutionSecondEchelon sol_SE_scenario_feasible;
-    double objVal_feasible_scenario;
+    SolutionSecondEchelon_Deterministic sol_SE_feasible;
+    double objVal_feasible;
 
-    ScenarioSolutionSecondEchelon sol_SE_best_scenario_currStart;
-    double objVal_best_scenario_currStart;
+    SolutionSecondEchelon_Deterministic sol_SE_best_currStart;
+    double objVal_best_currStart;
 
-    ScenarioSolutionSecondEchelon sol_SE_best_scenario;
-    double objVal_best_scenario;
+    SolutionSecondEchelon_Deterministic sol_SE_best;
+    double objVal_best;
 
     vector<std::function<bool()>> setOperators();
 
@@ -52,7 +55,7 @@ private:
     bool Transfer();
     bool Remove_Insert();
 
-    bool solveLP_Scenario();
+    bool solveLP();
 
     // Helper Functions
     void printRoute(int warehouse, int period, int routeIndex, const vector<int> &route, const std::string &label = "") const;
@@ -62,4 +65,4 @@ private:
     std::mt19937 rng;
 };
 
-#endif // LOCALSEARCH_H
+#endif // LocalSearch_Deterministic_H

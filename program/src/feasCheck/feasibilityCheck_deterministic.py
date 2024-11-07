@@ -1,24 +1,27 @@
 """
-In this Problem we aim to check the results obtained from the heuristic algorithm to check the feasibility of the results
+In this Problem we aim to check the results obtained from the heuristic algorithm to check the feasibility of the results (for the deterministic case)
 """
 import numpy as np
 import sys
 
-def feasibilityCheck(file):
+def feasibilityCheck(file_path, algorithm, shortage_allowed, scenario_index):
     # ----------------------------------------------------------------------------
     # Initializization
     # ----------------------------------------------------------------------------
     
     violated_constraints = []
     # We first need to open the data file and assign values
-    with open(file, 'r') as fp:
+    with open(file_path, 'r') as fp:
         values = []
         for line in fp:
             ar = line.split()
             for i in ar:
                 values.append(i)
                 
-    
+    if shortage_allowed == '1':
+        shortage_allowed = True
+    else:
+        shortage_allowed = False
     # Load Parameters
     index = 0
 
@@ -35,16 +38,23 @@ def feasibilityCheck(file):
     index += 1
     numPeriods = int(values[index])
     index += 1
-    numScenarios = int(values[index])
-    index+=1
     
-    # Second Line
-    uncertaintyRange = float(values[index])
-    index+=1
-    probabilityFunction = str(values[index])
-    index+=1
-    unmetDemandPenaltyCoeff = float(values[index])
-    index += 1
+    if algorithm != '2EPRP':
+        numScenarios = int(values[index])
+        index+=1
+    
+    if algorithm == "WS" or algorithm == "EEV":
+        scenario_Index = int(values[index])
+        index+=1
+    
+    if algorithm != "2EPRP":
+        # Second Line
+        uncertaintyRange = float(values[index])
+        index+=1
+        probabilityFunction = str(values[index])
+        index+=1
+        unmetDemandPenaltyCoeff = float(values[index])
+        index += 1
 
     # Third Line
     unitProdCost = float(values[index])
@@ -120,16 +130,18 @@ def feasibilityCheck(file):
     for i in range(numCustomers):
         initialInventory_Customer[i] = float(values[index])
         index += 1
+    
+    if shortage_allowed:
+        unmetDemandPenalty = np.zeros((numCustomers))
+        for i in range(numCustomers):
+            unmetDemandPenalty[i] = float(values[index])
+            index += 1
         
-    unmetDemandPenalty = np.zeros((numCustomers))
+    demand = np.zeros((numCustomers, numPeriods))
     for i in range(numCustomers):
-        unmetDemandPenalty[i] = float(values[index])
-        index += 1
-        
-    consumeRate = np.zeros((numCustomers))
-    for i in range(numCustomers):
-        consumeRate[i] = float(values[index])
-        index += 1
+        for t in range(numPeriods):
+            demand[i][t] = float(values[index])
+            index += 1
         
     transportationCost_FirstEchelon = np.zeros((numWarehouses + 1, numWarehouses + 1))
     for i in range(numWarehouses + 1):
@@ -151,12 +163,7 @@ def feasibilityCheck(file):
             for i in range(numCustomers):
                 customerAssignmentToWarehouse[t][w][i] = int(values[index])
                 index += 1
-                    
-    # for t in range(numPeriods):
-    #     for i in range(numCustomers):
-    #         for w in range(numWarehouses):
-    #             if customerAssignmentToWarehouse[t][w][i] == 1:
-    #                 print(f'customer {i + numWarehouses} is assigned to warehouse {w + 1} in period {t + 1}')             
+                            
                     
     objValue = 0.0
     
@@ -205,14 +212,15 @@ def feasibilityCheck(file):
             objValue += unitHoldingCost_Customer[i] * customerInventory[i][t]
             totalInventoryCostCustomer += unitHoldingCost_Customer[i] * customerInventory[i][t]
             index += 1
-                
-    customerUnmetDemand = np.zeros((numCustomers, numPeriods))
-    for i in range(numCustomers):
-        for t in range(numPeriods):
-            customerUnmetDemand[i][t] = float(values[index])
-            objValue += unmetDemandPenalty[i] * customerUnmetDemand[i][t]
-            totalUnmetDemandCost += unmetDemandPenalty[i] * customerUnmetDemand[i][t]
-            index += 1
+    
+    if shortage_allowed:       
+        customerUnmetDemand = np.zeros((numCustomers, numPeriods))
+        for i in range(numCustomers):
+            for t in range(numPeriods):
+                customerUnmetDemand[i][t] = float(values[index])
+                objValue += unmetDemandPenalty[i] * customerUnmetDemand[i][t]
+                totalUnmetDemandCost += unmetDemandPenalty[i] * customerUnmetDemand[i][t]
+                index += 1
                 
     # routesPlantToWarehouse = np.zeros((numPeriods, numVehicles_Plant, 0))
     # Placeholder for routes with variable lengths
@@ -437,8 +445,9 @@ def feasibilityCheck(file):
     for t in range(numPeriods):
         for i in range(numCustomers):
             I_customer = initialInventory_Customer[i] if t == 0 else customerInventory[i][t - 1]
-            I_customer -= consumeRate[i]
-            I_customer += customerUnmetDemand[i][t]    
+            I_customer -= demand[i][t]
+            if shortage_allowed:
+                I_customer += customerUnmetDemand[i][t]    
             
             deliveryQuantity_CustomerWarehouse = 0.0
             for w in range(numWarehouses):
@@ -457,7 +466,7 @@ def feasibilityCheck(file):
     # Check Customer Inventory Capacity Constraint
     for t in range(numPeriods):
         for i in range(numCustomers):
-            if customerInventory[i][t] + consumeRate[i] > storageCapacity_Customer[i] + tolerance:
+            if customerInventory[i][t] + demand[i][t] > storageCapacity_Customer[i] + tolerance:
                 print(f'Inventory Capacity is violated for {i + numWarehouses} and t={t + 1}')
                 print(f'{customerInventory[i][t]} > {storageCapacity_Customer[i]}')
                 violated_constraints.append(f'Inventory Capacity: {i + numWarehouses} and t={t + 1}')
@@ -525,7 +534,7 @@ def feasibilityCheck(file):
                         violated_constraints.append(f'Vehicle Capacity Constraint: w={w + 1}, t={t + 1}, k={k + 1}')
 
     if not violated_constraints:
-        print('Feasible Solution For EV')
+        print('Feasible Solution For')
     else:
         for constraint in violated_constraints:
             print(constraint)
@@ -535,9 +544,19 @@ def feasibilityCheck(file):
 
 
 if __name__ == "__main__":
+    
+    if len(sys.argv) < 5:
+        print("Usage: feasibilityCheck_deterministic.py <file_path> <algorithm> <shortage_allowed> <scenario_index>")
+        sys.exit(1)
 
-    flag = feasibilityCheck(sys.argv[1])
-    if not flag:
+    file_path = sys.argv[1]
+    algorithm = sys.argv[2]
+    shortage_allowed = sys.argv[3]
+    scenario_index = int(sys.argv[4])
+    
+    result = feasibilityCheck(file_path, algorithm, shortage_allowed, scenario_index)
+    
+    if not result:
         print('0')
     else:
         print('1')

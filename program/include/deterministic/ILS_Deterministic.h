@@ -4,11 +4,10 @@
 #include "ParameterSetting.h"
 #include "VariableManager.h"
 #include "CplexParameterManager.h"
-#include "ConsInitSol.h"
-#include "LocalSearch.h"
-#include "Perturbation.h"
-#include "LP_SE.h"
-#include "LP_SE_Scenario.h"
+#include "deterministic/ConsInitSol_Deterministic.h"
+#include "deterministic/LocalSearch_Deterministic.h"
+#include "deterministic/Perturbation_Deterministic.h"
+#include "deterministic/LP_SE_Deterministic.h"
 #include <functional>
 #include <set>
 #include <unordered_set>
@@ -19,9 +18,10 @@ class ILS_SIRP_Deterministic
 {
 public:
     ILS_SIRP_Deterministic(const ParameterSetting &parameters,
-             const SolutionFirstEchelon &sol_FE,
-             const SolutionSecondEchelon_Deterministic &sol_SE = {},
-             const vector<vector<double>> &deterministicDemand = {});
+                           const SolutionFirstEchelon &sol_FE,
+                           const SolutionSecondEchelon_Deterministic &sol_SE = {},
+                           const vector<vector<double>> &deterministicDemand = {},
+                           bool shortageAllowed = true);
 
     bool run();
 
@@ -33,6 +33,8 @@ private:
     ParameterSetting params; // Member variable to hold the ParameterSetting object
     SolutionFirstEchelon sol_FE;
     SolutionSecondEchelon_Deterministic sol_SE;
+    vector<vector<double>> demand;
+    bool shortageAllowed;
 
     SolutionFirstEchelon sol_FE_incumbent;
     SolutionSecondEchelon_Deterministic sol_SE_incumbent;
@@ -44,8 +46,8 @@ private:
 
     double Tolerance;
 
-    bool solveLP(SolutionFirstEchelon &sol_FE_temp, SolutionSecondEchelon &sol_SE_temp, Result &result_temp);
-    bool checkSolutionFeasiblity(SolutionFirstEchelon sol_FE_temp, SolutionSecondEchelon sol_SE_temp);
+    bool solveLP(SolutionFirstEchelon &sol_FE_temp, SolutionSecondEchelon_Deterministic &sol_SE_temp, Result &result_temp);
+    bool checkSolutionFeasiblity(SolutionFirstEchelon sol_FE_temp, SolutionSecondEchelon_Deterministic sol_SE_temp);
     void calculateObjFuncValue();
     vector<vector<vector<double>>> calcInvWarehouse();
 };
