@@ -14,6 +14,9 @@
 #include "deterministic/R2EPRP.h"
 #include "deterministic/BC_Deterministic.h"
 
+#include "deterministic/ILS_EEV.h"
+#include "deterministic/BC_EEV.h"
+
 class Algorithms
 {
 public:
@@ -23,7 +26,8 @@ public:
     bool solve_S2EPRP_HILS();
 
     bool solve_EV();
-    // bool solve_WS();
+    bool solve_WS(int scenarioIndex);
+    bool solve_EEV(int scenarioIndex);
     bool solve_Deterministic_HILS(const vector<vector<double>> &deterministicDemand, bool shortageAllowed = true, int scenarioIndex = -1);
 
 private:
@@ -116,6 +120,13 @@ private:
 
     void printSolution_Deterministic();
     void organizeSolution_Deterministic();
+
+    bool read_SolutionFirstEchelon(SolutionFirstEchelon &sol_FE_EV);
+    bool solve_EEV_HILS(const SolutionFirstEchelon &sol_FE_EV, const vector<vector<double>> &deterministicDemand, int scenarioIndex);
+    bool runILS_EEV(const SolutionFirstEchelon &sol_FE_EV, 
+                    SolutionSecondEchelon_Deterministic &solSE_current, 
+                    Result &result_current,
+                    const vector<vector<double>> &deterministicDemand);
 };
 
 #endif // ALGORITHMS_H

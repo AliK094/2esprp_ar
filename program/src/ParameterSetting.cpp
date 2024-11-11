@@ -322,6 +322,7 @@ void ParameterSetting::calculateDeliveryUB()
 
 void ParameterSetting::printParameters() const
 {
+    cout << "\nInstance parameters: " << endl;
     cout << "Instance: " << instance << endl;
     cout << "Number of Warehouses (W): " << numWarehouses << endl;
     cout << "Number of Customers (C): " << numCustomers << endl;
@@ -690,7 +691,7 @@ void ParameterSetting::generateAllRoutes()
         //     cout << endl;
         // }
 
-        cout << "Generating all routes..." << endl;
+        cout << "\nGenerating all routes..." << endl;
         solveTSPForRoutes();
 
         // cout << "\n"

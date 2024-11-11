@@ -5,6 +5,7 @@
 #include "VariableManager.h"
 #include "CplexParameterManager.h"
 #include "deterministic/LP_SE_Deterministic.h"
+#include "deterministic/LP_SE_EEV.h"
 #include <functional>
 #include <set>
 #include <unordered_set>
@@ -18,10 +19,12 @@ public:
                  const SolutionFirstEchelon &sol_FE, 
                  const SolutionSecondEchelon_Deterministic &sol_SE,
                  const vector<vector<double>> &deterministicDemand,
-                 bool shortageAllowed = true);
+                 bool shortageAllowed = true,
+                 bool isEEV = false);
 
     bool run();
 
+    SolutionFirstEchelon getSolutionFE();
     SolutionSecondEchelon_Deterministic getSolutionSE();
     double getObjVal();
 
@@ -31,6 +34,7 @@ private:
     SolutionSecondEchelon_Deterministic sol_SE_temp;
     vector<vector<double>> demand;
     bool shortageAllowed;
+    bool isEEV;
 
     SolutionFirstEchelon sol_FE_feasible;
     SolutionSecondEchelon_Deterministic sol_SE_feasible;

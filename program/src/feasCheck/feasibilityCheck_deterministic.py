@@ -292,7 +292,7 @@ def feasibilityCheck(file_path, algorithm, shortage_allowed, scenario_index):
                     for i in routesWarehouseToCustomer[w][t][k][1:]:
                         currNode = i
                         objValue += transportationCost_SecondEchelon[prevNode][currNode]
-                        totalAverageTransportationCost_SecondEchelon += transportationCost_SecondEchelon[prevNode][currNode]
+                        totalTransportationCost_SecondEchelon += transportationCost_SecondEchelon[prevNode][currNode]
                         prevNode = currNode
     
     for w in range(numWarehouses):

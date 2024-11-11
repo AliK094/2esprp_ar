@@ -4,12 +4,14 @@ Perturbation_Deterministic::Perturbation_Deterministic(const ParameterSetting &p
 						   							   const SolutionFirstEchelon &sol_FE,
 						   							   const SolutionSecondEchelon_Deterministic &sol_SE,
 						   							   const vector<vector<double>> &deterministicDemand,
-						  							   bool shortageAllowed)
+						  							   bool shortageAllowed,
+													   bool isEEV)
 	: params(parameters),
 	  sol_FE_temp(sol_FE),
 	  sol_SE_temp(sol_SE),
 	  demand(deterministicDemand),
 	  shortageAllowed(shortageAllowed),
+	  isEEV(isEEV),
 	  rng(std::random_device{}())
 {
 	// ----------------------------------------------------------------------------------------------------------
@@ -28,6 +30,7 @@ bool Perturbation_Deterministic::run()
 	while (perturbIteration < max_perturb)
 	{
 		// cout << "Perturbation_Deterministic...: " << endl;
+		sol_FE_feasible = sol_FE_temp;
 		sol_SE_feasible = sol_SE_temp;
 		int index = rand() % perturbOperators.size();
 
@@ -41,21 +44,35 @@ bool Perturbation_Deterministic::run()
 			continue;
 		}
 
-		// solve LP to get the value of the continuous variables
-		LP_SE_Deterministic lpse_deter(params,
-									   sol_FE_temp,
-									   sol_SE_feasible,
-									   demand,
-									   shortageAllowed);
-		string status = lpse_deter.solve();
-		if (status != "Optimal")
+		if (isEEV)
 		{
-			perturbIteration++;
-			continue;
+			// solve LP to get the value of the continuous variables for EEV
+			LP_SE_EEV lpse_eev(params, sol_FE_temp, sol_SE_feasible, demand);
+			string status = lpse_eev.solve();
+			if (status != "Optimal")
+			{
+				perturbIteration++;
+				continue;
+			}
+			sol_SE_feasible.clear();
+			sol_SE_feasible = lpse_eev.getSolutionSE();
+			objVal_feasible = lpse_eev.getResult().objValue_Total;
 		}
-		sol_SE_feasible.clear();
-		sol_SE_feasible = lpse_deter.getSolutionSE();
-		objVal_feasible = lpse_deter.getResult().objValue_Total;
+		else {
+			// solve LP to get the value of the continuous variables
+			LP_SE_Deterministic lpse_deter(params, sol_FE_temp, sol_SE_feasible,
+										demand, shortageAllowed);
+			string status = lpse_deter.solve();
+			if (status != "Optimal")
+			{
+				perturbIteration++;
+				continue;
+			}
+			sol_SE_feasible.clear();
+			sol_FE_feasible = lpse_deter.getSolutionFE();
+			sol_SE_feasible = lpse_deter.getSolutionSE();
+			objVal_feasible = lpse_deter.getResult().objValue_Total;
+		}
 
 		return true;
 	}
@@ -638,6 +655,10 @@ void Perturbation_Deterministic::printAllRoutes() const
 	}
 }
 
+SolutionFirstEchelon Perturbation_Deterministic::getSolutionFE()
+{
+	return sol_FE_feasible;
+}
 SolutionSecondEchelon_Deterministic Perturbation_Deterministic::getSolutionSE()
 {
 	return sol_SE_feasible;

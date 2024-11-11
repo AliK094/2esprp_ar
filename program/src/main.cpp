@@ -18,7 +18,8 @@ int main(int argc, char *argv[])
 
 	// Read the required parameters
     string solutionAlgorithm = argv[1];
-	cout << "\n\nSolve The Stochastic Two-Echelon PRP with Adaptive Routing. " << endl;
+	cout << "\nSolve The Stochastic Two-Echelon PRP with Adaptive Routing." << endl;
+    cout << "Algorithm: " << solutionAlgorithm << endl;
 
     ParameterSetting params(argc, argv);
     if (!params.setParameters())
@@ -49,20 +50,20 @@ int main(int argc, char *argv[])
     else if (solutionAlgorithm == "EV") {
         return runAlgorithm(alg.solve_EV());
     } 
-    // else if (solutionAlgorithm == "EEV") {
-    //     if (scenarioIndex < 0) {
-    //         cerr << "Scenario index required for EEV." << endl;
-    //         return EXIT_FAILURE;
-    //     }
-    //     return runAlgorithm(alg.solve_EEV(scenarioIndex));
-    // } 
-    // else if (solutionAlgorithm == "WS") {
-    //     if (scenarioIndex < 0) {
-    //         cerr << "Scenario index required for WS." << endl;
-    //         return EXIT_FAILURE;
-    //     }
-    //     return runAlgorithm(alg.solve_WS(scenarioIndex));
-    // } 
+    else if (solutionAlgorithm == "EEV") {
+        if (scenarioIndex < 0 || scenarioIndex >= params.numScenarios) {
+            cerr << "Scenario index required for EEV." << endl;
+            return EXIT_FAILURE;
+        }
+        return runAlgorithm(alg.solve_EEV(scenarioIndex));
+    } 
+    else if (solutionAlgorithm == "WS") {
+        if (scenarioIndex < 0 || scenarioIndex >= params.numScenarios) {
+            cerr << "Scenario index not valid for WS." << endl;
+            return EXIT_FAILURE;
+        }
+        return runAlgorithm(alg.solve_WS(scenarioIndex));
+    } 
     else {
         cerr << "Invalid solution algorithm: " << solutionAlgorithm << endl;
         return EXIT_FAILURE;

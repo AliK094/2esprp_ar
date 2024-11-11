@@ -5,11 +5,15 @@ LocalSearch_Deterministic::LocalSearch_Deterministic(const ParameterSetting &par
 													 const SolutionSecondEchelon_Deterministic &sol_SE, 
 													 const double objVal,
 													 const vector<vector<double>> &deterministicDemand,
-													 bool shortageAllowed)
+													 bool shortageAllowed,
+													 bool isEEV)
 	: params(parameters), 
 	  sol_FE_temp(sol_FE), 
 	  sol_SE_temp(sol_SE), 
 	  objVal(objVal), 
+	  demand(deterministicDemand),
+	  shortageAllowed(shortageAllowed),
+	  isEEV(isEEV),
 	  rng(std::random_device{}())
 {
 	// ----------------------------------------------------------------------------------------------------------
@@ -30,6 +34,7 @@ void LocalSearch_Deterministic::RVND()
 	// Uniform distribution for operator selection
     std::uniform_int_distribution<int> operator_dist;
 
+	sol_FE_best = sol_FE_temp;
 	sol_SE_best = sol_SE_temp;
 	objVal_best = objVal;
 
@@ -39,6 +44,7 @@ void LocalSearch_Deterministic::RVND()
 		// cout << "\nRVND Iteration : " << iter + 1 << endl;
 		operators = setOperators();
 
+		sol_FE_best_currStart = sol_FE_temp;
 		sol_SE_best_currStart = sol_SE_temp;
 		objVal_best_currStart = objVal;
 
@@ -67,6 +73,7 @@ void LocalSearch_Deterministic::RVND()
 
 		if (objVal_best_currStart < objVal_best - 0.001)
 		{
+			sol_FE_best = sol_FE_best_currStart;
 			sol_SE_best = sol_SE_best_currStart;
 			objVal_best = objVal_best_currStart;
 		}
@@ -937,7 +944,7 @@ bool LocalSearch_Deterministic::Merge()
 	// printRoute(mergeFromWarehouse, mergeFromPeriod, mergeFromRouteIndex, sol_SE_feasible.routesWarehouseToCustomer[mergeFromWarehouse][mergeFromPeriod][mergeFromRouteIndex], "Old Route (Merge From)");
 	// printRoute(mergeToWarehouse, mergeToPeriod, mergeToRouteIndex, sol_SE_feasible.routesWarehouseToCustomer[mergeToWarehouse][mergeToPeriod][mergeToRouteIndex], "Old Route (Merge To)");
 
-	// cout << "Merging customer " << selectedCustomer + 1 << " from period " << mergeFromPeriod + 1
+	// cout << "Merging customer " << selectedCustomer << " from period " << mergeFromPeriod + 1
 	// 	 << " and warehouse " << mergeFromWarehouse + 1
 	// 	 << " to period " << mergeToPeriod + 1
 	// 	 << " and warehouse " << mergeToWarehouse + 1 << endl;
@@ -952,12 +959,12 @@ bool LocalSearch_Deterministic::Merge()
 		fromRoute.clear();
 	}
 
-	// // Update customer assignment matrix if warehouses are different
-	// if (mergeFromWarehouse != mergeToWarehouse)
-	// {
-	// 	sol_SE_feasible.customerAssignmentToWarehouse[mergeFromPeriod][mergeFromWarehouse][selectedCustomer - params.numWarehouses] = 0;
-	// 	sol_SE_feasible.customerAssignmentToWarehouse[mergeToPeriod][mergeToWarehouse][selectedCustomer - params.numWarehouses] = 1;
-	// }
+	// Update customer assignment matrix if warehouses are different
+	if (mergeFromWarehouse != mergeToWarehouse)
+	{
+		sol_SE_feasible.customerAssignmentToWarehouse[mergeFromPeriod][mergeFromWarehouse][selectedCustomer - params.numWarehouses] = 0;
+		sol_SE_feasible.customerAssignmentToWarehouse[mergeToPeriod][mergeToWarehouse][selectedCustomer - params.numWarehouses] = 1;
+	}
 
 	// Output new routes after the merge
 	// printRoute(mergeFromWarehouse, mergeFromPeriod, mergeFromRouteIndex, fromRoute, "New Route (Merge From)");
@@ -1341,42 +1348,66 @@ bool LocalSearch_Deterministic::Remove_Insert()
 
 bool LocalSearch_Deterministic::solveLP()
 {
-	// solve LP to get the value of the continuous variables
-	LP_SE_Deterministic lpse(params, 
-							 sol_FE_temp, 
-							 sol_SE_feasible,
-							 demand,
-							 shortageAllowed);
+	if (isEEV){
+		// solve LP to get the value of the continuous variables for EEV
+		LP_SE_EEV lpse_eev(params, sol_FE_temp, sol_SE_feasible, demand);
+		string status = lpse_eev.solve();
+		if (status != "Optimal")
+		{
+			cerr << "LP solver (EEV) failed with status: " << status << endl;
+			return false;
+		}
 
-	string status = lpse.solve();
-	if (status != "Optimal")
-	{
-		// cerr << "LP solver failed with status: " << status << endl;
-		return false;
+		objVal_feasible = lpse_eev.getResult().objValue_Total;
+
+		const double improvementThreshold = 1e-2;
+
+		// Determine if the new solution is significantly better than the best known
+		if (objVal_feasible < objVal_best_currStart - improvementThreshold)
+		{
+			// cout << "A better solution found!\n"
+			// 	 << endl;
+
+			// Update the best known solution
+			sol_SE_best_currStart = lpse_eev.getSolutionSE();
+			objVal_best_currStart = lpse_eev.getResult().objValue_Total;
+			return true;
+		}
 	}
+	else {
+		// solve LP to get the value of the continuous variables
+		LP_SE_Deterministic lpse(params, sol_FE_best_currStart, sol_SE_feasible, demand, shortageAllowed);
+		string status = lpse.solve();
+		if (status != "Optimal")
+		{
+			cerr << "LP solver failed with status: " << status << endl;
+			return false;
+		}
+
+		objVal_feasible = lpse.getResult().objValue_Total;
 	
-	objVal_feasible = lpse.getResult().objValue_Total;
+		// Log the objective values for comparison
+		// cout << "\nBest objective value (Current Iteration): " << objVal_best_currStart << endl;
+		// cout << "New objective value after operation: " << objVal_feasible << endl;
 
-	// Log the objective values for comparison
-	// cout << "\nBest objective value (Current Iteration): " << objVal_best_currStart << endl;
-	// cout << "New objective value after operation: " << objVal_feasible << endl;
+		// Define the improvement threshold
+		const double improvementThreshold = 1e-2;
 
-	// Define the improvement threshold
-	const double improvementThreshold = 1e-2;
+		// Determine if the new solution is significantly better than the best known
+		if (objVal_feasible < objVal_best_currStart - improvementThreshold)
+		{
+			// cout << "A better solution found!\n"
+			// 	 << endl;
 
-	// Determine if the new solution is significantly better than the best known
-	if (objVal_feasible < objVal_best_currStart - improvementThreshold)
-	{
-		// cout << "A better solution found!\n"
+			// Update the best known solution
+			sol_FE_best_currStart = lpse.getSolutionFE();
+			sol_SE_best_currStart = lpse.getSolutionSE();
+			objVal_best_currStart = lpse.getResult().objValue_Total;
+			return true;
+		}
+		// cout << "No improvement found.\n"
 		// 	 << endl;
-
-		// Update the best known solution
-		sol_SE_best_currStart = lpse.getSolutionSE();
-		objVal_best_currStart = lpse.getResult().objValue_Total;
-		return true;
 	}
-	// cout << "No improvement found.\n"
-	// 	 << endl;
 
 	// No improvement found
 	return false;
@@ -1412,6 +1443,11 @@ void LocalSearch_Deterministic::printAllRoutes() const
 	}
 	cout << "\n";
 }
+SolutionFirstEchelon LocalSearch_Deterministic::getSolutionFE()
+{
+	return sol_FE_best;
+}
+
 SolutionSecondEchelon_Deterministic LocalSearch_Deterministic::getSolutionSE()
 {
 	return sol_SE_best;

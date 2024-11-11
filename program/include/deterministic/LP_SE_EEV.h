@@ -1,5 +1,5 @@
-#ifndef LPSE_Deterministic_H
-#define LPSE_Deterministic_H
+#ifndef LP_SE_EEV_H
+#define LP_SE_EEV_H
 
 #include "ParameterSetting.h"
 #include "VariableManager.h"
@@ -10,14 +10,13 @@
 #include <unordered_map>
 #include <tuple>
 
-class LP_SE_Deterministic
+class LP_SE_EEV
 {
 public:
-    LP_SE_Deterministic(const ParameterSetting &parameters, 
+    LP_SE_EEV(const ParameterSetting &parameters, 
              const SolutionFirstEchelon &solFE,
 			 const SolutionSecondEchelon_Deterministic &solSE,
-             const vector<vector<double>> &deterministicDemand,
-			 bool shortageAllowed = true);
+             const vector<vector<double>> &deterministicDemand);
 
     string solve();
 
@@ -27,10 +26,9 @@ public:
 
 private:
     ParameterSetting params; // Member variable to hold the ParameterSetting object
-    SolutionFirstEchelon sol_FE;
+    SolutionFirstEchelon sol_FE_EV;
     SolutionSecondEchelon_Deterministic sol_SE;
     vector<vector<double>> demand;
-    bool shortageAllowed;
 
     SolutionFirstEchelon sol_FE_temp;
     SolutionSecondEchelon_Deterministic sol_SE_temp;
@@ -42,12 +40,9 @@ private:
     bool save_mpsResultFile;
 
     // Decision Variables
-    IloNumVarArray p;
-    IloNumVarArray I_plant;
     IloArray<IloNumVarArray> I_warehouse;
     IloArray<IloNumVarArray> I_customer;
     IloArray<IloNumVarArray> b_customer;
-    IloArray<IloArray<IloNumVarArray>> q;
     IloArray<IloArray<IloNumVarArray>> w_customer;
 
     void DefineVariables(IloEnv &env, IloModel &model);
@@ -69,4 +64,4 @@ private:
     void DisplayRoutesWarehouseToCustomersVars();
 };
 
-#endif // LPSE_Deterministic_H
+#endif // LP_SE_EEV_H

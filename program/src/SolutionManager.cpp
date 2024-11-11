@@ -530,17 +530,17 @@ void SolutionManager::saveSolution_Deterministic(const SolutionFirstEchelon &sol
         {
             if (scenarioIndex == -1)
             {
-                cout << "scenarionarioIndex is not valid." << endl;
+                cout << "scenarioIndex is not valid." << endl;
                 exit(1);
             }
 
-            cout << "Saving solution for << " << Algorithm << "..." << endl;
+            cout << "Saving solution for " << Algorithm << "..." << endl;
             // Construct the directory path
             directory = "../Results/Solutions/SolEvaluation/" + Algorithm + "/" 
                                     + params.probabilityFunction
                                     + "/S" + std::to_string(params.numScenarios)
-                                    + "/UR" + std::to_string(static_cast<int>(params.uncertaintyRange * 100))
-                                    + "/" + std::to_string(static_cast<int>(params.unmetDemandPenaltyCoeff))
+                                    + "/UR" + std::to_string(static_cast<int>(params.uncertaintyRange * 100)) + "%"
+                                    + "/PC" + std::to_string(static_cast<int>(params.unmetDemandPenaltyCoeff))
                                     + "/" + params.instance;
                                     
 
@@ -689,7 +689,7 @@ void SolutionManager::saveSolution_Deterministic(const SolutionFirstEchelon &sol
                 file << endl;
             }
 
-            // Write Consume Rate
+            // Write Deterministic Demand
             for (const auto &d1 : deterministicDemand)
             {
                 for (const auto &d2 : d1)
@@ -874,7 +874,7 @@ bool SolutionManager::checkFeasibility_Deterministic(bool shortageAllowed, int s
         filename = "Sol_S2EPRPAR_EV_" + params.probabilityFunction
                             + "_" + params.instance
                             + "_S" + std::to_string(params.numScenarios)
-                            + "_UR" + std::to_string(static_cast<int>(params.uncertaintyRange * 100))
+                            + "_UR" + std::to_string(static_cast<int>(params.uncertaintyRange * 100)) + "%"
                             + "_PC" + std::to_string(static_cast<int>(params.unmetDemandPenaltyCoeff)) + ".txt";
     }
     else if (Algorithm == "WS" || Algorithm == "EEV")
@@ -883,7 +883,7 @@ bool SolutionManager::checkFeasibility_Deterministic(bool shortageAllowed, int s
         directory = "../Results/Solutions/SolEvaluation/" + Algorithm + "/" 
                                     + params.probabilityFunction
                                     + "/S" + std::to_string(params.numScenarios)
-                                    + "/UR" + std::to_string(static_cast<int>(params.uncertaintyRange * 100))
+                                    + "/UR" + std::to_string(static_cast<int>(params.uncertaintyRange * 100)) + "%"
                                     + "/" + std::to_string(static_cast<int>(params.unmetDemandPenaltyCoeff))
                                     + "/" + params.instance;
                                     
@@ -988,15 +988,15 @@ void SolutionManager::saveResultSummary_Deterministic(const SolutionFirstEchelon
         directory = "../Results/Summary/SolEvaluation/EV/" 
                                 + params.probabilityFunction
                                 + "/S" + std::to_string(params.numScenarios) 
-                                + "/UR" + std::to_string(static_cast<int>(params.uncertaintyRange * 100))
-                                + "/" + params.instance + "/" + std::to_string(static_cast<int>(params.unmetDemandPenaltyCoeff));
+                                + "/UR" + std::to_string(static_cast<int>(params.uncertaintyRange * 100)) + "%"
+                                + "/" + params.instance + "/PC" + std::to_string(static_cast<int>(params.unmetDemandPenaltyCoeff));
         filename = "Sol_EV_" + params.instance + ".csv";
     }
     else if (Algorithm == "WS" || Algorithm == "EEV")
     {
         if (scenarioIndex == -1)
         {
-            cout << "scenarionarioIndex is not valid." << endl;
+            cout << "scenarioIndex is not valid." << endl;
             exit(1);
         }
 
@@ -1005,7 +1005,7 @@ void SolutionManager::saveResultSummary_Deterministic(const SolutionFirstEchelon
                                 + params.probabilityFunction
                                 + "/S" + std::to_string(params.numScenarios)
                                 + "/UR" + std::to_string(static_cast<int>(params.uncertaintyRange * 100))
-                                + "/" + params.instance + "/" + std::to_string(static_cast<int>(params.unmetDemandPenaltyCoeff));
+                                + "/" + params.instance + "/PC" + std::to_string(static_cast<int>(params.unmetDemandPenaltyCoeff));
         filename = "Sol_" + Algorithm + "_" + params.instance + ".csv";
     }
     else if (Algorithm == "2EPRP_HHA")
@@ -1023,6 +1023,13 @@ void SolutionManager::saveResultSummary_Deterministic(const SolutionFirstEchelon
     else {
         cout << "Invalid Algorithm" << endl;
         exit(1);
+    }
+
+    // Create the directory if it doesn't exist
+    if (!fs::exists(directory)) 
+    {
+        cout << "Directory does not exist. Creating: " << directory << endl;
+        fs::create_directories(directory);
     }
 
     // Full path to the file

@@ -1,31 +1,30 @@
-#include "deterministic/ILS_Deterministic.h"
+#include "deterministic/ILS_EEV.h"
 
-ILS_SIRP_Deterministic::ILS_SIRP_Deterministic(const ParameterSetting &parameters, 
-	const SolutionFirstEchelon &sol_FE, 
-	const SolutionSecondEchelon_Deterministic &sol_SE_Deterministic,
-	const vector<vector<double>> &deterministicDemand,
-	bool shortageAllowed)
-	: params(parameters),
-	  sol_FE(sol_FE),
-	  sol_SE(sol_SE_Deterministic),
-	  demand(deterministicDemand),
-	  shortageAllowed(shortageAllowed)
+ILS_EEV::ILS_EEV(const ParameterSetting &parameters, 
+				const SolutionFirstEchelon &sol_FE, 
+				const SolutionSecondEchelon_Deterministic &sol_SE_Deterministic,
+				const vector<vector<double>> &deterministicDemand)
+				: params(parameters),
+				sol_FE_EV(sol_FE),
+				sol_SE(sol_SE_Deterministic),
+				demand(deterministicDemand)
 {
 	// Initialize random seed
 	srand(static_cast<unsigned int>(time(NULL)));
 	// ----------------------------------------------------------------------------------------------------------
 	Tolerance = 1e-6;
-	cout << "\nILS (Deterministic)..."
+	cout << "\nILS (EEV)..."
 		 << endl;
 }
 
-bool ILS_SIRP_Deterministic::run()
+bool ILS_EEV::run()
 {
+	bool shortageAllowed = true;
+	bool isEEV = true;
 	// Start the timer
 	auto startTime_ILS = std::chrono::high_resolution_clock::now();
 	auto elapsedTime_ILS = 0.0;
 
-	SolutionFirstEchelon sol_FE_temp = sol_FE;
 	SolutionSecondEchelon_Deterministic sol_SE_temp = sol_SE;
 	Result result_temp;
 
@@ -58,7 +57,7 @@ bool ILS_SIRP_Deterministic::run()
 
 		cout << "Construct Initial Solution" << endl;
 
-		ConstructHeuristic_Deterministic consHeuristic_det(params, sol_FE_temp, demand, CATW);
+		ConstructHeuristic_Deterministic consHeuristic_det(params, sol_FE_EV, demand, CATW);
 		bool status = consHeuristic_det.Construct_InitialSolution();
 		if (!status)
 		{
@@ -70,29 +69,25 @@ bool ILS_SIRP_Deterministic::run()
 		sol_SE_temp.customerUnmetDemand = consHeuristic_det.getUnmetDemandCustomers();
 		sol_SE_temp.deliveryQuantityToCustomer = consHeuristic_det.getDeliveryQuantityCustomers();
 		sol_SE_temp.routesWarehouseToCustomer = consHeuristic_det.getRoutesWarehouseToCustomer();
-		// sol_SE_temp.warehouseInventory = calcInvWarehouse();
-
 	}
 
 	// Initialize the LP solver with current parameters and feasible solution
-	if (!solveLP(sol_FE_temp, sol_SE_temp, result_temp))
+	if (!solveLP(sol_SE_temp, result_temp))
 	{
 		cerr << "Initial solution is not feasible" << endl;
 		return false;
 	}
 
-	if (!checkSolutionFeasiblity(sol_FE_temp, sol_SE_temp))
+	if (!checkSolutionFeasiblity(sol_SE_temp))
 	{
 		cerr << "Solution is not feasible" << endl;
 		return false;
 	}
 
-	sol_FE_incumbent = sol_FE_temp;
 	sol_SE_incumbent = sol_SE_temp;
 	result_incumbent = result_temp;
 
-
-	cout << "\nRun ILS..." << endl;
+	cout << "\nRun ILS (EEV)..." << endl;
 
 	// Initialize ILS for a specific Scenario
 	const int maxIterILS = 20;
@@ -104,8 +99,7 @@ bool ILS_SIRP_Deterministic::run()
 	double objValue = best_objValue;
 	while (!stop && numIterILS < maxIterILS && elapsedTime_ILS < maxTime_ILS)
 	{
-		sol_FE_temp = sol_FE_incumbent;
-		sol_SE_temp = sol_SE_incumbent;
+		SolutionSecondEchelon_Deterministic sol_SE_temp = sol_SE_incumbent;
 
 		// cout << "\nIteration (ILS), Iteration : " << numIterILS + 1 << endl;
 		if (numIterILS > 0)
@@ -113,14 +107,13 @@ bool ILS_SIRP_Deterministic::run()
 			/*
 				Perturbation
 			*/
-			Perturbation_Deterministic perturb(params, sol_FE_temp, sol_SE_temp, demand);
+			Perturbation_Deterministic perturb(params, sol_FE_EV, sol_SE_temp, demand, shortageAllowed, isEEV);
 			bool perturbSuccess = perturb.run();
 			if (!perturbSuccess)
 			{
 				stop = true;
 			}
 			
-			sol_FE_temp = perturb.getSolutionFE();
 			sol_SE_temp = perturb.getSolutionSE();
 			objValue = perturb.getObjVal();
 		}
@@ -128,7 +121,7 @@ bool ILS_SIRP_Deterministic::run()
 		/*
 			Local Search
 		*/
-		LocalSearch_Deterministic ls(params, sol_FE_temp, sol_SE_temp, objValue, demand);
+		LocalSearch_Deterministic ls(params, sol_FE_EV, sol_SE_temp, objValue, demand, shortageAllowed, isEEV);
 		ls.RVND();
 
 		double objval_new = ls.getObjVal();
@@ -136,7 +129,6 @@ bool ILS_SIRP_Deterministic::run()
 		if (objval_new < best_objValue - 0.01)
 		{
 			best_objValue = objval_new;
-			sol_FE_incumbent = ls.getSolutionFE();
 			sol_SE_incumbent = ls.getSolutionSE();
 		}
 
@@ -147,21 +139,19 @@ bool ILS_SIRP_Deterministic::run()
 	}
 
 	// ----------------------------------------------------------------------------------------------------------
-	sol_FE_temp = sol_FE_incumbent;
 	sol_SE_temp = sol_SE_incumbent;
 	result_temp = result_incumbent;
-	if (!solveLP(sol_FE_temp, sol_SE_temp, result_temp))
+	if (!solveLP(sol_SE_temp, result_temp))
 	{
 		cerr << "Failed to solve LP" << endl;
 		return false;
 	}
 	
-	if (!checkSolutionFeasiblity(sol_FE_temp, sol_SE_temp))
+	if (!checkSolutionFeasiblity(sol_SE_temp))
 	{
 		cerr << "Solution is not feasible" << endl;
 		return false;
 	}
-	sol_FE_incumbent = sol_FE_temp;
 	sol_SE_incumbent = sol_SE_temp;
 	result_incumbent = result_temp;
 
@@ -175,16 +165,16 @@ bool ILS_SIRP_Deterministic::run()
 	return true;
 }
 
-bool ILS_SIRP_Deterministic::checkSolutionFeasiblity(SolutionFirstEchelon sol_FE_temp, SolutionSecondEchelon_Deterministic sol_SE_temp)
+bool ILS_EEV::checkSolutionFeasiblity(SolutionSecondEchelon_Deterministic sol_SE_temp)
 {
 	for (int t = 0; t < params.numPeriods; ++t)
 	{
 		string constraintName = "ProductionCapacity(" + std::to_string(t + 1) + ")";
 
-		if (sol_FE_temp.productionQuantity[t] > params.prodCapacity * sol_FE_temp.productionSetup[t])
+		if (sol_FE_EV.productionQuantity[t] > params.prodCapacity * sol_FE_EV.productionSetup[t])
 		{
 			cerr << "Constraint Violated: " << constraintName
-				 << " | Production Quantity = " << sol_FE_temp.productionQuantity[t]
+				 << " | Production Quantity = " << sol_FE_EV.productionQuantity[t]
 				 << " exceeds Production Capacity = " << params.prodCapacity << endl;
 
 			return false;
@@ -196,10 +186,10 @@ bool ILS_SIRP_Deterministic::checkSolutionFeasiblity(SolutionFirstEchelon sol_FE
 		string constraintName = "PlantInventoryCapacity(" + std::to_string(t + 1) + ")";
 
 		// Assuming sol_FE.plantInventory[t] represents I_plant[t]
-		if (sol_FE_temp.plantInventory[t] > params.storageCapacity_Plant)
+		if (sol_FE_EV.plantInventory[t] > params.storageCapacity_Plant)
 		{
 			cerr << "Constraint Violated: " << constraintName
-				 << " | Plant Inventory = " << sol_FE_temp.plantInventory[t]
+				 << " | Plant Inventory = " << sol_FE_EV.plantInventory[t]
 				 << " exceeds Storage Capacity = " << params.storageCapacity_Plant << endl;
 
 			return false;
@@ -213,26 +203,26 @@ bool ILS_SIRP_Deterministic::checkSolutionFeasiblity(SolutionFirstEchelon sol_FE
 		double sumDeliveryToWarehouses = 0.0;
 		for (int w = 0; w < params.numWarehouses; ++w)
 		{
-			sumDeliveryToWarehouses += sol_FE_temp.deliveryQuantityToWarehouse[w][t];
+			sumDeliveryToWarehouses += sol_FE_EV.deliveryQuantityToWarehouse[w][t];
 		}
 
 		// Calculate the expected plant inventory
 		int expectedInventory;
 		if (t == 0)
 		{
-			expectedInventory = params.initialInventory_Plant - sumDeliveryToWarehouses + sol_FE_temp.productionQuantity[t];
+			expectedInventory = params.initialInventory_Plant - sumDeliveryToWarehouses + sol_FE_EV.productionQuantity[t];
 		}
 		else
 		{
-			expectedInventory = sol_FE_temp.plantInventory[t - 1] - sumDeliveryToWarehouses + sol_FE_temp.productionQuantity[t];
+			expectedInventory = sol_FE_EV.plantInventory[t - 1] - sumDeliveryToWarehouses + sol_FE_EV.productionQuantity[t];
 		}
 
 		// Check if the calculated inventory matches the expected inventory
-		if (sol_FE_temp.plantInventory[t] != expectedInventory)
+		if (sol_FE_EV.plantInventory[t] != expectedInventory)
 		{
 			cerr << "Constraint Violated: " << constraintName
 				 << " | Expected Plant Inventory = " << expectedInventory
-				 << ", Actual Plant Inventory = " << sol_FE_temp.plantInventory[t] << endl;
+				 << ", Actual Plant Inventory = " << sol_FE_EV.plantInventory[t] << endl;
 
 			return false;
 		}
@@ -276,11 +266,11 @@ bool ILS_SIRP_Deterministic::checkSolutionFeasiblity(SolutionFirstEchelon sol_FE
 			double netInventoryChange;
 			if (t == 0)
 			{
-				netInventoryChange = params.initialInventory_Warehouse[w] - sumDeliveryQuantityToCustomers + sol_FE_temp.deliveryQuantityToWarehouse[w][t];
+				netInventoryChange = params.initialInventory_Warehouse[w] - sumDeliveryQuantityToCustomers + sol_FE_EV.deliveryQuantityToWarehouse[w][t];
 			}
 			else
 			{
-				netInventoryChange = sol_SE_temp.warehouseInventory[w][t - 1] - sumDeliveryQuantityToCustomers + sol_FE_temp.deliveryQuantityToWarehouse[w][t];
+				netInventoryChange = sol_SE_temp.warehouseInventory[w][t - 1] - sumDeliveryQuantityToCustomers + sol_FE_EV.deliveryQuantityToWarehouse[w][t];
 			}
 
 			// Check if the actual inventory matches the expected net inventory change
@@ -303,27 +293,14 @@ bool ILS_SIRP_Deterministic::checkSolutionFeasiblity(SolutionFirstEchelon sol_FE
 
 			// Determine expected inventory based on period
 			double expectedInventory = 0.0;
-			if (shortageAllowed)
+
+			if (t == 0)
 			{
-				if (t == 0)
-				{
-					expectedInventory = params.initialInventory_Customer[i] + sol_SE_temp.deliveryQuantityToCustomer[i][t] - demand[i][t] + sol_SE_temp.customerUnmetDemand[i][t];
-				}
-				else
-				{
-					expectedInventory = sol_SE_temp.customerInventory[i][t - 1] + sol_SE_temp.deliveryQuantityToCustomer[i][t] - demand[i][t] + sol_SE_temp.customerUnmetDemand[i][t];
-				}
+				expectedInventory = params.initialInventory_Customer[i] + sol_SE_temp.deliveryQuantityToCustomer[i][t] - demand[i][t] + sol_SE_temp.customerUnmetDemand[i][t];
 			}
 			else
 			{
-				if (t == 0)
-				{
-					expectedInventory = params.initialInventory_Customer[i] + sol_SE_temp.deliveryQuantityToCustomer[i][t] - demand[i][t];
-				}
-				else
-				{
-					expectedInventory = sol_SE_temp.customerInventory[i][t - 1] + sol_SE_temp.deliveryQuantityToCustomer[i][t] - demand[i][t];
-				}
+				expectedInventory = sol_SE_temp.customerInventory[i][t - 1] + sol_SE_temp.deliveryQuantityToCustomer[i][t] - demand[i][t] + sol_SE_temp.customerUnmetDemand[i][t];
 			}
 
 			// Check if the actual inventory matches the expected inventory
@@ -429,35 +406,27 @@ bool ILS_SIRP_Deterministic::checkSolutionFeasiblity(SolutionFirstEchelon sol_FE
 }
 
 // Initialize the LP solver with current parameters and feasible solution
-bool ILS_SIRP_Deterministic::solveLP(SolutionFirstEchelon &sol_FE_temp, 
-			SolutionSecondEchelon_Deterministic &sol_SE_temp, 
-			Result &result_temp)
+bool ILS_EEV::solveLP(SolutionSecondEchelon_Deterministic &sol_SE_temp, Result &result_temp)
 {
-	LP_SE_Deterministic lpse_det(params, sol_FE_temp, sol_SE_temp, demand);
-	string statusLP = lpse_det.solve();
+	LP_SE_EEV lpse_eev(params, sol_FE_EV, sol_SE_temp, demand);
+	string statusLP = lpse_eev.solve();
 	if (statusLP != "Optimal")
 	{
 		cerr << "LP solver failed with status: " << statusLP << endl;
 		return false;
 	}
-	sol_FE_temp = lpse_det.getSolutionFE();
-	sol_SE_temp = lpse_det.getSolutionSE();
-	result_temp = lpse_det.getResult();
+	sol_SE_temp = lpse_eev.getSolutionSE();
+	result_temp = lpse_eev.getResult();
 
 	return true;
 }
 
-SolutionFirstEchelon ILS_SIRP_Deterministic::getSolutionFE()
-{
-	return sol_FE_incumbent;
-}
-
-SolutionSecondEchelon_Deterministic ILS_SIRP_Deterministic::getSolutionSE()
+SolutionSecondEchelon_Deterministic ILS_EEV::getSolutionSE()
 {
 	return sol_SE_incumbent;
 }
 
-Result ILS_SIRP_Deterministic::getResult()
+Result ILS_EEV::getResult()
 {
 	return result_incumbent;
 }

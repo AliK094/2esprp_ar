@@ -1,62 +1,63 @@
-#ifndef LPSE_Deterministic_H
-#define LPSE_Deterministic_H
+#ifndef BC_EEV_H
+#define BC_EEV_H
 
 #include "ParameterSetting.h"
 #include "VariableManager.h"
 #include "CplexParameterManager.h"
-#include <functional>
-#include <set>
-#include <unordered_set>
-#include <unordered_map>
-#include <tuple>
+#include "deterministic/DeterBCCallbackManager.h"
 
-class LP_SE_Deterministic
+class BC_EEV
 {
 public:
-    LP_SE_Deterministic(const ParameterSetting &parameters, 
-             const SolutionFirstEchelon &solFE,
-			 const SolutionSecondEchelon_Deterministic &solSE,
-             const vector<vector<double>> &deterministicDemand,
-			 bool shortageAllowed = true);
+    BC_EEV(const ParameterSetting &parameters,
+            const SolutionFirstEchelon &solFE,
+            const vector<vector<double>> &deterministicDemand, 
+            const SolutionWarmStart_Deterministic &warmStartSol = {});
 
-    string solve();
+    bool Solve();
 
-    SolutionFirstEchelon getSolutionFE();
-    SolutionSecondEchelon_Deterministic getSolutionSE();
-    Result getResult();
+    SolutionSecondEchelon_Deterministic getSolutionSE() const
+    {
+        return solSE;
+    }
+
+    Result getResult() const
+    {
+        return result;
+    }
 
 private:
-    ParameterSetting params; // Member variable to hold the ParameterSetting object
-    SolutionFirstEchelon sol_FE;
-    SolutionSecondEchelon_Deterministic sol_SE;
-    vector<vector<double>> demand;
-    bool shortageAllowed;
+    double THRESHOLD;
 
-    SolutionFirstEchelon sol_FE_temp;
-    SolutionSecondEchelon_Deterministic sol_SE_temp;
+    ParameterSetting params; // Member variable to hold the ParameterSetting object
+
+    vector<vector<double>> demand;
+    SolutionWarmStart_Deterministic warmStart;
+
+    SolutionFirstEchelon sol_FE_EV;
+    SolutionSecondEchelon_Deterministic solSE;
     Result result;
 
-    double THRESHOLD;
-    
-    bool save_lpFile;
-    bool save_mpsResultFile;
-
     // Decision Variables
-    IloNumVarArray p;
-    IloNumVarArray I_plant;
     IloArray<IloNumVarArray> I_warehouse;
     IloArray<IloNumVarArray> I_customer;
     IloArray<IloNumVarArray> b_customer;
-    IloArray<IloArray<IloNumVarArray>> q;
     IloArray<IloArray<IloNumVarArray>> w_customer;
+    IloArray<IloArray<IloNumVarArray>> z;
+    IloArray<IloArray<IloNumVarArray>> x;
+
+    bool save_lpFile;
+    bool save_mpsResultFile;
 
     void DefineVariables(IloEnv &env, IloModel &model);
     void DefineObjectiveFunction(IloEnv &env, IloModel &model);
     void DefineConstraints(IloEnv &env, IloModel &model);
+    void DefineValidInequalities(IloEnv &env, IloModel &model);
     void RetrieveSolutions(IloCplex &cplex);
+    void DefineWarmStartSolution(IloEnv &env, IloCplex &cplex);
+    void DisplayVariables();
     void CalculateCostsForEachPart();
 
-    void DisplayCosts();
     void DisplayProductionSetupVars();
     void DisplayProductionQuantVars();
     void DisplayPlantInventoryVars();
@@ -69,4 +70,4 @@ private:
     void DisplayRoutesWarehouseToCustomersVars();
 };
 
-#endif // LPSE_Deterministic_H
+#endif // BC_EEV_H

@@ -9,7 +9,7 @@ ILS_SIRP::ILS_SIRP(const ParameterSetting &parameters, const SolutionFirstEchelo
 	srand(static_cast<unsigned int>(time(NULL)));
 	// ----------------------------------------------------------------------------------------------------------
 	Tolerance = 1e-6;
-	cout << "\nILS_SIRP..."
+	cout << "\nILS..."
 		 << endl;
 }
 
@@ -77,7 +77,7 @@ bool ILS_SIRP::run()
 
 	std::atomic<bool> stopProcessing(false); 
 	vector<std::thread> threads;
-	cout << "\nStart to run ILS..." << endl;
+	cout << "\nRun ILS..." << endl;
 	for (int s = 0; s < params.numScenarios; ++s) {
 		threads.emplace_back([&, s]() {
 			// Check if processing should continue
