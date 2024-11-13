@@ -47,6 +47,10 @@ bool R2EPRP::Solve()
 		/* Let MIP callbacks work on the original model */
 		cplex.setParam(IloCplex::Param::Preprocessing::Reduce, 0);
 
+		// Set CPLEX parameters: No output or warnings
+		cplex.setOut(env.getNullStream());
+        cplex.setWarning(env.getNullStream());
+
 		cout << "Solving R2EPRP..." << endl;
 		// SEC_S2EPRP LegacyCallback(env, params, x, z);
 		// cplex.use(&LegacyCallback);

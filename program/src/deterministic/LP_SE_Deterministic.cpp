@@ -32,10 +32,10 @@ string LP_SE_Deterministic::solve()
 	/* Assure linear mappings between the presolved and original models */
 	cplex.setParam(IloCplex::Param::Threads, 1);
 	cplex.setParam(IloCplex::Param::Preprocessing::Presolve, IloFalse);
+	
+	// Set CPLEX parameters: No output or warnings
 	cplex.setOut(env.getNullStream());
-
 	cplex.setWarning(env.getNullStream());
-
 	if (save_lpFile)
 	{
 		string directory = "../cplexFiles/lpModel/";

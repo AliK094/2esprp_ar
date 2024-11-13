@@ -27,7 +27,7 @@ bool RS2EPRP::Solve()
 		// Set CPLEX Parameters: (DISPLAY LEVEL(0,1,2,3,4), OPTIMALITY GAP, RUN TIME (SECS), THREADS, MEMORY (MB))
 		CplexParameterManager parameterManager(cplex);
 
-		parameterManager.setParameters(2, 1e-2, 120, 20, 32000);
+		parameterManager.setParameters(0, 1e-2, 120, 20, 32000);
 
 		cplex.setParam(IloCplex::Param::Emphasis::MIP, 2);
 
@@ -42,6 +42,10 @@ bool RS2EPRP::Solve()
 		cplex.setParam(IloCplex::Param::MIP::Strategy::Search, CPX_MIPSEARCH_TRADITIONAL);
 		/* Let MIP callbacks work on the original model */
 		cplex.setParam(IloCplex::Param::Preprocessing::Reduce, 0);
+
+		// Set CPLEX parameters: No output or warnings
+		cplex.setOut(env.getNullStream());
+        cplex.setWarning(env.getNullStream());
 
 		cout << "Solving RS2EPRP..." << endl;
 		// SEC_S2EPRP LegacyCallback(env, params, x, z);

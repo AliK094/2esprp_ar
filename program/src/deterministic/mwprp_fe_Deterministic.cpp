@@ -113,6 +113,10 @@ bool MWPRP_FE_Deterministic::Solve()
 		/* Let MIP callbacks work on the original model */
 		cplex.setParam(IloCplex::Param::Preprocessing::Reduce, 0);
 
+		// Set CPLEX parameters: No output or warnings
+		cplex.setOut(env.getNullStream());
+        cplex.setWarning(env.getNullStream());
+
 		if (save_lpFile)
 		{
 			string directory = "../cplexFiles/lpModel/";

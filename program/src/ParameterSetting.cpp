@@ -413,6 +413,20 @@ bool ParameterSetting::monteCarloSimulation()
                 generateScenarioDemands(s, t);
             }
         }
+
+        for (int s = 0; s < numScenarios; ++s)
+        {
+            cout << "Scenario " << s << ": " << endl;
+            for (int t = 0; t < numPeriods; ++t)
+            {
+                cout << "Period " << t << ": " << endl;
+                for (int i = 0; i < numCustomers; ++i)
+                {
+                    cout << demand[i][t][s] << " ";
+                }
+                cout << endl;
+            }
+        }
     }
     catch (const std::exception &e)
     {
@@ -427,7 +441,7 @@ void ParameterSetting::generateScenarioDemands(int scenario, int period)
     for (int i = 0; i < numCustomers; ++i)
     {
         double demand = 0.0;
-        unsigned int seed = i + (period * numCustomers) + (scenario * numPeriods * numCustomers);
+        unsigned int seed = i + (period * numCustomers) + (scenario * numPeriods * numCustomers) + 100;
 
         if (probabilityFunction == "Uniform")
         {
@@ -804,11 +818,21 @@ void ParameterSetting::solveTSPForRoutes()
 SolutionWarmStart ParameterSetting::readSolutionWarmStart()
 {
     cout << "Reading Solution For Warm Start..." << endl;
+    // Construct the directory path
+    string directory = "../Results/Solutions/Hybrid-ILS/" 
+                            + probabilityFunction
+                            + "/S" + std::to_string(numScenarios);
 
-    string solutionFileName = "../Results/Solutions/Hybrid-ILS/" + probabilityFunction + "/S" + std::to_string(numScenarios) + "/Sol_S2EPRPAR_HHA_" + probabilityFunction + "_" + instance + "_S" + std::to_string(numScenarios) + "_UR" + std::to_string(static_cast<int>(uncertaintyRange * 100)) + "%_PC" + std::to_string(static_cast<int>(unmetDemandPenaltyCoeff)) + ".txt";
+
+    // Construct the filename
+    string filename = "Sol_S2EPRPAR_Hybrid-ILS_" + probabilityFunction
+                        + "_" + instance
+                        + "_S" + std::to_string(numScenarios) + "_UR" + std::to_string(static_cast<int>(uncertaintyRange * 100)) + "%"
+                        + "_PC" + std::to_string(static_cast<int>(unmetDemandPenaltyCoeff)) + ".txt";
  
     SolutionWarmStart warmstart;
 
+    string solutionFileName = directory + "/" + filename;
     std::ifstream file(solutionFileName);
     if (file.is_open())
     {

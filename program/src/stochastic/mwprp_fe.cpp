@@ -85,7 +85,7 @@ bool MWPRP_FE::Solve()
 		// Set CPLEX Parameters: (DISPLAY LEVEL(0,1,2,3,4), OPTIMALITY GAP, RUN TIME (SECS), THREADS, MEMORY (MB))
 		CplexParameterManager parameterManager(cplex);
 
-		parameterManager.setParameters(1, 1e-6, 600, 20, 32000);
+		parameterManager.setParameters(0, 1e-6, 600, 20, 32000);
 		cplex.setParam(IloCplex::Param::Emphasis::MIP, 2);
 
 		DefineVariables(env, model);
@@ -98,6 +98,10 @@ bool MWPRP_FE::Solve()
 		cplex.setParam(IloCplex::Param::MIP::Strategy::Search, CPX_MIPSEARCH_TRADITIONAL);
 		/* Let MIP callbacks work on the original model */
 		cplex.setParam(IloCplex::Param::Preprocessing::Reduce, 0);
+
+		// Set CPLEX parameters: No output or warnings
+		cplex.setOut(env.getNullStream());
+        cplex.setWarning(env.getNullStream());
 
 		if (save_lpFile)
 		{

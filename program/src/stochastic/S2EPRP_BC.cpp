@@ -25,7 +25,7 @@ bool S2EPRP_BC::Solve()
 
 		// Set CPLEX Parameters: (DISPLAY LEVEL(0,1,2,3,4), OPTIMALITY GAP, RUN TIME (SECS), THREADS, MEMORY (MB))
 		CplexParameterManager parameterManager(cplex);
-		parameterManager.setParameters(4, 1e-6, 7200, 20, 32000);
+		parameterManager.setParameters(4, 1e-6, 3600, 20, 20000);
 		cplex.setParam(IloCplex::Param::Emphasis::MIP, 2);
 		cplex.setParam(IloCplex::Param::Conflict::Display, 2);
 
@@ -189,8 +189,8 @@ bool S2EPRP_BC::Solve()
 			RetrieveSolutions(cplex);
 			CalculateCostsForEachPart();
 			// Display the solution
-			// DisplayProductionSetupVars();
-			// DisplayProductionQuantVars();
+			DisplayProductionSetupVars();
+			DisplayProductionQuantVars();
 			// DisplayPlantInventoryVars();
 			// DisplayWarehouseInventoryVars();
 			// DisplayFirstEchelonRouteVars();

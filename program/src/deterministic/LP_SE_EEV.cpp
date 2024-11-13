@@ -85,8 +85,49 @@ string LP_SE_EEV::solve()
 	}
 	else if (cplex.getStatus() == IloAlgorithm::Infeasible)
 	{
-		status = "Infeasible";
-		cout << "Problem is infeasible" << endl;
+		// status = "Infeasible";
+		// cout << "Problem is infeasible" << endl;
+
+		// // Iterate through the model to identify constraints
+		// IloConstraintArray constraints(env);
+		// IloNumArray priorities(env);
+
+		// // Add all constraints to the conflict array with priority 1
+		// for (IloModel::Iterator it(model); it.ok(); ++it)
+		// {
+		// 	IloExtractable extractable = *it;
+		// 	if (extractable.isConstraint())  // Check if it's a constraint
+		// 	{
+		// 		IloConstraint constraint = extractable.asConstraint();
+		// 		constraints.add(constraint);
+		// 		priorities.add(1.0);  // Assign a priority (1.0 = low penalty)
+		// 	}
+		// }
+
+		// // Run conflict refinement to identify infeasible subset
+		// if (cplex.refineConflict(constraints, priorities))
+		// {
+		// 	cout << "Constraints in conflict:" << endl;
+			
+		// 	// Iterate through the constraints and check conflict status
+		// 	for (int i = 0; i < constraints.getSize(); ++i)
+		// 	{
+		// 		if (cplex.getConflict(constraints[i]) == IloCplex::ConflictStatus::ConflictMember)
+		// 		{
+		// 			cout << " - " << constraints[i].getName() << endl;  // Print the name of the conflicting constraint
+		// 		}
+		// 	}
+		// }
+		// else
+		// {
+		// 	cout << "Could not find an IIS to explain infeasibility." << endl;
+		// }
+
+		// // Clean up
+		// constraints.end();
+		// priorities.end();
+
+		// exit(1);
 	}
 	else
 	{

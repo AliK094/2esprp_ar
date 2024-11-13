@@ -1351,10 +1351,11 @@ bool LocalSearch_Deterministic::solveLP()
 	if (isEEV){
 		// solve LP to get the value of the continuous variables for EEV
 		LP_SE_EEV lpse_eev(params, sol_FE_temp, sol_SE_feasible, demand);
+
 		string status = lpse_eev.solve();
 		if (status != "Optimal")
 		{
-			cerr << "LP solver (EEV) failed with status: " << status << endl;
+			// cerr << "LP solver (EEV) failed with status (LS): " << status << endl;
 			return false;
 		}
 

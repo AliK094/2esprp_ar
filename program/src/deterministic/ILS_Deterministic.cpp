@@ -444,6 +444,8 @@ bool ILS_SIRP_Deterministic::solveLP(SolutionFirstEchelon &sol_FE_temp,
 	sol_SE_temp = lpse_det.getSolutionSE();
 	result_temp = lpse_det.getResult();
 
+	cout << "Objective Value: " << result_temp.objValue_Total << endl;
+
 	return true;
 }
 

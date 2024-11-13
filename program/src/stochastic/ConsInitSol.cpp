@@ -5,7 +5,7 @@ ConstructHeuristic::ConstructHeuristic(const ParameterSetting &parameters, const
 	  solFE_init(sol_FE)
 {
 	// ----------------------------------------------------------------------------------------------------------
-	cout << "Construct Heuristic" << endl;
+	cout << "Construction Heuristic" << endl;
 
 	// We calculate the Customers per unit unemt demand penalty cost to approximate per unit demand satisfaction cost ratio
 	// We order Customers in descending order to have them from highest to lowest penalty cost ratio. (this shows the prioritun in demand satisfaction)

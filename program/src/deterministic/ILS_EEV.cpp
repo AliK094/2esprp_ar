@@ -1,13 +1,13 @@
 #include "deterministic/ILS_EEV.h"
 
-ILS_EEV::ILS_EEV(const ParameterSetting &parameters, 
-				const SolutionFirstEchelon &sol_FE, 
-				const SolutionSecondEchelon_Deterministic &sol_SE_Deterministic,
-				const vector<vector<double>> &deterministicDemand)
-				: params(parameters),
-				sol_FE_EV(sol_FE),
-				sol_SE(sol_SE_Deterministic),
-				demand(deterministicDemand)
+ILS_EEV::ILS_EEV(const ParameterSetting &parameters,
+				 const SolutionFirstEchelon &sol_FE,
+				 const SolutionSecondEchelon_Deterministic &sol_SE_Deterministic,
+				 const vector<vector<double>> &deterministicDemand)
+	: params(parameters),
+	  sol_FE_EV(sol_FE),
+	  sol_SE(sol_SE_Deterministic),
+	  demand(deterministicDemand)
 {
 	// Initialize random seed
 	srand(static_cast<unsigned int>(time(NULL)));
@@ -94,7 +94,7 @@ bool ILS_EEV::run()
 	int numIterILS = 0;
 	bool stop = false;
 	auto maxTime_ILS = 120.0;
-	
+
 	double best_objValue = result_incumbent.objValue_Total;
 	double objValue = best_objValue;
 	while (!stop && numIterILS < maxIterILS && elapsedTime_ILS < maxTime_ILS)
@@ -113,7 +113,7 @@ bool ILS_EEV::run()
 			{
 				stop = true;
 			}
-			
+
 			sol_SE_temp = perturb.getSolutionSE();
 			objValue = perturb.getObjVal();
 		}
@@ -146,7 +146,7 @@ bool ILS_EEV::run()
 		cerr << "Failed to solve LP" << endl;
 		return false;
 	}
-	
+
 	if (!checkSolutionFeasiblity(sol_SE_temp))
 	{
 		cerr << "Solution is not feasible" << endl;
@@ -238,8 +238,8 @@ bool ILS_EEV::checkSolutionFeasiblity(SolutionSecondEchelon_Deterministic sol_SE
 			if (sol_SE_temp.warehouseInventory[w][t] > params.storageCapacity_Warehouse[w])
 			{
 				cerr << "Constraint Violated: " << constraintName
-						<< " | Warehouse Inventory = " << sol_SE_temp.warehouseInventory[w][t]
-						<< " exceeds Storage Capacity = " << params.storageCapacity_Warehouse[w] << endl;
+					 << " | Warehouse Inventory = " << sol_SE_temp.warehouseInventory[w][t]
+					 << " exceeds Storage Capacity = " << params.storageCapacity_Warehouse[w] << endl;
 
 				return false;
 			}
@@ -277,8 +277,8 @@ bool ILS_EEV::checkSolutionFeasiblity(SolutionSecondEchelon_Deterministic sol_SE
 			if (sol_SE_temp.warehouseInventory[w][t] != netInventoryChange)
 			{
 				cerr << "Constraint Violated: " << constraintName
-						<< " | Expected Warehouse Inventory = " << netInventoryChange
-						<< ", Actual Warehouse Inventory = " << sol_SE_temp.warehouseInventory[w][t] << endl;
+					 << " | Expected Warehouse Inventory = " << netInventoryChange
+					 << ", Actual Warehouse Inventory = " << sol_SE_temp.warehouseInventory[w][t] << endl;
 
 				return false;
 			}
@@ -307,8 +307,8 @@ bool ILS_EEV::checkSolutionFeasiblity(SolutionSecondEchelon_Deterministic sol_SE
 			if (sol_SE_temp.customerInventory[i][t] != expectedInventory)
 			{
 				cerr << "Constraint Violated: " << constraintName
-						<< " | Expected Customer Inventory = " << expectedInventory
-						<< ", Actual Customer Inventory = " << sol_SE_temp.customerInventory[i][t] << endl;
+					 << " | Expected Customer Inventory = " << expectedInventory
+					 << ", Actual Customer Inventory = " << sol_SE_temp.customerInventory[i][t] << endl;
 
 				return false;
 			}
@@ -328,8 +328,8 @@ bool ILS_EEV::checkSolutionFeasiblity(SolutionSecondEchelon_Deterministic sol_SE
 			if (sol_SE_temp.customerInventory[i][t] > maxAllowableInventory)
 			{
 				cerr << "Constraint Violated: " << constraintName
-						<< " | Customer Inventory = " << sol_SE_temp.customerInventory[i][t]
-						<< " exceeds Max Allowable Inventory = " << maxAllowableInventory << endl;
+					 << " | Customer Inventory = " << sol_SE_temp.customerInventory[i][t]
+					 << " exceeds Max Allowable Inventory = " << maxAllowableInventory << endl;
 
 				return false;
 			}
@@ -359,8 +359,8 @@ bool ILS_EEV::checkSolutionFeasiblity(SolutionSecondEchelon_Deterministic sol_SE
 				if (totalDeliveriesByVehicle > params.vehicleCapacity_Warehouse)
 				{
 					cerr << "Constraint Violated: " << constraintName
-							<< " | Total Deliveries by Vehicle = " << totalDeliveriesByVehicle
-							<< " exceeds Vehicle Capacity = " << params.vehicleCapacity_Warehouse << endl;
+						 << " | Total Deliveries by Vehicle = " << totalDeliveriesByVehicle
+						 << " exceeds Vehicle Capacity = " << params.vehicleCapacity_Warehouse << endl;
 
 					return false;
 				}
@@ -391,8 +391,8 @@ bool ILS_EEV::checkSolutionFeasiblity(SolutionSecondEchelon_Deterministic sol_SE
 					string constraintName = "CustomerVisit(" + std::to_string(i + params.numWarehouses) + "," + std::to_string(t + 1) + ")";
 
 					cerr << "Constraint Violated: " << constraintName
-							<< " | Customer " << i + params.numWarehouses
-							<< " is not visited in the route" << endl;
+						 << " | Customer " << i + params.numWarehouses
+						 << " is not visited in the route" << endl;
 
 					cout << "Delivery Quantity: " << sol_SE_temp.deliveryQuantityToCustomer[i][t] << endl;
 

@@ -884,7 +884,7 @@ bool SolutionManager::checkFeasibility_Deterministic(bool shortageAllowed, int s
                                     + params.probabilityFunction
                                     + "/S" + std::to_string(params.numScenarios)
                                     + "/UR" + std::to_string(static_cast<int>(params.uncertaintyRange * 100)) + "%"
-                                    + "/" + std::to_string(static_cast<int>(params.unmetDemandPenaltyCoeff))
+                                    + "/PC" + std::to_string(static_cast<int>(params.unmetDemandPenaltyCoeff))
                                     + "/" + params.instance;
                                     
 
