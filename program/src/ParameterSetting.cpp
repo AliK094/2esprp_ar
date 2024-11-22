@@ -1,58 +1,142 @@
 #include "ParameterSetting.h"
 
 ParameterSetting::ParameterSetting(int argc, char *argv[])
-    : inputFile(argv[2]),
-      numWarehouses(std::stoi(argv[3])),
-      numCustomers(std::stoi(argv[4])),
-      numPeriods(std::stoi(argv[5])),
-      numVehicles_Plant(std::stoi(argv[6])),
-      numVehicles_Warehouse(std::stoi(argv[7])),
-      numScenarios(std::stoi(argv[8])),
-      unmetDemandPenaltyCoeff(std::stod(argv[9])),
-      uncertaintyRange(std::stod(argv[10])),
-      probabilityFunction(argv[11]),
-      instance(argv[12]),
-      probability(numScenarios, 0.0),
-      numNodes_Total(numWarehouses + numCustomers + 1),
-      numNodes_FirstEchelon(numWarehouses + 1),
-      numEdges_FirstEchelon((numNodes_FirstEchelon * (numNodes_FirstEchelon - 1)) / 2),
-      numNodes_SecondEchelon(numCustomers + numWarehouses),
-      numEdges_SecondEchelon((numNodes_SecondEchelon * (numNodes_SecondEchelon - 1)) / 2),
-      numVehicles_SecondEchelon(numWarehouses * numVehicles_Warehouse),
-      coordX_Plant(0),
-      coordY_Plant(0),
-      coordX_Warehouse(numWarehouses, 0),
-      coordY_Warehouse(numWarehouses, 0),
-      coordX_Customer(numCustomers, 0),
-      coordY_Customer(numCustomers, 0),
-      unitHoldingCost_Plant(0),
-      unitHoldingCost_Warehouse(numWarehouses, 0),
-      unitHoldingCost_Customer(numCustomers, 0),
-      storageCapacity_Plant(0),
-      storageCapacity_Warehouse(numWarehouses, 0),
-      storageCapacity_Customer(numCustomers, 0),
-      initialInventory_Plant(0),
-      initialInventory_Warehouse(numWarehouses, 0),
-      initialInventory_Customer(numCustomers, 0),
-      unmetDemandPenalty(numCustomers, std::numeric_limits<double>::infinity()),
-      consumeRate(numCustomers, 0),
-      demand(numCustomers, vector<vector<double>>(numPeriods, vector<double>(numScenarios, 0))),
-      index_i_FirstEchelon(numEdges_FirstEchelon, 0),
-      index_j_FirstEchelon(numEdges_FirstEchelon, 0),
-      index_e_FirstEchelon(numNodes_FirstEchelon, vector<int>(numNodes_FirstEchelon, 0)),
-      transportationCost_FirstEchelon(numNodes_FirstEchelon, vector<double>(numNodes_FirstEchelon, 0)),
-      index_i_SecondEchelon(numEdges_SecondEchelon, 0),
-      index_j_SecondEchelon(numEdges_SecondEchelon, 0),
-      index_e_SecondEchelon(numNodes_SecondEchelon, vector<int>(numNodes_SecondEchelon, 0)),
-      transportationCost_SecondEchelon(numNodes_SecondEchelon, vector<double>(numNodes_SecondEchelon, 0)),
-      DeliveryUB_perCustomer(numCustomers, vector<vector<double>>(numPeriods, vector<double>(numScenarios, 0.))),
-      DeliveryUB(numPeriods, vector<double>(numScenarios, 0.))
 {
+    problemType = argv[1];
+    // Argument parsing with error handling
+    try
+    {
+        if (problemType == "S2EPRP-AR")
+        {
+            solutionAlgorithm = argv[2];
+            inputFile = argv[3];
+            numWarehouses = std::stoi(argv[4]);
+            numCustomers = std::stoi(argv[5]);
+            numPeriods = std::stoi(argv[6]);
+            numVehicles_Plant = std::stoi(argv[7]);
+            numVehicles_Warehouse = std::stoi(argv[8]);
+            numScenarios = std::stoi(argv[9]);
+            unmetDemandPenaltyCoeff = std::stod(argv[10]);
+            uncertaintyRange = std::stod(argv[11]);
+            probabilityFunction = argv[12];
+            instance = argv[13];
+        }
+        if (problemType == "EV")
+        {
+            inputFile = argv[2];
+            numWarehouses = std::stoi(argv[3]);
+            numCustomers = std::stoi(argv[4]);
+            numPeriods = std::stoi(argv[5]);
+            numVehicles_Plant = std::stoi(argv[6]);
+            numVehicles_Warehouse = std::stoi(argv[7]);
+            numScenarios = std::stoi(argv[8]);
+            unmetDemandPenaltyCoeff = std::stod(argv[9]);
+            uncertaintyRange = std::stod(argv[10]);
+            probabilityFunction = argv[11];
+            instance = argv[12];
+        }
+        if (problemType == "EEV" || problemType == "WS")
+        {
+            inputFile = argv[2];
+            numWarehouses = std::stoi(argv[3]);
+            numCustomers = std::stoi(argv[4]);
+            numPeriods = std::stoi(argv[5]);
+            numVehicles_Plant = std::stoi(argv[6]);
+            numVehicles_Warehouse = std::stoi(argv[7]);
+            numScenarios = std::stoi(argv[8]);
+            unmetDemandPenaltyCoeff = std::stod(argv[9]);
+            uncertaintyRange = std::stod(argv[10]);
+            probabilityFunction = argv[11];
+            instance = argv[12];
+            scenarioIndex = std::stoi(argv[13]);
+        }
+        if (problemType == "2EPRP" || problemType == "2EPRPCS")
+        {
+            inputFile = argv[2];
+            numWarehouses = std::stoi(argv[3]);
+            numCustomers = std::stoi(argv[4]);
+            numPeriods = std::stoi(argv[5]);
+            numVehicles_Plant = std::stoi(argv[6]);
+            numVehicles_Warehouse = std::stoi(argv[7]);
+            instance = argv[8];
+        }
+    }
+    catch (const std::invalid_argument &e)
+    {
+        std::cerr << "Error parsing arguments: " << e.what() << std::endl;
+        exit(EXIT_FAILURE);
+    }
+    catch (const std::out_of_range &e)
+    {
+        std::cerr << "Argument out of range: " << e.what() << std::endl;
+        exit(EXIT_FAILURE);
+    }
+    
+    // Initialize other parameters
+    numNodes_Total = numWarehouses + numCustomers + 1;
+    numNodes_FirstEchelon = numWarehouses + 1;
+    numEdges_FirstEchelon = (numNodes_FirstEchelon * (numNodes_FirstEchelon - 1)) / 2;
+    numNodes_SecondEchelon = numCustomers + numWarehouses;
+    numEdges_SecondEchelon = (numNodes_SecondEchelon * (numNodes_SecondEchelon - 1)) / 2;
+    numVehicles_SecondEchelon = numWarehouses * numVehicles_Warehouse;
+
+    // Reserve space and initialize containers with appropriate sizes
+    coordX_Warehouse.resize(numWarehouses, 0);
+    coordY_Warehouse.resize(numWarehouses, 0);
+    coordX_Customer.resize(numCustomers, 0);
+    coordY_Customer.resize(numCustomers, 0);
+
+    if (problemType == "2EPRPCS")
+    {
+        unitHandlingCost_Satellite.resize(numWarehouses, 0);
+    }
+    
+    unitHoldingCost_Warehouse.resize(numWarehouses, 0);
+    unitHoldingCost_Customer.resize(numCustomers, 0);
+    storageCapacity_Warehouse.resize(numWarehouses, 0);
+    storageCapacity_Customer.resize(numCustomers, 0);
+    initialInventory_Warehouse.resize(numWarehouses, 0);
+    initialInventory_Customer.resize(numCustomers, 0);
+
+    consumeRate.assign(numCustomers, 0);
+    if (problemType == "S2EPRP-AR")
+    {
+        probability.assign(numScenarios, 0.0);
+        unmetDemandPenalty.assign(numCustomers, std::numeric_limits<double>::infinity());
+        demand.assign(numCustomers, vector<vector<double>>(numPeriods, vector<double>(numScenarios, 0.0)));
+        DeliveryUB_perCustomer.assign(numCustomers, vector<vector<double>>(numPeriods, vector<double>(numScenarios, 0.0)));
+        DeliveryUB.assign(numPeriods, vector<double>(numScenarios, 0.0));
+    }
+    else if (problemType == "EV" || problemType == "EEV" || problemType == "WS")
+    {
+        probability.assign(numScenarios, 0.0);
+        unmetDemandPenalty.assign(numCustomers, std::numeric_limits<double>::infinity());
+        demand.assign(numCustomers, vector<vector<double>>(numPeriods, vector<double>(numScenarios, 0.0)));
+        DeliveryUB_perCustomer.assign(numCustomers, vector<vector<double>>(numPeriods, vector<double>(numScenarios, 0.0)));
+        DeliveryUB.assign(numPeriods, vector<double>(numScenarios, 0.0));
+
+        demand_Deterministic.assign(numCustomers, vector<double>(numPeriods, 0.));
+        DelUB_perCus_Det.assign(numCustomers, vector<double>(numPeriods, 0.));
+        DelUB_Det.assign(numPeriods, 0.);
+    }
+    else
+    {
+        demand_Deterministic.assign(numCustomers, vector<double>(numPeriods, 0.));
+        DelUB_perCus_Det.assign(numCustomers, vector<double>(numPeriods, 0.));
+        DelUB_Det.assign(numPeriods, 0.);
+    }
+
     initializeIndices();
 }
 
 void ParameterSetting::initializeIndices()
 {
+    // Initialize first echelon indices and costs
+    index_i_FirstEchelon.resize(numEdges_FirstEchelon, 0);
+    index_j_FirstEchelon.resize(numEdges_FirstEchelon, 0);
+    index_e_FirstEchelon.assign(numNodes_FirstEchelon, vector<int>(numNodes_FirstEchelon, 0));
+    transportationCost_FirstEchelon.assign(numNodes_FirstEchelon, vector<double>(numNodes_FirstEchelon, 0));
+
     int e = 0;
     for (int i = 0; i < numNodes_FirstEchelon - 1; ++i)
     {
@@ -71,6 +155,12 @@ void ParameterSetting::initializeIndices()
         index_e_FirstEchelon[i][i] = NONE;
     }
     // -----------------------------------------------------------------
+    // Initialize second echelon indices and costs
+    index_i_SecondEchelon.resize(numEdges_SecondEchelon, 0);
+    index_j_SecondEchelon.resize(numEdges_SecondEchelon, 0);
+    index_e_SecondEchelon.assign(numNodes_SecondEchelon, vector<int>(numNodes_SecondEchelon, 0));
+    transportationCost_SecondEchelon.assign(numNodes_SecondEchelon, vector<double>(numNodes_SecondEchelon, 0));
+
     e = 0;
     for (int i = 0; i < numNodes_SecondEchelon - 1; ++i)
     {
@@ -100,7 +190,7 @@ bool ParameterSetting::setParameters()
 {
     try
     {
-        cout << "\nSet Parameters For The Stochastic Two-Echelon Production Routing Problem With Adaptive Routing: " << endl;
+        cout << "\nSet Parameters For The " << problemType << "." << endl;
 
         // Read Data From File
         cout << "Read Data From File: " << endl;
@@ -109,28 +199,68 @@ bool ParameterSetting::setParameters()
             throw std::runtime_error("Unable to Read Data From File");
         }
 
-        // Execute Monte Carlo Simulation
-        cout << "Execute Monte-Carlo Simulation (To Obtain Stochastic Demands)." << endl;
-        if (!monteCarloSimulation())
+        calculateTransportationCost_FirstEchelon();
+        calculateTransportationCost_SecondEchelon();
+        sort_warehouses_by_distance();
+
+        if (problemType == "S2EPRP-AR")
         {
-            throw std::runtime_error("Unable to Execute Monte Carlo Simulation");
+            // Execute Monte Carlo Simulation
+            cout << "Execute Monte-Carlo Simulation (To Obtain Stochastic Demands)." << endl;
+            if (!monteCarloSimulation())
+            {
+                throw std::runtime_error("Unable to Execute Monte Carlo Simulation");
+            }
+            else
+            {
+                cout << "Monte Carlo Simulation Completed." << endl;
+            }
+
+            checkDemandsDistribution();
+            calculateDeliveryUB();
+            calculateUnmetDemandPenalty();
+            setProbabilities();
+            assign_customers_to_warehouse();
+        }
+        else if (problemType == "EV" || problemType == "EEV" || problemType == "WS")
+        {
+            // Execute Monte Carlo Simulation
+            cout << "Execute Monte-Carlo Simulation (To Obtain Stochastic Demands)." << endl;
+            if (!monteCarloSimulation())
+            {
+                throw std::runtime_error("Unable to Execute Monte Carlo Simulation");
+            }
+            else
+            {
+                cout << "Monte Carlo Simulation Completed." << endl;
+            }
+
+            checkDemandsDistribution();
+            calculateDeliveryUB();
+            calculateUnmetDemandPenalty();
+            setProbabilities();
+            calculateDeterministicDemand();
+            calculateDeliveryUB_Deterministic();
+            assign_customers_to_warehouse();
         }
         else
         {
-            cout << "Monte Carlo Simulation Completed." << endl;
+            calculateDeterministicDemand();
+            calculateDeliveryUB_Deterministic();
+            if (problemType == "2EPRPCS")
+            {
+                setSatelliteUnitHandlingCost();
+            }
+            assign_customers_to_warehouse();
+
+            initialInventory_Warehouse.resize(numWarehouses, 0);
+            for (int w = 0; w < numWarehouses; ++w)
+            {
+                storageCapacity_Warehouse[w] = 1e6 * storageCapacity_Warehouse[w];
+                unitHoldingCost_Warehouse[w] = 1e6 * unitHoldingCost_Warehouse[w];
+            }
+            unmetDemandPenalty.assign(numCustomers, 1e6 * unitProdCost);            
         }
-
-        checkDemandsDistribution();
-
-        calculateTransportationCost_FirstEchelon();
-        calculateTransportationCost_SecondEchelon();
-        calculateDeliveryUB();
-
-        sort_warehouses_by_distance();
-        calculateUnmetDemandPenalty();
-        setProbabilities();
-
-        assign_customers_to_warehouse();
 
         printParameters();
         // saveInstance();
@@ -320,9 +450,62 @@ void ParameterSetting::calculateDeliveryUB()
     }
 }
 
+void ParameterSetting::calculateDeterministicDemand()
+{
+    if (problemType == "EEV" || problemType == "WS")
+    {
+        for (int t = 0; t < numPeriods; ++t)
+        {
+            for (int i = 0; i < numCustomers; ++i)
+            {
+                demand_Deterministic[i][t] = demand[i][t][scenarioIndex];
+            }
+        }
+    }
+    else if (problemType == "EV" || problemType == "2EPRP" || problemType == "2EPRPCS")
+    {
+        for (int t = 0; t < numPeriods; ++t)
+        {
+            for (int i = 0; i < numCustomers; ++i)
+            {
+                demand_Deterministic[i][t] = consumeRate[i];
+            }
+        }
+    }
+}
+
+void ParameterSetting::calculateDeliveryUB_Deterministic()
+{
+
+    for (int t = 0; t < numPeriods; ++t)
+    {
+        double remainingDemandAllCustomers = 0.0;
+        for (int i = 0; i < numCustomers; ++i)
+        {
+            double remainingDemand = 0.0;
+            for (int l = t; l < numPeriods; ++l)
+            {
+                remainingDemand += demand_Deterministic[i][l];
+                remainingDemandAllCustomers += demand_Deterministic[i][l];
+            }
+            DelUB_perCus_Det[i][t] = std::min({remainingDemand, vehicleCapacity_Warehouse, storageCapacity_Customer[i]});
+        }
+        DelUB_Det[t] = remainingDemandAllCustomers;
+    }
+}
+
+void ParameterSetting::setSatelliteUnitHandlingCost()
+{
+    unitHandlingCost_Satellite.assign(numWarehouses, 0.0);
+    double satelliteHandlingCostCoeff = 0.1;
+    for (int w = 0; w < numWarehouses; ++w)
+    {
+        unitHandlingCost_Satellite[w] = satelliteHandlingCostCoeff * unitHoldingCost_Plant;
+    }
+}
+
 void ParameterSetting::printParameters() const
 {
-    cout << "\nInstance parameters: " << endl;
     cout << "Instance: " << instance << endl;
     cout << "Number of Warehouses (W): " << numWarehouses << endl;
     cout << "Number of Customers (C): " << numCustomers << endl;
@@ -331,9 +514,12 @@ void ParameterSetting::printParameters() const
     cout << "Fleet Capacity (Plant) (Q_plant): " << vehicleCapacity_Plant << endl;
     cout << "Fleet Size (Each Warehouse) (K_warehouse): " << numVehicles_Warehouse << endl;
     cout << "Fleet Capacity (Warehouse) (Q_warehouse): " << vehicleCapacity_Warehouse << endl;
-    cout << "Number of Scenarios (S): " << numScenarios << endl;
-    cout << "Penalty Coefficient for Unit of Unmet Demand (alpha): " << unmetDemandPenaltyCoeff << endl;
-    cout << "Probability Function: " << probabilityFunction << endl;
+    if (problemType != "2EPRP" && problemType != "2EPRPCS")
+    {
+        cout << "Number of Scenarios (S): " << numScenarios << endl;
+        cout << "Penalty Coefficient for Unit of Unmet Demand (alpha): " << unmetDemandPenaltyCoeff << endl;
+        cout << "Probability Function: " << probabilityFunction << endl;
+    }
 
     cout << "\nPlant parameters: " << endl;
     cout << "x_coord = " << coordX_Plant << ", y_coord = " << coordY_Plant << endl;
@@ -413,20 +599,6 @@ bool ParameterSetting::monteCarloSimulation()
                 generateScenarioDemands(s, t);
             }
         }
-
-        for (int s = 0; s < numScenarios; ++s)
-        {
-            cout << "Scenario " << s << ": " << endl;
-            for (int t = 0; t < numPeriods; ++t)
-            {
-                cout << "Period " << t << ": " << endl;
-                for (int i = 0; i < numCustomers; ++i)
-                {
-                    cout << demand[i][t][s] << " ";
-                }
-                cout << endl;
-            }
-        }
     }
     catch (const std::exception &e)
     {
@@ -441,7 +613,7 @@ void ParameterSetting::generateScenarioDemands(int scenario, int period)
     for (int i = 0; i < numCustomers; ++i)
     {
         double demand = 0.0;
-        unsigned int seed = i + (period * numCustomers) + (scenario * numPeriods * numCustomers) + 100;
+        unsigned int seed = i + (period * numCustomers) + (scenario * numPeriods * numCustomers);
 
         if (probabilityFunction == "Uniform")
         {
@@ -570,17 +742,45 @@ void ParameterSetting::assign_customers_to_warehouse()
 {
     try
     {
-        customers_assigned_to_warehouse.resize(numScenarios,
-                        vector<vector<vector<int>>>(numPeriods,
-                                vector<vector<int>>(numWarehouses,
-                                            vector<int>(numCustomers, -1))));
-
-        warehouse_assigned_to_customer.resize(numScenarios,
-                               vector<vector<int>>(numPeriods,
-                                        vector<int>(numCustomers, -1)));
-
-        for (int s = 0; s < numScenarios; ++s)
+         if (problemType == "S2EPRP-AR")
         {
+            customers_assigned_to_warehouse.resize(numScenarios,
+                                                   vector<vector<vector<int>>>(numPeriods,
+                                                                               vector<vector<int>>(numWarehouses,
+                                                                                                   vector<int>(numCustomers, -1))));
+
+            warehouse_assigned_to_customer.resize(numScenarios,
+                                                  vector<vector<int>>(numPeriods,
+                                                                      vector<int>(numCustomers, -1)));
+
+            for (int s = 0; s < numScenarios; ++s)
+            {
+                for (int t = 0; t < numPeriods; ++t)
+                {
+                    for (int w = 0; w < numWarehouses; ++w)
+                    {
+                        for (int i = 0; i < numCustomers; ++i)
+                        {
+                            if (w == sorted_warehouses_by_distance[i][0])
+                            {
+                                customers_assigned_to_warehouse[s][t][w][i] = 1;
+                                warehouse_assigned_to_customer[s][t][i] = w;
+                            }
+                            else
+                            {
+                                customers_assigned_to_warehouse[s][t][w][i] = 0;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        else
+        {
+            customers_assigned_to_warehouse_det.resize(numPeriods, vector<vector<int>>(numWarehouses, vector<int>(numCustomers, -1)));
+
+            warehouse_assigned_to_customer_det.resize(numPeriods, vector<int>(numCustomers, -1));
+
             for (int t = 0; t < numPeriods; ++t)
             {
                 for (int w = 0; w < numWarehouses; ++w)
@@ -589,12 +789,12 @@ void ParameterSetting::assign_customers_to_warehouse()
                     {
                         if (w == sorted_warehouses_by_distance[i][0])
                         {
-                            customers_assigned_to_warehouse[s][t][w][i] = 1;
-                            warehouse_assigned_to_customer[s][t][i] = w;
+                            customers_assigned_to_warehouse_det[t][w][i] = 1;
+                            warehouse_assigned_to_customer_det[t][i] = w;
                         }
                         else
                         {
-                            customers_assigned_to_warehouse[s][t][w][i] = 0;
+                            customers_assigned_to_warehouse_det[t][w][i] = 0;
                         }
                     }
                 }
@@ -705,7 +905,7 @@ void ParameterSetting::generateAllRoutes()
         //     cout << endl;
         // }
 
-        cout << "\nGenerating all routes..." << endl;
+        cout << "Generating all routes..." << endl;
         solveTSPForRoutes();
 
         // cout << "\n"
@@ -817,23 +1017,29 @@ void ParameterSetting::solveTSPForRoutes()
 
 SolutionWarmStart ParameterSetting::readSolutionWarmStart()
 {
-    cout << "Reading Solution For Warm Start..." << endl;
-    // Construct the directory path
-    string directory = "../Results/Solutions/Hybrid-ILS/" 
-                            + probabilityFunction
-                            + "/S" + std::to_string(numScenarios);
+    cout << "Read Solution For Warm Start..." << endl;
+    string directory;
+    string filename;
+    if (problemType == "S2EPRP-AR" && solutionAlgorithm == "BC")
+    {
+        cout << "Check Feasibility for " << problemType << " and solutionAlgorithm: " << solutionAlgorithm << "..." << endl;
+        // Construct the directory path
+        directory = "../Results/Solutions/" + problemType + "/Hybrid-ILS/" + probabilityFunction + "/S" + std::to_string(numScenarios);
 
+        // Construct the filename
+        filename = "Sol_" + problemType + "_Hybrid-ILS_" + probabilityFunction + "_" + instance + "_S" + std::to_string(numScenarios) + "_UR" + std::to_string(static_cast<int>(uncertaintyRange * 100)) + "%" + "_PC" + std::to_string(static_cast<int>(unmetDemandPenaltyCoeff)) + ".txt";
+    }
+    else
+    {
+        cout << "Invalid solutionAlgorithm" << endl;
+        return SolutionWarmStart();
+    }
+    // Full path to the file
+    string fullPath = directory + "/" + filename;
 
-    // Construct the filename
-    string filename = "Sol_S2EPRPAR_Hybrid-ILS_" + probabilityFunction
-                        + "_" + instance
-                        + "_S" + std::to_string(numScenarios) + "_UR" + std::to_string(static_cast<int>(uncertaintyRange * 100)) + "%"
-                        + "_PC" + std::to_string(static_cast<int>(unmetDemandPenaltyCoeff)) + ".txt";
- 
     SolutionWarmStart warmstart;
 
-    string solutionFileName = directory + "/" + filename;
-    std::ifstream file(solutionFileName);
+    std::ifstream file(fullPath);
     if (file.is_open())
     {
         int intValue;
@@ -1133,4 +1339,14 @@ vector<vector<int>> ParameterSetting::getOptimalRoutes() const
 vector<double> ParameterSetting::getRouteCosts() const
 {
     return routeCosts;
+}
+
+vector<vector<vector<int>>> ParameterSetting::getCustomersAssignedToWarehouse_det() const
+{
+    return customers_assigned_to_warehouse_det;
+}
+
+vector<vector<int>> ParameterSetting::getWarehouseAssignedToCustomer_det() const
+{
+    return warehouse_assigned_to_customer_det;
 }

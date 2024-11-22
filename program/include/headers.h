@@ -196,63 +196,6 @@ struct ScenarioSolutionSecondEchelon
     }  
 };
 
-// Structure representing a solution
-struct SolutionSecondEchelon_Deterministic
-{
-    vector<vector<double>> warehouseInventory;
-    vector<vector<double>> customerInventory;
-    vector<vector<double>> customerUnmetDemand;
-    vector<vector<double>> deliveryQuantityToCustomer;
-    vector<vector<vector<vector<int>>>> routesWarehouseToCustomer;
-    vector<vector<vector<int>>> customerAssignmentToWarehouse;
-
-    double holdingCostWarehouse = 0.0;                  // Average total holding cost at the warehouse
-    double holdingCostCustomer = 0.0;                   // Average total holding cost at the customer
-    double transportationCostWarehouseToCustomer = 0.0; // Average total transportation cost from warehouses to customers
-    double costOfUnmetDemand = 0.0;                     // Average total cost of unmet demand
-
-    double ScenarioObjValue_SE = 0.0; // Total cost
-    string status;
-    double ScenarioCPUTime_SE = 0.0;
-
-    // Check if the s        olution is empty
-    bool empty() const
-    {
-        return warehouseInventory.empty() &&
-               customerInventory.empty() &&
-               customerUnmetDemand.empty() &&
-               deliveryQuantityToCustomer.empty() &&
-               routesWarehouseToCustomer.empty() &&
-               customerAssignmentToWarehouse.empty() &&
-               (holdingCostWarehouse == 0.0) &&
-               (holdingCostCustomer == 0.0) &&
-               (transportationCostWarehouseToCustomer == 0.0) &&
-               (costOfUnmetDemand == 0.0);
-    }
-
-    void clear()
-    {
-        // Clear all vectors
-        warehouseInventory.clear();
-        customerInventory.clear();
-        customerUnmetDemand.clear();
-        deliveryQuantityToCustomer.clear();
-        routesWarehouseToCustomer.clear();
-        customerAssignmentToWarehouse.clear();
-
-        // Reset all cost and time values to 0
-        holdingCostWarehouse = 0.0;
-        holdingCostCustomer = 0.0;
-        transportationCostWarehouseToCustomer = 0.0;
-        costOfUnmetDemand = 0.0;
-        ScenarioObjValue_SE = 0.0;
-        ScenarioCPUTime_SE = 0.0;
-
-        // Reset the status string to an empty value
-        status.clear();
-    }  
-};
-
 struct SolutionWarmStart
 {
     vector<int> productionSetup_WarmStart;
@@ -277,6 +220,66 @@ struct SolutionWarmStart
         routesWarehouseToCustomer_WarmStart.clear();
         customerAssignmentToWarehouse_WarmStart.clear();
     }
+};
+
+// Structure representing a solution
+struct SolutionSecondEchelon_Deterministic
+{
+    vector<vector<double>> warehouseInventory;
+    vector<vector<double>> customerInventory;
+    vector<vector<double>> customerUnmetDemand;
+    vector<vector<double>> deliveryQuantityToCustomer;
+    vector<vector<vector<vector<int>>>> routesWarehouseToCustomer;
+    vector<vector<vector<int>>> customerAssignmentToWarehouse;
+
+    double holdingCostWarehouse = 0.0;                  // Average total holding cost at the warehouse
+    double holdingCostCustomer = 0.0;                   // Average total holding cost at the customer
+    double transportationCostWarehouseToCustomer = 0.0; // Average total transportation cost from warehouses to customers
+    double costOfUnmetDemand = 0.0;                     // Average total cost of unmet demand
+    double handlingCostSatellite = 0.0;
+
+    double ScenarioObjValue_SE = 0.0; // Total cost
+    string status;
+    double ScenarioCPUTime_SE = 0.0;
+
+    // Check if the s        olution is empty
+    bool empty() const
+    {
+        return warehouseInventory.empty() &&
+               customerInventory.empty() &&
+               customerUnmetDemand.empty() &&
+               deliveryQuantityToCustomer.empty() &&
+               routesWarehouseToCustomer.empty() &&
+               customerAssignmentToWarehouse.empty() &&
+               (holdingCostWarehouse == 0.0) &&
+               (holdingCostCustomer == 0.0) &&
+               (transportationCostWarehouseToCustomer == 0.0) &&
+               (costOfUnmetDemand == 0.0) &&
+               (handlingCostSatellite == 0.0);
+    }
+
+    void clear()
+    {
+        // Clear all vectors
+        warehouseInventory.clear();
+        customerInventory.clear();
+        customerUnmetDemand.clear();
+        deliveryQuantityToCustomer.clear();
+        routesWarehouseToCustomer.clear();
+        customerAssignmentToWarehouse.clear();
+
+        // Reset all cost and time values to 0
+        holdingCostWarehouse = 0.0;
+        holdingCostCustomer = 0.0;
+        transportationCostWarehouseToCustomer = 0.0;
+        costOfUnmetDemand = 0.0;
+        ScenarioObjValue_SE = 0.0;
+        ScenarioCPUTime_SE = 0.0;
+        handlingCostSatellite = 0.0;
+
+        // Reset the status string to an empty value
+        status.clear();
+    }  
 };
 
 struct SolutionWarmStart_Deterministic

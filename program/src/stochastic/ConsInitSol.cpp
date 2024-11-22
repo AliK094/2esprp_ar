@@ -480,8 +480,6 @@ bool ConstructHeuristic::Construct_InitialSolution()
 						// 	cout << "]" << endl;
 						// }
 
-						
-
 						calculateDecisionVariables(s, w, Inv_Customers, unmetDemand_Customers, deliveryQuantity_Customers);
 					}
 

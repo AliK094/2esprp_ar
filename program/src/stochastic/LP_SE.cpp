@@ -28,8 +28,8 @@ string LP_SE::solve()
 	/* Assure linear mappings between the presolved and original models */
 	cplex.setParam(IloCplex::Param::Threads, 1);
 	cplex.setParam(IloCplex::Param::Preprocessing::Presolve, IloFalse);
-	cplex.setOut(env.getNullStream());
 
+	cplex.setOut(env.getNullStream());
 	cplex.setWarning(env.getNullStream());
 
 	if (save_lpFile)

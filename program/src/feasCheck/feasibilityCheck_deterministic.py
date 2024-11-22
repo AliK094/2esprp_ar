@@ -1,10 +1,10 @@
 """
-In this Problem we aim to check the results obtained from the heuristic algorithm to check the feasibility of the results (for the deterministic case)
+In this Problem we aim to check the results obtained from the heuristic problemType to check the feasibility of the results (for the deterministic case)
 """
 import numpy as np
 import sys
 
-def feasibilityCheck(file_path, algorithm, shortage_allowed, scenario_index):
+def feasibilityCheck(file_path, problemType):
     # ----------------------------------------------------------------------------
     # Initializization
     # ----------------------------------------------------------------------------
@@ -18,7 +18,7 @@ def feasibilityCheck(file_path, algorithm, shortage_allowed, scenario_index):
             for i in ar:
                 values.append(i)
                 
-    if shortage_allowed == '1':
+    if problemType == 'EV' or problemType == 'WS' or problemType == 'EEV':
         shortage_allowed = True
     else:
         shortage_allowed = False
@@ -39,15 +39,15 @@ def feasibilityCheck(file_path, algorithm, shortage_allowed, scenario_index):
     numPeriods = int(values[index])
     index += 1
     
-    if algorithm != '2EPRP':
+    if shortage_allowed:
         numScenarios = int(values[index])
         index+=1
     
-    if algorithm == "WS" or algorithm == "EEV":
+    if problemType == "WS" or problemType == "EEV":
         scenario_Index = int(values[index])
         index+=1
     
-    if algorithm != "2EPRP":
+    if shortage_allowed:
         # Second Line
         uncertaintyRange = float(values[index])
         index+=1
@@ -95,10 +95,16 @@ def feasibilityCheck(file_path, algorithm, shortage_allowed, scenario_index):
     unitHoldingCost_Plant = float(values[index])
     index += 1
     
-    unitHoldingCost_Warehouse = np.zeros((numWarehouses))
-    for w in range(numWarehouses):
-        unitHoldingCost_Warehouse[w] = float(values[index])
-        index += 1
+    if problemType == "2EPRPCS":
+        unitHandlingCost_Satellite = np.zeros((numWarehouses))
+        for w in range(numWarehouses):
+            unitHandlingCost_Satellite[w] = float(values[index])
+            index += 1
+    else:
+        unitHoldingCost_Warehouse = np.zeros((numWarehouses))
+        for w in range(numWarehouses):
+            unitHoldingCost_Warehouse[w] = float(values[index])
+            index += 1
         
     unitHoldingCost_Customer = np.zeros((numCustomers))
     for i in range(numCustomers):
@@ -108,10 +114,11 @@ def feasibilityCheck(file_path, algorithm, shortage_allowed, scenario_index):
     storageCapacity_Plant = float(values[index])
     index += 1
     
-    storageCapacity_Warehouse = np.zeros((numWarehouses))
-    for w in range(numWarehouses):
-        storageCapacity_Warehouse[w] = float(values[index])
-        index += 1
+    if problemType != "2EPRPCS":
+        storageCapacity_Warehouse = np.zeros((numWarehouses))
+        for w in range(numWarehouses):
+            storageCapacity_Warehouse[w] = float(values[index])
+            index += 1
         
     storageCapacity_Customer = np.zeros((numCustomers))
     for i in range(numCustomers):
@@ -121,10 +128,11 @@ def feasibilityCheck(file_path, algorithm, shortage_allowed, scenario_index):
     initialInventory_Plant = float(values[index])
     index += 1
     
-    initialInventory_Warehouse = np.zeros((numWarehouses))
-    for w in range(numWarehouses):
-        initialInventory_Warehouse[w] = float(values[index])
-        index += 1
+    if problemType != "2EPRPCS":
+        initialInventory_Warehouse = np.zeros((numWarehouses))
+        for w in range(numWarehouses):
+            initialInventory_Warehouse[w] = float(values[index])
+            index += 1
         
     initialInventory_Customer = np.zeros((numCustomers))
     for i in range(numCustomers):
@@ -171,6 +179,7 @@ def feasibilityCheck(file_path, algorithm, shortage_allowed, scenario_index):
     totalProductionCost = 0.0
     totalInventoryCostPlant = 0.0
     totalInventoryCostWarehouse = 0.0
+    totalHandlingCostSatellite = 0.0
     totalInventoryCostCustomer = 0.0
     totalTransportationCost_FirstEchelon = 0.0
     totalTransportationCost_SecondEchelon = 0.0
@@ -196,14 +205,16 @@ def feasibilityCheck(file_path, algorithm, shortage_allowed, scenario_index):
         objValue += unitHoldingCost_Plant * plantInventory[t]
         totalInventoryCostPlant += unitHoldingCost_Plant * plantInventory[t]
         index += 1
-                
-    warehouseInventory = np.zeros((numWarehouses, numPeriods))
-    for w in range(numWarehouses):
-        for t in range(numPeriods):
-            warehouseInventory[w][t] = float(values[index])
-            objValue += unitHoldingCost_Warehouse[w] * warehouseInventory[w][t]
-            totalInventoryCostWarehouse += unitHoldingCost_Warehouse[w] * warehouseInventory[w][t]
-            index += 1
+    
+    if problemType != "2EPRPCS":
+        warehouseInventory = np.zeros((numWarehouses, numPeriods))
+        for w in range(numWarehouses):
+            for t in range(numPeriods):
+                warehouseInventory[w][t] = float(values[index])
+                objValue += unitHoldingCost_Warehouse[w] * warehouseInventory[w][t]
+                totalInventoryCostWarehouse += unitHoldingCost_Warehouse[w] * warehouseInventory[w][t]
+                index += 1
+        
                 
     customerInventory = np.zeros((numCustomers, numPeriods))
     for i in range(numCustomers):
@@ -307,8 +318,13 @@ def feasibilityCheck(file_path, algorithm, shortage_allowed, scenario_index):
         for t in range(numPeriods):
             deliveryQuantity_Customer[i][t] = float(values[index])
             index += 1
+    
+    if problemType == "2EPRPCS":
+        for w in range(numWarehouses):
+            for t in range(numPeriods):
+                totalHandlingCostSatellite += unitHandlingCost_Satellite[w] * deliveryQuantity_Warehouse[w][t]
                 
-    print('\nDelivery Quantity Customer is: \n', deliveryQuantity_Customer)
+    # print('\nDelivery Quantity Customer is: \n', deliveryQuantity_Customer)
     # ----------------------------------------------------------------------------
 
     # print(f'{len(values)} is length of values and {index} is index\n')
@@ -320,9 +336,13 @@ def feasibilityCheck(file_path, algorithm, shortage_allowed, scenario_index):
     print(f'Total Production Cost is {totalProductionCost:.1f}')
     print(f'Total Inventory Cost (Plant) is {totalInventoryCostPlant:.1f}')
     print(f'Total Transportation Cost (First echelon) is {totalTransportationCost_FirstEchelon:.1f}')
-    print(f'Total Inventory Cost (Warehouse) is {totalInventoryCostWarehouse:.1f}')
+    if problemType == "2EPRPCS":
+        print(f'Total Handling Cost (Satellite) is {totalHandlingCostSatellite:.1f}')
+    else:
+        print(f'Total Inventory Cost (Warehouse) is {totalInventoryCostWarehouse:.1f}')
     print(f'Total Inventory Cost (Customer) is {totalInventoryCostCustomer:.1f}')
-    print(f'Total Unmet Demand Cost is {totalUnmetDemandCost:.1f}')
+    if shortage_allowed:
+        print(f'Total Shortage Cost is {totalUnmetDemandCost:.1f}')
     print(f'Total Transportation Cost (Second echelon) is {totalTransportationCost_SecondEchelon:.1f}')
     print(f'objValue is {objValue:.1f}')
     # ----------------------------------------------------------------------------
@@ -364,36 +384,55 @@ def feasibilityCheck(file_path, algorithm, shortage_allowed, scenario_index):
             print(f'{plantInventory[t]} > {storageCapacity_Plant}')
             violated_constraints.append(f'Inventory Capacity Plant Constraint: t={t + 1}')
     
-    # Check Warehouse Inventory Balance Constrains
-    for t in range(numPeriods):
-        for w in range(numWarehouses):
-            I_warehouse = initialInventory_Warehouse[w] if t == 0 else warehouseInventory[w][t - 1]
-            I_warehouse += deliveryQuantity_Warehouse[w][t]
-            
-            deliveryQuantity_CustomerWarehouse = 0.0
-            for i in range(numCustomers):
-                if customerAssignmentToWarehouse[t][w][i] == 1:
-                    deliveryQuantity_CustomerWarehouse += deliveryQuantity_Customer[i][t]
-            
-            I_warehouse -= deliveryQuantity_CustomerWarehouse
-            
-            I_warehouse_expected = warehouseInventory[w][t]
-            
-            if abs(I_warehouse - I_warehouse_expected) > tolerance:
-                print(f'Warehouse Inventory Balance is not met for w={w + 1}, t={t + 1}')
-                if t == 0:
-                    print(f'{I_warehouse_expected} != {initialInventory_Warehouse[w]} + {deliveryQuantity_Warehouse[w][t]} - {deliveryQuantity_CustomerWarehouse}')
-                else:
-                    print(f'{I_warehouse_expected} != {warehouseInventory[w][t - 1]} + {deliveryQuantity_Warehouse[w][t]} - {deliveryQuantity_CustomerWarehouse}')
-                violated_constraints.append(f'Warehouse Inventory Balance: w={w + 1}, t={t + 1}')
+    if problemType != "2EPRPCS":
+        # Check Warehouse Inventory Balance Constrains
+        for t in range(numPeriods):
+            for w in range(numWarehouses):
+                I_warehouse = initialInventory_Warehouse[w] if t == 0 else warehouseInventory[w][t - 1]
+                I_warehouse += deliveryQuantity_Warehouse[w][t]
+                
+                deliveryQuantity_CustomerWarehouse = 0.0
+                for i in range(numCustomers):
+                    if customerAssignmentToWarehouse[t][w][i] == 1:
+                        deliveryQuantity_CustomerWarehouse += deliveryQuantity_Customer[i][t]
+                
+                I_warehouse -= deliveryQuantity_CustomerWarehouse
+                
+                I_warehouse_expected = warehouseInventory[w][t]
+                
+                if abs(I_warehouse - I_warehouse_expected) > tolerance:
+                    print(f'Warehouse Inventory Balance is not met for w={w + 1}, t={t + 1}')
+                    if t == 0:
+                        print(f'{I_warehouse_expected} != {initialInventory_Warehouse[w]} + {deliveryQuantity_Warehouse[w][t]} - {deliveryQuantity_CustomerWarehouse}')
+                    else:
+                        print(f'{I_warehouse_expected} != {warehouseInventory[w][t - 1]} + {deliveryQuantity_Warehouse[w][t]} - {deliveryQuantity_CustomerWarehouse}')
+                    violated_constraints.append(f'Warehouse Inventory Balance: w={w + 1}, t={t + 1}')
+    else:
+        # Check Satellite Balance Constrains
+        satellite_Inbound = 0.0
+        satellite_Outbound = 0.0
+        for t in range(numPeriods):
+            for w in range(numWarehouses):
+                satellite_Inbound += deliveryQuantity_Warehouse[w][t]
+                
+                for i in range(numCustomers):
+                    if customerAssignmentToWarehouse[t][w][i] == 1:
+                        satellite_Outbound += deliveryQuantity_Customer[i][t]
+                                                
+                if abs(satellite_Inbound - satellite_Outbound) > tolerance:
+                    print(f'Satellite Balance is not met for w={w + 1}, t={t + 1}')
+                    print(f'{satellite_Inbound} != {satellite_Outbound}')
                     
-    # Check Warehouse Inventory Capacity Constraint
-    for t in range(numPeriods):
-        for w in range(numWarehouses):
-            if warehouseInventory[w][t] > storageCapacity_Warehouse[w] + tolerance:
-                print(f'Inventory Capacity Warehouse Constraint is not met for w={w + 1}, t={t + 1}')
-                print(f'{warehouseInventory[w][t]} > {storageCapacity_Warehouse[w]}')
-                violated_constraints.append(f'Inventory Capacity Warehouse Constraint: w={w + 1}, t={t + 1}')
+                    violated_constraints.append(f'Satellite Balance: w={w + 1}, t={t + 1}')
+    
+    if problemType != "2EPRPCS":
+        # Check Warehouse Inventory Capacity Constraint
+        for t in range(numPeriods):
+            for w in range(numWarehouses):
+                if warehouseInventory[w][t] > storageCapacity_Warehouse[w] + tolerance:
+                    print(f'Inventory Capacity Warehouse Constraint is not met for w={w + 1}, t={t + 1}')
+                    print(f'{warehouseInventory[w][t]} > {storageCapacity_Warehouse[w]}')
+                    violated_constraints.append(f'Inventory Capacity Warehouse Constraint: w={w + 1}, t={t + 1}')
                     
     # Check warehouse visit (Only delivered if visited)
     for t in range(numPeriods):
@@ -545,16 +584,14 @@ def feasibilityCheck(file_path, algorithm, shortage_allowed, scenario_index):
 
 if __name__ == "__main__":
     
-    if len(sys.argv) < 5:
-        print("Usage: feasibilityCheck_deterministic.py <file_path> <algorithm> <shortage_allowed> <scenario_index>")
+    if len(sys.argv) < 3:
+        print("Usage: feasibilityCheck_deterministic.py <file_path> <problemType>")
         sys.exit(1)
 
     file_path = sys.argv[1]
-    algorithm = sys.argv[2]
-    shortage_allowed = sys.argv[3]
-    scenario_index = int(sys.argv[4])
+    problemType = sys.argv[2]
     
-    result = feasibilityCheck(file_path, algorithm, shortage_allowed, scenario_index)
+    result = feasibilityCheck(file_path, problemType)
     
     if not result:
         print('0')

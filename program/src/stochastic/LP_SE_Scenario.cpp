@@ -32,7 +32,6 @@ string LP_SE_Scenario::solve()
 	cplex.setParam(IloCplex::Param::Preprocessing::Presolve, IloFalse);
 
 	cplex.setOut(env.getNullStream());
-
 	cplex.setWarning(env.getNullStream());
 
 	if (save_lpFile)

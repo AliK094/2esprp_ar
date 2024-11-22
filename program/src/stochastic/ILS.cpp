@@ -45,7 +45,6 @@ bool ILS_SIRP::run()
 		sol_SE_temp.customerUnmetDemand = consHeuristic.getUnmetDemandCustomers();
 		sol_SE_temp.deliveryQuantityToCustomer = consHeuristic.getDeliveryQuantityCustomers();
 		sol_SE_temp.routesWarehouseToCustomer = consHeuristic.getRoutesWarehouseToCustomer();
-		// sol_SE_temp.warehouseInventory = calcInvWarehouse();
 
 		cout << "Improve Initial Solution For Second Echelon With Local Search" << endl;
 	}
@@ -70,7 +69,6 @@ bool ILS_SIRP::run()
 	// Define the number of threads you want to use
 	int numThreads = std::thread::hardware_concurrency(); // Use the number of available CPU cores
 	// cout << "\nAvailable CPU cores: " << numThreads << endl;
-
 	vector<ScenarioSolutionSecondEchelon> sol_SE_incumbent_Scenarios(params.numScenarios);
 
 	for (int s = 0; s < params.numScenarios; ++s)
@@ -80,9 +78,9 @@ bool ILS_SIRP::run()
 		sol_SE_incumbent_Scenarios[s].customerAssignmentToWarehouse_Scenario = sol_SE_incumbent.customerAssignmentToWarehouse[s];
 	}
 
+	cout << "\nRun ILS..." << endl;
 	std::atomic<bool> stopProcessing(false); 
 	vector<std::thread> threads;
-	cout << "\nRun ILS..." << endl;
 	for (int s = 0; s < params.numScenarios; ++s) {
 		threads.emplace_back([&, s]() {
 			// Check if processing should continue
@@ -135,21 +133,23 @@ bool ILS_SIRP::run()
 					{
 						best_objValue_Scenario = objval_scenario_new;
 						sol_SE_incumbent_Scenarios[s] = ls.getSolutionSE_Scenario();
+
+						// cout << "New incumbent solution found for Scenario " << s + 1 << " Iteration : " << numIterILS + 1 << endl;
 					}
 
 					numIterILS++;
 
 					auto currentTime_ILS_Scenario = std::chrono::high_resolution_clock::now();
 					elapsedTime_ILS_Scenario = std::chrono::duration_cast<std::chrono::duration<double>>(currentTime_ILS_Scenario - startTime_ILS_Scenario).count();
+
+					// cout << "Iteration : " << numIterILS << " for Scenario " << s + 1 << " is done" << " Time : " << elapsedTime_ILS_Scenario << endl;
 				}
 
-				// Update the incumbent solution for the current scenario
-				// sol_SE_incumbent.routesWarehouseToCustomer[s] = sol_SE_incumbent_Scenario.routesWarehouseToCustomer_Scenario;
-				// sol_SE_incumbent.customerAssignmentToWarehouse[s] = sol_SE_incumbent_Scenario.customerAssignmentToWarehouse_Scenario;
+				// cout << "ILS for Scenario " << s + 1 << " is done" << endl;
 			}
 		});
 	}
-
+	
 	// Join all the threads to wait for them to finish
 	for (std::thread& t : threads) {
 		if (t.joinable()) {

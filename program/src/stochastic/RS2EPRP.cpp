@@ -27,7 +27,7 @@ bool RS2EPRP::Solve()
 		// Set CPLEX Parameters: (DISPLAY LEVEL(0,1,2,3,4), OPTIMALITY GAP, RUN TIME (SECS), THREADS, MEMORY (MB))
 		CplexParameterManager parameterManager(cplex);
 
-		parameterManager.setParameters(0, 1e-2, 120, 20, 32000);
+		parameterManager.setParameters(0, 1e-2, 120, 20, 16000);
 
 		cplex.setParam(IloCplex::Param::Emphasis::MIP, 2);
 
@@ -48,8 +48,7 @@ bool RS2EPRP::Solve()
         cplex.setWarning(env.getNullStream());
 
 		cout << "Solving RS2EPRP..." << endl;
-		// SEC_S2EPRP LegacyCallback(env, params, x, z);
-		// cplex.use(&LegacyCallback);
+
 
 		if (save_lpFile)
 		{

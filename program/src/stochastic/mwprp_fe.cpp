@@ -1,16 +1,15 @@
 #include "stochastic/MWPRP_FE.h"
 
-MWPRP_FE::MWPRP_FE(const ParameterSetting &parameters)
+MWPRP_FE::MWPRP_FE(const ParameterSetting &parameters, bool saveModel, bool saveSolution)
     : params(parameters),
-      THRESHOLD(1e-2),
-      save_lpFile(false),
-      save_mpsResultFile(false)
+      saveLP(saveModel),
+	  saveSol(saveSolution),
+	  THRESHOLD(1e-2)
 {
 	routeMatrix_FirstEchelon = params.getRouteMatrix();
 	numRoutes_FirstEchelon = routeMatrix_FirstEchelon.size();
 	optimalRoutes_FirstEchelon = params.getOptimalRoutes();
 	routeCosts_FirstEchelon = params.getRouteCosts();
-
 
 	CATW = params.getCustomersAssignedToWarehouse();
 
@@ -82,33 +81,23 @@ bool MWPRP_FE::Solve()
 
 		auto startTime = std::chrono::high_resolution_clock::now();
 
-		// Set CPLEX Parameters: (DISPLAY LEVEL(0,1,2,3,4), OPTIMALITY GAP, RUN TIME (SECS), THREADS, MEMORY (MB))
-		CplexParameterManager parameterManager(cplex);
-
-		parameterManager.setParameters(0, 1e-6, 600, 20, 32000);
-		cplex.setParam(IloCplex::Param::Emphasis::MIP, 2);
+		configureCplex(cplex, env);
 
 		DefineVariables(env, model);
 		DefineObjectiveFunction(env, model);
 		DefineConstraints(env, model);
 
-		/* Assure linear mappings between the presolved and original models */
-		cplex.setParam(IloCplex::Param::Preprocessing::Presolve, IloFalse);
-		/* Turn on traditional search for use with control callbacks */
-		cplex.setParam(IloCplex::Param::MIP::Strategy::Search, CPX_MIPSEARCH_TRADITIONAL);
-		/* Let MIP callbacks work on the original model */
-		cplex.setParam(IloCplex::Param::Preprocessing::Reduce, 0);
-
-		// Set CPLEX parameters: No output or warnings
-		cplex.setOut(env.getNullStream());
-        cplex.setWarning(env.getNullStream());
-
-		if (save_lpFile)
+		cout << "Solving MWPRP_FE_" << params.problemType << "..." << endl;
+		if (saveLP)
 		{
-			string directory = "../cplexFiles/lpModel/";
-			string lpFileName = directory + "MWPRP_FE_NW" + std::to_string(params.numWarehouses) + "_NR" + std::to_string(params.numCustomers) + "_KP" + std::to_string(params.numVehicles_Plant) + "_KW" + std::to_string(params.numVehicles_Warehouse) + "_T" + std::to_string(params.numPeriods) + "_S" + std::to_string(params.numScenarios) + "_Ins" + params.instance.c_str() + ".lp";
+			string directory = "../cplexFiles/lpModel/" + params.problemType + "/";
+			if (!fs::exists(directory))
+			{
+				cout << "Directory does not exist. Creating: " << directory << endl;
+				fs::create_directories(directory);
+			}
 
-			// Export the model to an LP file
+			string lpFileName = generateFileName(directory, ".lp");
 			cplex.exportModel(lpFileName.c_str());
 		}
 
@@ -117,74 +106,7 @@ bool MWPRP_FE::Solve()
 
 		// Solve the model
 		cplex.solve();
-
-		string status;
-		double objValue;
-		double optimalityGap;
-		double lowerBound;
-		if (cplex.getStatus() == IloAlgorithm::Optimal)
-		{
-			status = "Optimal";
-			objValue = cplex.getObjValue();
-			cout << "Optimal solution found with objective value: " << std::fixed << std::setprecision(1) << objValue << endl;
-			optimalityGap = cplex.getMIPRelativeGap() * 100;
-			lowerBound = cplex.getBestObjValue();
-
-			if (save_mpsResultFile)
-			{
-				string directory = "../cplexFiles/solVal/";
-				string solFileName = directory + "MWPRP_FE_NW" + std::to_string(params.numWarehouses) + "_NR" + std::to_string(params.numCustomers) + "_KP" + std::to_string(params.numVehicles_Plant) + "_KW" + std::to_string(params.numVehicles_Warehouse) + "_T" + std::to_string(params.numPeriods) + "_S" + std::to_string(params.numScenarios) + "_Ins" + params.instance.c_str();
-
-				// Export the model to an LP file
-				cplex.writeSolution(solFileName.c_str());
-			}
-		}
-		else if (cplex.getStatus() == IloAlgorithm::Feasible)
-		{
-			status = "Incumbent";
-			objValue = cplex.getObjValue();
-			cout << "Incumbent solution found with objective value: " << std::fixed << std::setprecision(1) << objValue << endl;
-			optimalityGap = cplex.getMIPRelativeGap() * 100;
-			cout << "Optimality gap: " << optimalityGap << "%" << endl;
-			lowerBound = cplex.getBestObjValue();
-			cout << "Lower bound: " << lowerBound << endl;
-
-			if (save_mpsResultFile)
-			{
-				string directory = "../cplexFiles/solVal/";
-				string solFileName = directory + "MWPRP_FE_NW" + std::to_string(params.numWarehouses) + "_NR" + std::to_string(params.numCustomers) + "_KP" + std::to_string(params.numVehicles_Plant) + "_KW" + std::to_string(params.numVehicles_Warehouse) + "_T" + std::to_string(params.numPeriods) + "_S" + std::to_string(params.numScenarios) + "_Ins" + params.instance.c_str();
-
-				// Export the model to an LP file
-				cplex.writeSolution(solFileName.c_str());
-			}
-		}
-		else if (cplex.getStatus() == IloAlgorithm::Infeasible)
-		{
-			status = "Infeasible";
-			cout << "Problem is infeasible" << endl;
-
-			IloConstraintArray conflictConstraints(env);
-			cplex.getConflict(conflictConstraints);
-
-			IloCplex::ConflictStatusArray conflictStatus(env);
-			for (int i = 0; i < conflictConstraints.getSize(); i++)
-			{
-				conflictStatus.add(cplex.getConflict(conflictConstraints[i]));
-			}
-
-			cout << "Conflict constraints:" << endl;
-			cout << conflictConstraints << endl;
-
-			cout << "Conflict status:" << endl;
-			cout << conflictStatus << endl;
-
-			throw std::runtime_error("Solver terminated with infeasible solution.");
-		}
-		else
-		{
-			status = "Undefined";
-			cout << "Solver terminated with status: " << status << endl;
-		}
+		string status = handleCplexStatus(cplex, env, model);
 
 		auto currentTime = std::chrono::high_resolution_clock::now();
 		double CPUtime = std::chrono::duration_cast<std::chrono::duration<double>>(currentTime - startTime).count();
@@ -204,16 +126,6 @@ bool MWPRP_FE::Solve()
 			CalculateCostsForEachPart();
 		}
 
-		// if (!params.saveSolution(algorithm, solution))
-		// {
-		// 	cerr << "Unable to Save the Solution" << endl;
-		// }
-		// else
-		// {
-		// 	bool feasCheck = params.checkFeasibility(algorithm);
-		// 	params.saveResultSummaryExact(solution, algorithm, result.objValue, result.lowerBound, result.optimalityGap, result.CPUtime, feasCheck);
-		// }
-
 		env.end();
 	}
 	catch (const IloException &e)
@@ -229,10 +141,131 @@ bool MWPRP_FE::Solve()
 	return true;
 }
 
+void MWPRP_FE::configureCplex(IloCplex &cplex, IloEnv &env)
+{
+	// Set CPLEX Parameters: (DISPLAY LEVEL(0,1,2,3,4), OPTIMALITY GAP, RUN TIME (SECS), THREADS, MEMORY (MB))
+	CplexParameterManager parameterManager(cplex);
+	parameterManager.setParameters(1, 1e-6, 600, 8, 32000);
+
+	cplex.setParam(IloCplex::Param::Emphasis::MIP, 2);
+	cplex.setParam(IloCplex::Param::Preprocessing::Presolve, IloFalse);
+	cplex.setParam(IloCplex::Param::MIP::Strategy::Search, CPX_MIPSEARCH_TRADITIONAL);
+	cplex.setParam(IloCplex::Param::Preprocessing::Reduce, 0);
+
+	// Set CPLEX parameters: No output or warnings
+	cplex.setOut(env.getNullStream());
+	cplex.setWarning(env.getNullStream());
+}
+
+string MWPRP_FE::handleCplexStatus(IloCplex &cplex, IloEnv &env, IloModel &model)
+{
+	string status;
+	double objValue;
+	double optimalityGap;
+	double lowerBound;
+	if (cplex.getStatus() == IloAlgorithm::Optimal)
+	{
+		status = "Optimal";
+		objValue = cplex.getObjValue();
+		optimalityGap = cplex.getMIPRelativeGap() * 100;
+		lowerBound = cplex.getBestObjValue();
+		cout << "Optimal solution found. Objective Value = " << objValue << endl;
+	}
+	else if (cplex.getStatus() == IloAlgorithm::Feasible)
+	{
+		status = "Incumbent";
+		objValue = cplex.getObjValue();
+		optimalityGap = cplex.getMIPRelativeGap() * 100;
+		lowerBound = cplex.getBestObjValue();
+		cout << "Feasible solution found. Objective Value: " << objValue << endl;
+		cout << "LB = " << lowerBound;
+		cout << "Optimality Gap (%) = " << optimalityGap;
+	}
+	else if (cplex.getStatus() == IloAlgorithm::Infeasible)
+	{
+		status = "Infeasible";
+		cerr << "Problem is infeasible." << endl;
+		refineConflict(cplex, env, model);
+		throw std::runtime_error("Solver terminated with infeasible solution.");
+	}
+	else
+	{
+		status = "Undefined";
+		cerr << "Solver terminated with undefined status." << endl;
+	}
+
+	if (saveSol)
+	{
+		string directory = "../cplexFiles/solVal/" + params.problemType + "/";
+		string fileName = generateFileName(directory, ".sol");
+		cplex.writeSolution(fileName.c_str());
+	}
+
+	return status;
+}
+
+string MWPRP_FE::generateFileName(const string &baseDir, const string &extension)
+{
+	string fileName = baseDir + "MWPRP_FE_" + params.problemType + "_Ins" + params.instance;
+
+	if (params.problemType == "WS" || params.problemType == "EV")
+	{
+		fileName += "_S" + std::to_string(params.numScenarios);
+	}
+	if (params.problemType == "WS")
+	{
+		fileName += "_s" + std::to_string(params.scenarioIndex);
+	}
+	fileName += extension;
+
+	return fileName;
+}
+
+void MWPRP_FE::refineConflict(IloCplex &cplex, IloEnv &env, IloModel &model)
+{
+	// Iterate through the model to identify constraints
+	IloConstraintArray constraints(env);
+	IloNumArray priorities(env);
+
+	// Add all constraints to the conflict array with priority 1
+	for (IloModel::Iterator it(model); it.ok(); ++it)
+	{
+		IloExtractable extractable = *it;
+		if (extractable.isConstraint()) // Check if it's a constraint
+		{
+			IloConstraint constraint = extractable.asConstraint();
+			constraints.add(constraint);
+			priorities.add(1.0); // Assign a priority (1.0 = low penalty)
+		}
+	}
+
+	// Run conflict refinement to identify infeasible subset
+	if (cplex.refineConflict(constraints, priorities))
+	{
+		cout << "Constraints in conflict:" << endl;
+
+		// Iterate through the constraints and check conflict status
+		for (int i = 0; i < constraints.getSize(); ++i)
+		{
+			if (cplex.getConflict(constraints[i]) == IloCplex::ConflictStatus::ConflictMember)
+			{
+				cout << " - " << constraints[i].getName() << endl; // Print the name of the conflicting constraint
+			}
+		}
+	}
+	else
+	{
+		cout << "Could not find an IIS to explain infeasibility." << endl;
+	}
+
+	// Clean up
+	constraints.end();
+	priorities.end();
+}
+
 void MWPRP_FE::DefineVariables(IloEnv &env, IloModel &model)
 {
 	// Define Decision Variables
-
 	// Initialize Variable Manager
 	VariableManager varManager(env);
 	// -------------------------------------------------------------------------------------------------------------------------------

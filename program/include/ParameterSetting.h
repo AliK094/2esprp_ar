@@ -3,6 +3,7 @@
 
 #include "headers.h"
 #include "TSP.h"
+#include <fstream>
 #include <stdexcept>
 #include <limits>
 #include <cassert>
@@ -27,75 +28,73 @@ public:
     vector<double> getDualValues_WarehouseInventoryLB() const;
     SolutionWarmStart readSolutionWarmStart();
 
+    vector<vector<vector<int>>> getCustomersAssignedToWarehouse_det() const;
+    vector<vector<int>> getWarehouseAssignedToCustomer_det() const;
+
     // Public member variables
-    string solutionAlgorithm;
+    string problemType = "";
+    string solutionAlgorithm = "";
     string inputFile;
-    int numWarehouses;
-    int numCustomers;
-    int numPeriods;
-    int numVehicles_Plant;
-    int numVehicles_Warehouse;
+    int numWarehouses, numCustomers, numPeriods, numVehicles_Plant, numVehicles_Warehouse;
+    string instance;
+
+    // Stocastic Parameters
     int numScenarios;
     double unmetDemandPenaltyCoeff;
     double uncertaintyRange;
     string probabilityFunction;
-    string instance;
-    int numNodes_Total;
-    int numNodes_FirstEchelon;
-    int numNodes_SecondEchelon;
-    int numEdges_FirstEchelon;
-    int numEdges_SecondEchelon;
-    int numVehicles_SecondEchelon;
 
-    int originalDimension;
-    int originalHorizon;
-    int originalVehicleCapacity;
-    double unitProdCost;
-    double setupCost;
-    double prodCapacity;
-    double vehicleCapacity_Plant;
-    double vehicleCapacity_Warehouse;
-
-    double coordX_Plant;
-    double coordY_Plant;
-    vector<double> coordX_Warehouse;
-    vector<double> coordY_Warehouse;
-    vector<double> coordX_Customer;
-    vector<double> coordY_Customer;
-
-    double unitHoldingCost_Plant;
-    vector<double> unitHoldingCost_Warehouse;
-    vector<double> unitHoldingCost_Customer;
-
-    double storageCapacity_Plant;
-    vector<double> storageCapacity_Warehouse;
-    vector<double> storageCapacity_Customer;
-
-    double initialInventory_Plant;
-    vector<double> initialInventory_Warehouse;
-    vector<double> initialInventory_Customer;
+    int scenarioIndex = -1;
 
     vector<double> unmetDemandPenalty;
-    vector<double> consumeRate;
     vector<vector<vector<double>>> demand;
     vector<double> probability;
 
-    vector<int> index_i_FirstEchelon;
-    vector<int> index_j_FirstEchelon;
-    vector<vector<int>> index_e_FirstEchelon;
+    vector<vector<vector<double>>> DeliveryUB_perCustomer;
+    vector<vector<double>> DeliveryUB;
+    
+    // Problem Parameters
+    int numNodes_Total, numNodes_FirstEchelon, numNodes_SecondEchelon, numEdges_FirstEchelon, numEdges_SecondEchelon;
+    int numVehicles_SecondEchelon;
 
+    int originalDimension, originalHorizon, originalVehicleCapacity;
+
+    double unitProdCost, setupCost;
+    double prodCapacity;
+    double vehicleCapacity_Plant, vehicleCapacity_Warehouse;
+
+    double coordX_Plant, coordY_Plant;
+    vector<double> coordX_Warehouse, coordY_Warehouse;
+    vector<double> coordX_Customer, coordY_Customer;
+
+    double unitHoldingCost_Plant;
+    vector<double> unitHoldingCost_Warehouse, unitHoldingCost_Customer;
+
+    double storageCapacity_Plant;
+    vector<double> storageCapacity_Warehouse, storageCapacity_Customer;
+
+    double initialInventory_Plant;
+    vector<double> initialInventory_Warehouse, initialInventory_Customer;
+
+    vector<double> consumeRate;
+
+    vector<int> index_i_FirstEchelon, index_j_FirstEchelon;
+    vector<vector<int>> index_e_FirstEchelon;
     vector<vector<double>> transportationCost_FirstEchelon;
 
-    vector<int> index_i_SecondEchelon;
-    vector<int> index_j_SecondEchelon;
+    vector<int> index_i_SecondEchelon, index_j_SecondEchelon;
     vector<vector<int>> index_e_SecondEchelon;
+    vector<vector<double>> transportationCost_SecondEchelon;
 
     vector<vector<int>> set_WarehouseVehicles;
 
-    vector<vector<double>> transportationCost_SecondEchelon;
+    // for deterministic case
+    vector<vector<double>> demand_Deterministic;
+    vector<vector<double>> DelUB_perCus_Det;
+    vector<double> DelUB_Det;
+    vector<double> unitHandlingCost_Satellite;
 
-    vector<vector<vector<double>>> DeliveryUB_perCustomer;
-    vector<vector<double>> DeliveryUB;
+    
 private:
     void initializeIndices();
     bool generateData();
@@ -118,6 +117,10 @@ private:
     void generateAllRoutes();
     void solveTSPForRoutes();
 
+    void calculateDeterministicDemand();
+    void calculateDeliveryUB_Deterministic();
+    void setSatelliteUnitHandlingCost();
+
     // Distribution functions
     double uniformDistribution(double min, double max, unsigned long int seed = 0);
     double normalDistribution(double mean, double sd, unsigned int seed);
@@ -130,6 +133,9 @@ private:
     vector<vector<int>> routeMatrix;
     vector<double> routeCosts;
     vector<vector<int>> optimalRoutes;
+
+    vector<vector<vector<int>>> customers_assigned_to_warehouse_det;
+    vector<vector<int>> warehouse_assigned_to_customer_det;
 };
 
 #endif // PROBLEMPARAMS_H

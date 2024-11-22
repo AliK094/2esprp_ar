@@ -19,7 +19,6 @@ bool Perturbation::run()
 	while (perturbIteration < max_perturb)
 	{
 		// cout << "Perturbation...: " << endl;
-
 		sol_SE_scenario_feasible = sol_SE_temp_scenario;
 		int index = rand() % perturbOperators.size();
 

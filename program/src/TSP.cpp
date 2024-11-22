@@ -69,12 +69,12 @@ bool TSP::solve()
         cplex.setParam(IloCplex::Param::Preprocessing::Presolve, IloFalse);
         cplex.setParam(IloCplex::Param::MIP::Strategy::Search, CPX_MIPSEARCH_TRADITIONAL);
         cplex.setParam(IloCplex::Param::Preprocessing::Reduce, 0);
-
-        // Set CPLEX parameters: No output or warnings
         cplex.setOut(env.getNullStream());
         cplex.setWarning(env.getNullStream());
 
         // Create an instance of the callback manager
+        // SEC_TSP LegacyCallback(env, numNodes, x);
+
         SEC_TSP LegacyCallback(env, x, numNodes, numEdges, index_i, index_j, index_e);
         cplex.use(&LegacyCallback);
 

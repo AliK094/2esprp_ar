@@ -8,7 +8,7 @@
 class MWPRP_FE
 {
 public:
-    MWPRP_FE(const ParameterSetting &parameters);
+    MWPRP_FE(const ParameterSetting &parameters, bool saveModel = false, bool saveSolution = false);
 
     bool Solve();
 
@@ -18,6 +18,8 @@ public:
     }
 
 private:
+    bool saveLP;
+    bool saveSol;
     double THRESHOLD;
 
     ParameterSetting params; // Member variable to hold the ParameterSetting object
@@ -44,8 +46,10 @@ private:
 
     vector<vector<vector<double>>> warehouseInventory;
 
-    bool save_lpFile;
-    bool save_mpsResultFile;
+    void configureCplex(IloCplex &cplex, IloEnv &env);
+    string handleCplexStatus(IloCplex &cplex, IloEnv &env, IloModel &model);
+    string generateFileName(const string &baseDir, const string &extension);
+    void refineConflict(IloCplex &cplex, IloEnv &env, IloModel &model);
 
     void DefineVariables(IloEnv &env, IloModel &model);
     void DefineObjectiveFunction(IloEnv &env, IloModel &model);

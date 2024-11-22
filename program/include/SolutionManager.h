@@ -6,29 +6,18 @@
 class SolutionManager
 {
 public:
-    SolutionManager(const ParameterSetting &parameters, const string solAlg);
+    SolutionManager(const ParameterSetting &parameters);
 
     void saveSolution(const SolutionFirstEchelon& solFE, const SolutionSecondEchelon &solSE);
     void saveResultSummary(const SolutionFirstEchelon &solFE, const SolutionSecondEchelon &solSE, const Result result);
     bool checkFeasibility();
 
-    void saveSolution_Deterministic(const SolutionFirstEchelon& solFE, 
-                                    const SolutionSecondEchelon_Deterministic &solSE,
-                                    const vector<vector<double>> &deterministicDemand,
-                                    bool shortageAllowed = true,
-                                    int scenarioIndex = -1);
-    bool checkFeasibility_Deterministic(bool shortageAllowed = true, int scenarioIndex = -1);
-    void saveResultSummary_Deterministic(const SolutionFirstEchelon &solFE, 
-                                         const SolutionSecondEchelon_Deterministic &solSE, 
-                                         const Result result,
-                                         bool shortageAllowed = true,
-                                         int scenarioIndex = -1);
-
-
+    void saveSolution_Deterministic(const SolutionFirstEchelon& solFE, const SolutionSecondEchelon_Deterministic &solSE, string solAlg);
+    bool checkFeasibility_Deterministic(string solAlg);
+    void saveResultSummary_Deterministic(const SolutionFirstEchelon &solFE, const SolutionSecondEchelon_Deterministic &solSE, const Result result, string solAlg);
 
 private:
     ParameterSetting params;
-    string Algorithm;
 };
 
 #endif // SOLUTIONMANAGER_H

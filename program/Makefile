@@ -36,8 +36,8 @@ SRCDIR := src
 BUILDDIR := build
 BINDIR := bin
 
-# Recursively find all .cpp files in src and subdirectories
-SOURCES := $(shell find $(SRCDIR) -type f -name '*.cpp')
+# List of source files and corresponding object files
+SOURCES := $(wildcard $(SRCDIR)/*.cpp)
 OBJECTS := $(patsubst $(SRCDIR)/%.cpp,$(BUILDDIR)/%.o,$(SOURCES))
 
 # Executable name
@@ -51,16 +51,9 @@ $(EXECUTABLE): $(OBJECTS)
 	$(CXX) $(CFLAGS) $^ -g -o $@ $(CLNDIRS) $(CLNFLAGS)
 
 # Build each object file from its corresponding source file
-$(BUILDDIR)/%.o: $(SRCDIR)/%.cpp | $(BUILDDIR)
-	@mkdir -p $(dir $@)  # Create build subdirectories as needed
+$(BUILDDIR)/%.o: $(SRCDIR)/%.cpp
 	$(CXX) -c $(CFLAGS) $< -g -o $@
-
-# Create build directory if it doesn't exist
-$(BUILDDIR):
-	mkdir -p $(BUILDDIR)
 
 # Clean the build directory
 clean:
 	rm -f $(BUILDDIR)/*.o $(EXECUTABLE)
-
-

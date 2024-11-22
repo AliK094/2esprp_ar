@@ -4,7 +4,7 @@ S2EPRP_BC::S2EPRP_BC(const ParameterSetting &parameters, const SolutionWarmStart
 	: params(parameters),
 	  warmStart(warmStartSol),
 	  THRESHOLD(1e-2),
-	  save_lpFile(false),
+	  save_lpFile(true),
 	  save_mpsResultFile(false)
 {
 	routeMatrix_FirstEchelon = params.getRouteMatrix();
@@ -25,13 +25,14 @@ bool S2EPRP_BC::Solve()
 
 		// Set CPLEX Parameters: (DISPLAY LEVEL(0,1,2,3,4), OPTIMALITY GAP, RUN TIME (SECS), THREADS, MEMORY (MB))
 		CplexParameterManager parameterManager(cplex);
-		parameterManager.setParameters(4, 1e-6, 3600, 20, 20000);
+		parameterManager.setParameters(4, 1e-6, 100, 8, 16000);
 		cplex.setParam(IloCplex::Param::Emphasis::MIP, 2);
 		cplex.setParam(IloCplex::Param::Conflict::Display, 2);
 
 		DefineVariables(env, model);
 		DefineObjectiveFunction(env, model);
 		DefineConstraints(env, model);
+		DefineValidInequalities(env, model);
 
 		/* Assure linear mappings between the presolved and original models */
 		cplex.setParam(IloCplex::Param::Preprocessing::Presolve, IloFalse);
@@ -69,7 +70,6 @@ bool S2EPRP_BC::Solve()
 		{
 			cout << "Couldn't Find A Solution For Warmstart" << endl;
 		}
-		DefineValidInequalities(env, model);
 
 		// Solve the model
 		cplex.solve();
@@ -1183,7 +1183,7 @@ void S2EPRP_BC::RetrieveSolutions(IloCplex &cplex)
 	// 			{
 	// 				if (visitedEdges_SecondEchelon[e][k][t][s] > 0)
 	// 				{
-	// 					cout << "x[" << params.index_i_SecondEchelon[e] << "][" << params.index_j_SecondEchelon[e] << "][" << k + 1 << "][" << t + 1 << "][" << s + 1 << "] = " << visitedEdges_SecondEchelon[e][k][t][s] << endl;
+	// 					cout << "x[" << params.index_i_SecondEchelon[e] + 1 << "][" << params.index_j_SecondEchelon[e] + 1 << "][" << k + 1 << "][" << t + 1 << "][" << s + 1 << "] = " << visitedEdges_SecondEchelon[e][k][t][s] << endl;
 	// 				}
 	// 			}
 	// 		}
@@ -1247,7 +1247,7 @@ void S2EPRP_BC::RetrieveSolutions(IloCplex &cplex)
 						// {
 						// 	if (visitedNodes_SecondEchelon[i][k][t][s] == 1)
 						// 	{
-						// 		routeSize++;
+						// 		// routeSize++;
 						// 		cout << "visitedNodes_SecondEchelon[" << i + 1 << "][" << k + 1 << "][" << t + 1 << "][" << s + 1 << "] = " << visitedNodes_SecondEchelon[i][k][t][s] << endl;
 						// 	}
 						// }
@@ -1566,7 +1566,7 @@ void S2EPRP_BC::DisplayRoutesWarehouseToCustomersVars()
 							{
 								cout << " -> ";
 							}
-							cout << *it;
+							cout << *it + 1;
 						}
 						cout << "]" << endl;
 					}
@@ -1580,6 +1580,8 @@ void S2EPRP_BC::DefineWarmStartSolution(IloEnv &env, IloCplex &cplex)
 {
 	IloNumVarArray startVar(env);
 	IloNumArray startVal(env);
+
+	cout << "Defining warm start solution..." << endl;
 
 	// Define warm start solution
 	// Production setup
@@ -1612,6 +1614,29 @@ void S2EPRP_BC::DefineWarmStartSolution(IloEnv &env, IloCplex &cplex)
 			startVal.add(o_warmStart[routeIndex][t]);
 		}
 	}
+
+	// for (int s = 0; s < params.numScenarios; ++s)
+	// {
+	// 	for (int w = 0; w < params.numWarehouses; ++w)
+	// 	{
+	// 		for (int t = 0; t < params.numPeriods; ++t)
+	// 		{
+	// 			for (int k = 0; k < params.numVehicles_Warehouse; k++)
+	// 			{
+	// 				int vehicleIndex = k + (w * params.numVehicles_Warehouse);
+	// 				vector<int> &route = warmStart.routesWarehouseToCustomer_WarmStart[s][w][t][k];
+	// 				if (!route.empty())
+	// 				{
+	// 					cout << "route[" << s + 1 << "][" << w + 1 << "][" << t + 1 << "][" << k + 1 << "] : [";
+	// 					for (auto it = route.begin(); it != route.end(); ++it)
+	// 					{
+	// 						cout << *it;
+	// 					}
+	// 				}
+	// 			}
+	// 		}
+	// 	}
+	// }
 
 	for (int s = 0; s < params.numScenarios; ++s)
 	{
