@@ -124,7 +124,6 @@ bool MWPRP_FE_Deterministic::Solve()
 			// DisplayWarehouseInventoryVars();
 			// DisplayFirstEchelonRouteVars();
 			// DisplayDeliveryQuantityToWarehousesVars();
-			
 		}
 
 		env.end();
@@ -146,7 +145,7 @@ void MWPRP_FE_Deterministic::configureCplex(IloCplex &cplex, IloEnv &env)
 {
 	// Set CPLEX Parameters: (DISPLAY LEVEL(0,1,2,3,4), OPTIMALITY GAP, RUN TIME (SECS), THREADS, MEMORY (MB))
 	CplexParameterManager parameterManager(cplex);
-	parameterManager.setParameters(4, 1e-6, 600, 8, 32000);
+	parameterManager.setParameters(2, params.MWPRP_FE_OptimalityGap, params.MWPRP_FE_TimeLimit, params.MWPRP_FE_NumThreads, params.MWPRP_FE_MemoryLimit);
 
 	cplex.setParam(IloCplex::Param::Emphasis::MIP, 2);
 	cplex.setParam(IloCplex::Param::Preprocessing::Presolve, IloFalse);
@@ -409,12 +408,12 @@ void MWPRP_FE_Deterministic::DefineConstraints(IloEnv &env, IloModel &model)
 	DefCons_VehicleCapacity_FirstEchelon(env, model);
 	DefCons_FleetSize_FirstEchelon(env, model);
 	DefCons_WarehouseVisit_FirstEchelon(env, model);
-	
+
 	if (params.problemType == "2EPRPCS")
 	{
 		DefCons_SatelliteInventoryBalance(env, model);
 	}
-	else 
+	else
 	{
 		DefCons_WarehouseInventoryCapacity(env, model);
 		DefCons_WarehouseInventoryBalance(env, model);
@@ -541,7 +540,7 @@ void MWPRP_FE_Deterministic::DefCons_WarehouseVisit_FirstEchelon(IloEnv &env, Il
 	for (int t = 0; t < params.numPeriods; ++t)
 	{
 		for (int w = 0; w < params.numWarehouses; ++w)
-			{
+		{
 			for (int routeInd = 0; routeInd < numRoutes_FirstEchelon; ++routeInd)
 			{
 				string constraintName = "WarehouseVisit(" + std::to_string(routeInd + 1) + "," + std::to_string(w + 1) + "," + std::to_string(t + 1) + ")";
@@ -549,8 +548,8 @@ void MWPRP_FE_Deterministic::DefCons_WarehouseVisit_FirstEchelon(IloEnv &env, Il
 				IloExpr expr(env);
 
 				expr += q[routeInd][w][t];
-				
-				expr -= o[routeInd][t] * routeMatrix_FirstEchelon[routeInd][w + 1] * params.storageCapacity_Warehouse[w] ;
+
+				expr -= o[routeInd][t] * routeMatrix_FirstEchelon[routeInd][w + 1] * params.storageCapacity_Warehouse[w];
 				IloConstraint warehouseVisitConstraint(expr <= 0);
 				expr.end();
 
@@ -607,7 +606,6 @@ void MWPRP_FE_Deterministic::DefCons_FleetSize_FirstEchelon(IloEnv &env, IloMode
 
 		model.add(fleetSizeConstraint).setName(constraintName.c_str());
 	}
-
 }
 
 void MWPRP_FE_Deterministic::DefCons_WarehouseInventoryCapacity(IloEnv &env, IloModel &model)
@@ -664,7 +662,7 @@ void MWPRP_FE_Deterministic::DefCons_WarehouseInventoryBalance(IloEnv &env, IloM
 			{
 				expr += I_warehouse[w][t];
 				expr += -b_warehouse[w][t];
-				
+
 				expr += -I_warehouse[w][t - 1];
 				for (int routeInd = 0; routeInd < numRoutes_FirstEchelon; ++routeInd)
 				{
@@ -715,7 +713,7 @@ void MWPRP_FE_Deterministic::RetrieveSolutions(IloCplex &cplex)
 	solFE.deliveryQuantityToWarehouse.assign(params.numWarehouses, vector<double>(params.numPeriods, 0.0));
 	solFE.routesPlantToWarehouse.assign(params.numPeriods, vector<vector<int>>(params.numVehicles_Plant, vector<int>()));
 	selectedRoute.assign(numRoutes_FirstEchelon, vector<int>(params.numPeriods, 0));
-	
+
 	for (int t = 0; t < params.numPeriods; ++t)
 	{
 		solFE.productionSetup[t] = cplex.getIntValue(y[t]);
@@ -737,18 +735,18 @@ void MWPRP_FE_Deterministic::RetrieveSolutions(IloCplex &cplex)
 		}
 	}
 
-	if (params.problemType != "2EPRPCS"){
+	if (params.problemType != "2EPRPCS")
+	{
 		warehouseInventory.assign(params.numWarehouses, vector<double>(params.numPeriods, 0.0));
 
 		for (int t = 0; t < params.numPeriods; ++t)
 		{
 			for (int w = 0; w < params.numWarehouses; ++w)
-			{	
+			{
 				warehouseInventory[w][t] = cplex.getValue(I_warehouse[w][t]);
 			}
 		}
 	}
-
 
 	for (int t = 0; t < params.numPeriods; ++t)
 	{
@@ -780,8 +778,9 @@ void MWPRP_FE_Deterministic::CalculateCostsForEachPart()
 		}
 	}
 	double totalCost_FE = solFE.setupCost + solFE.productionCost + solFE.holdingCostPlant + solFE.transportationCostPlantToWarehouse;
-	
-	if (params.problemType != "2EPRPCS"){
+
+	if (params.problemType != "2EPRPCS")
+	{
 		for (int t = 0; t < params.numPeriods; ++t)
 		{
 			for (int w = 0; w < params.numWarehouses; ++w)
@@ -790,7 +789,6 @@ void MWPRP_FE_Deterministic::CalculateCostsForEachPart()
 			}
 		}
 	}
-	
 
 	cout << "Setup Cost: " << solFE.setupCost << endl;
 	cout << "Production Cost: " << solFE.productionCost << endl;

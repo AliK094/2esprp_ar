@@ -76,12 +76,8 @@ bool Algorithms::solve_S2EPRP_HILS()
 	cout << "Initial Phase is finished." << endl;
 	printSolution();
 
-	// Handle unmet demand and optimize routes
-	double timeLimit = 7200.0;
-	const int maxIteration = 50;
-
 	int iter = 0;
-	while (iter < maxIteration && elapsedTime < timeLimit)
+	while (iter < params.HILS_MaxIteration && elapsedTime < params.HILS_TimeLimit)
 	{
 		cout << "-----------------------------------------------------------------" << endl;
 		cout << "Solving The Problem With Hybrid-ILS. Iteration: " << iter + 1 << endl;
@@ -482,7 +478,7 @@ void Algorithms::organizeSolution()
 			for (int t = 0; t < params.numPeriods; ++t)
 			{
 				// Step 1: Create a vector to store vehicles and their total delivery quantity
-				std::vector<std::pair<int, double>> vehicleDeliveryQuantities;
+				vector<std::pair<int, double>> vehicleDeliveryQuantities;
 
 				for (int k = 0; k < params.numVehicles_Warehouse; ++k)
 				{
@@ -491,7 +487,7 @@ void Algorithms::organizeSolution()
 					for (int i = 0; i < params.numCustomers; ++i)
 					{
 						int customerIndex = i + params.numWarehouses; // Adjust customer index
-						std::vector<int> &route = sol_SE_incumbent.routesWarehouseToCustomer[s][w][t][k];
+						vector<int> &route = sol_SE_incumbent.routesWarehouseToCustomer[s][w][t][k];
 						if (std::find(route.begin(), route.end(), customerIndex) != route.end())
 						{
 							totalDeliveryQuantity += sol_SE_incumbent.deliveryQuantityToCustomer[i][t][s];
@@ -508,7 +504,7 @@ void Algorithms::organizeSolution()
 						  });
 
 				// Step 3: Reorganize the solution based on the sorted vehicle indices
-				std::vector<std::vector<int>> sortedRoutes;
+				vector<vector<int>> sortedRoutes;
 				for (int sorted_k = 0; sorted_k < params.numVehicles_Warehouse; ++sorted_k)
 				{
 					int original_k = vehicleDeliveryQuantities[sorted_k].first;								 // Get the original vehicle index
@@ -535,8 +531,9 @@ bool Algorithms::solve_2EPRP()
 
 	cout << "Start Solving The " << params.problemType << endl;
 	cout << "-------------------------------------------------------------------" << endl;
-
 	solve_Deterministic_HILS();
+
+	cout << "Start Solving The " << params.problemType << " Using Branch-and-Cut" << endl;
 
 	SolutionWarmStart_Deterministic warmStart;
 
@@ -567,6 +564,14 @@ bool Algorithms::solve_2EPRP()
 	solMgr.saveResultSummary_Deterministic(sol_FE_incumbent_Deterministic,
 										   sol_SE_incumbent_Deterministic,
 										   result_incumbent_Deterministic, "BC");
+
+	// -----------------------------------------------------------------------------------------------------------------
+	SolutionManager solMgr_HPT(params);
+	Result result_HPT = result_incumbent_Deterministic;	
+	cout << "\nSave Sol for Hyper Parameter Tuning (BC): " << endl;
+	result_HPT.totalCPUTime = elapsedTime;
+	solMgr_HPT.saveOF_Iter_Deterministic(1, 0, result_HPT, "BC");
+	// -----------------------------------------------------------------------------------------------------------------
 
 	return true;
 }
@@ -733,7 +738,7 @@ bool Algorithms::solve_Deterministic_HILS(const SolutionFirstEchelon &sol_FE_EV)
 	}
 
 	// Run ILS for the second-echelon problem
-	if (!runILS_SE_Deterministic(sol_FE, sol_SE, result_temp))
+	if (!runILS_SE_Deterministic(sol_FE, sol_SE, result_temp, 0, startTime, true))
 	{
 		return EXIT_FAILURE;
 	}
@@ -742,12 +747,14 @@ bool Algorithms::solve_Deterministic_HILS(const SolutionFirstEchelon &sol_FE_EV)
 	cout << "Initial Phase is finished." << endl;
 	printSolution_Deterministic();
 
-	// Handle unmet demand and optimize routes
-	double timeLimit = 3600.0;
-	const int maxIteration = 20;
+
+	double prev_objValue_Total = result_incumbent_Deterministic.objValue_Total;
+	// we check whether the improvement is below 0.01% for more than maxNoImprovement iterations
+	int num_NoImprovement = 0;
+	double Tolerance = 1e-4;
 
 	int iter = 0;
-	while (iter < maxIteration && elapsedTime < timeLimit)
+	while (iter < params.HILS_MaxIteration)
 	{
 		cout << "-----------------------------------------------------------------" << endl;
 		cout << "Solving The Deterministic Problem With Hybrid-ILS. Iteration: " << iter + 1 << endl;
@@ -774,7 +781,7 @@ bool Algorithms::solve_Deterministic_HILS(const SolutionFirstEchelon &sol_FE_EV)
 			}
 		}
 
-		if (!runILS_SE_Deterministic(sol_FE, sol_SE, result_temp))
+		if (!runILS_SE_Deterministic(sol_FE, sol_SE, result_temp, iter + 1, startTime, true))
 		{
 			return EXIT_FAILURE;
 		}
@@ -785,7 +792,24 @@ bool Algorithms::solve_Deterministic_HILS(const SolutionFirstEchelon &sol_FE_EV)
 		currentTime = std::chrono::high_resolution_clock::now();
 		elapsedTime = std::chrono::duration_cast<std::chrono::duration<double>>(currentTime - startTime).count();
 		cout << "Computation Time (Hybrid-ILS) after iteration: " << iter + 1 << " = " << elapsedTime << " seconds" << endl;
+
+		if (result_incumbent_Deterministic.objValue_Total < prev_objValue_Total - Tolerance)
+		{
+			num_NoImprovement = 0;
+			prev_objValue_Total = result_incumbent_Deterministic.objValue_Total;
+		}
+		else 
+		{
+			num_NoImprovement++;
+		}
+
 		iter++;
+
+		// check stopping criteria
+		if (elapsedTime >= params.HILS_TimeLimit || num_NoImprovement >= params.HILS_MaxNoImprovement)
+		{
+			break;
+		}
 	}
 
 	result_incumbent_Deterministic.totalCPUTime = elapsedTime;
@@ -806,6 +830,8 @@ bool Algorithms::solve_Deterministic_HILS(const SolutionFirstEchelon &sol_FE_EV)
 										   result_incumbent_Deterministic,
 										   "Hybrid-ILS");
 
+	cout << "\n\n\n\n" << endl;
+
 	return true;
 }
 
@@ -822,9 +848,11 @@ bool Algorithms::solveFirstEchelon_Deterministic(SolutionFirstEchelon &solFE)
 	return true;
 }
 
-bool Algorithms::runILS_SE_Deterministic(SolutionFirstEchelon &solFE_current, SolutionSecondEchelon_Deterministic &solSE_current, Result &result_current)
+bool Algorithms::runILS_SE_Deterministic(SolutionFirstEchelon &solFE_current, SolutionSecondEchelon_Deterministic &solSE_current, Result &result_current,
+										int iter, std::chrono::high_resolution_clock::time_point startTime, bool savePerIterSol)
 {
-	ILS_SIRP_Deterministic ils_SIRP_det(params, solFE_current, solSE_current);
+	cout << "HHA Iteration: " << iter + 1 << endl;
+	ILS_SIRP_Deterministic ils_SIRP_det(params, solFE_current, solSE_current, iter, startTime, savePerIterSol);
 	if (!ils_SIRP_det.run())
 	{
 		return false;
@@ -1097,7 +1125,7 @@ void Algorithms::organizeSolution_Deterministic()
 		for (int t = 0; t < params.numPeriods; ++t)
 		{
 			// Step 1: Create a vector to store vehicles and their total delivery quantity
-			std::vector<std::pair<int, double>> vehicleDeliveryQuantities;
+			vector<std::pair<int, double>> vehicleDeliveryQuantities;
 
 			for (int k = 0; k < params.numVehicles_Warehouse; ++k)
 			{
@@ -1106,7 +1134,7 @@ void Algorithms::organizeSolution_Deterministic()
 				for (int i = 0; i < params.numCustomers; ++i)
 				{
 					int customerIndex = i + params.numWarehouses; // Adjust customer index
-					std::vector<int> &route = sol_SE_incumbent_Deterministic.routesWarehouseToCustomer[w][t][k];
+					vector<int> &route = sol_SE_incumbent_Deterministic.routesWarehouseToCustomer[w][t][k];
 					if (std::find(route.begin(), route.end(), customerIndex) != route.end())
 					{
 						totalDeliveryQuantity += sol_SE_incumbent_Deterministic.deliveryQuantityToCustomer[i][t];
@@ -1123,7 +1151,7 @@ void Algorithms::organizeSolution_Deterministic()
 					  });
 
 			// Step 3: Reorganize the solution based on the sorted vehicle indices
-			std::vector<std::vector<int>> sortedRoutes;
+			vector<vector<int>> sortedRoutes;
 			for (int sorted_k = 0; sorted_k < params.numVehicles_Warehouse; ++sorted_k)
 			{
 				int original_k = vehicleDeliveryQuantities[sorted_k].first;											// Get the original vehicle index
@@ -1134,6 +1162,36 @@ void Algorithms::organizeSolution_Deterministic()
 			for (int k = 0; k < params.numVehicles_Warehouse; ++k)
 			{
 				sol_SE_incumbent_Deterministic.routesWarehouseToCustomer[w][t][k] = sortedRoutes[k];
+			}
+		}
+	}
+
+	// Turn all customers assignment to warehouses if there is no delivery to the customer
+	for (int i = 0; i < params.numCustomers; ++i)
+	{
+		for (int t = 0; t < params.numPeriods; ++t)
+		{
+			for (int w = 0; w < params.numWarehouses; ++w)
+			{
+				if (sol_SE_incumbent_Deterministic.customerAssignmentToWarehouse[t][w][i] == 1)
+				{
+					bool customerVisited = false;
+					for (int k = 0; k < params.numVehicles_Warehouse; ++k)
+					{
+						int customerIndex = i + params.numWarehouses; // Adjust customer index
+						vector<int> &route = sol_SE_incumbent_Deterministic.routesWarehouseToCustomer[w][t][k];
+						if (std::find(route.begin(), route.end(), customerIndex) != route.end())
+						{
+							customerVisited = true;
+							break;
+						}
+					}
+
+					if (customerVisited == false)
+					{
+						sol_SE_incumbent_Deterministic.customerAssignmentToWarehouse[t][w][i] = 0;
+					}
+				}
 			}
 		}
 	}

@@ -2,10 +2,16 @@
 
 ILS_SIRP_Deterministic::ILS_SIRP_Deterministic(const ParameterSetting &parameters, 
 	const SolutionFirstEchelon &sol_FE, 
-	const SolutionSecondEchelon_Deterministic &sol_SE_Deterministic)
+	const SolutionSecondEchelon_Deterministic &sol_SE_Deterministic,
+	int HHA_iter,
+	std::chrono::high_resolution_clock::time_point startTime_HHA,
+	bool savePerIterSol)
 	: params(parameters),
 	  sol_FE(sol_FE),
-	  sol_SE(sol_SE_Deterministic)
+	  sol_SE(sol_SE_Deterministic),
+	  HHA_iter(HHA_iter),
+	  startTime_HHA(startTime_HHA),
+	  savePerIterSol(savePerIterSol)
 {
 	// Initialize random seed
 	srand(static_cast<unsigned int>(time(NULL)));
@@ -13,15 +19,13 @@ ILS_SIRP_Deterministic::ILS_SIRP_Deterministic(const ParameterSetting &parameter
 	Tolerance = 1e-6;
 	cout << "\nILS (Deterministic)..."
 		 << endl;
-
-	if (params.problemType == "EV" || params.problemType == "EEV" || params.problemType == "WS")
-		shortageAllowed = true;
 }
 
 bool ILS_SIRP_Deterministic::run()
 {
 	// Start the timer
 	auto startTime_ILS = std::chrono::high_resolution_clock::now();
+	auto currentTime_ILS = std::chrono::high_resolution_clock::now();
 	auto elapsedTime_ILS = 0.0;
 
 	SolutionFirstEchelon sol_FE_temp = sol_FE;
@@ -76,17 +80,37 @@ bool ILS_SIRP_Deterministic::run()
 	sol_SE_incumbent = sol_SE_temp;
 	result_incumbent = result_temp;
 
+	// -----------------------------------------------------------------------------------------------------------------
+	SolutionManager solMgr_HPT(params);
+	auto currentTime_HHA = std::chrono::high_resolution_clock::now();
+	double elapsedTime_HHA;
+	Result result_HPT;
+	if (savePerIterSol)
+	{
+		cout << "\nCurrent Solution For HHA Iteration " << HHA_iter << " And ILS Iteration " << 0 << endl;
+		currentTime_HHA = std::chrono::high_resolution_clock::now();
+		elapsedTime_HHA = std::chrono::duration_cast<std::chrono::duration<double>>(currentTime_HHA - startTime_HHA).count();
+		cout << "Computation Time (Hybrid-ILS) = " << elapsedTime_HHA << " seconds" << endl;
+		result_HPT.objValue_firstEchelon = sol_FE_incumbent.setupCost +  sol_FE_incumbent.productionCost + 
+										sol_FE_incumbent.holdingCostPlant + sol_FE_incumbent.transportationCostPlantToWarehouse;
+		result_HPT.objValue_secondEchelon = sol_SE_incumbent.holdingCostWarehouse + sol_SE_incumbent.holdingCostCustomer + 
+											sol_SE_incumbent.transportationCostWarehouseToCustomer + sol_SE_incumbent.costOfUnmetDemand +
+											sol_SE_incumbent.handlingCostSatellite;
+		result_HPT.objValue_Total = result_HPT.objValue_firstEchelon + result_HPT.objValue_secondEchelon;
+		result_HPT.totalCPUTime = elapsedTime_HHA;
+		solMgr_HPT.saveOF_Iter_Deterministic(HHA_iter, 0, result_HPT, "Hybrid-ILS");
+	}
+	// -----------------------------------------------------------------------------------------------------------------
+
 	cout << "\nRun ILS..." << endl;
 
 	// Initialize ILS for a specific Scenario
-	const int maxIterILS = 20;
 	int numIterILS = 0;
 	bool stop = false;
-	auto maxTime_ILS = 120.0;
 	
 	double best_objValue = result_incumbent.objValue_Total;
 	double objValue = best_objValue;
-	while (!stop && numIterILS < maxIterILS && elapsedTime_ILS < maxTime_ILS)
+	while (!stop)
 	{
 		sol_FE_temp = sol_FE_incumbent;
 		sol_SE_temp = sol_SE_incumbent;
@@ -102,12 +126,12 @@ bool ILS_SIRP_Deterministic::run()
 			if (!perturbSuccess)
 			{
 				stop = true;
+				break;
 			}
 			
 			if (params.problemType != "EEV"){
 				sol_FE_temp = perturb.getSolutionFE();
 			}
-
 			sol_SE_temp = perturb.getSolutionSE();
 			objValue = perturb.getObjVal();
 		}
@@ -129,10 +153,40 @@ bool ILS_SIRP_Deterministic::run()
 			sol_SE_incumbent = ls.getSolutionSE();
 		}
 
+		// -----------------------------------------------------------------------------------------------------------------
+		if (savePerIterSol)
+		{
+			cout << "\nCurrent Solution For HHA Iteration " << HHA_iter << " And ILS Iteration " << numIterILS + 1 << endl;
+			currentTime_HHA = std::chrono::high_resolution_clock::now();
+			elapsedTime_HHA = std::chrono::duration_cast<std::chrono::duration<double>>(currentTime_HHA - startTime_HHA).count();
+			cout << "Computation Time (Hybrid-ILS) = " << elapsedTime_HHA << " seconds" << endl;
+			result_HPT.objValue_firstEchelon = sol_FE_incumbent.setupCost +  sol_FE_incumbent.productionCost + 
+											sol_FE_incumbent.holdingCostPlant + sol_FE_incumbent.transportationCostPlantToWarehouse;
+			result_HPT.objValue_secondEchelon = sol_SE_incumbent.holdingCostWarehouse + sol_SE_incumbent.holdingCostCustomer + 
+												sol_SE_incumbent.transportationCostWarehouseToCustomer + sol_SE_incumbent.costOfUnmetDemand +
+												sol_SE_incumbent.handlingCostSatellite;
+			result_HPT.objValue_Total = result_HPT.objValue_firstEchelon + result_HPT.objValue_secondEchelon;
+			cout << "Objective Value = " << result_HPT.objValue_Total << endl;
+
+			result_HPT.totalCPUTime = elapsedTime_HHA;
+			solMgr_HPT.saveOF_Iter_Deterministic(HHA_iter, numIterILS + 1, result_HPT, "Hybrid-ILS");
+		}
+		// -----------------------------------------------------------------------------------------------------------------
+
 		numIterILS++;
 
-		auto currentTime_ILS = std::chrono::high_resolution_clock::now();
+		currentTime_ILS = std::chrono::high_resolution_clock::now();
 		elapsedTime_ILS = std::chrono::duration_cast<std::chrono::duration<double>>(currentTime_ILS - startTime_ILS).count();
+
+		// check stopping Criteria
+		if (elapsedTime_ILS > params.ILS_TimeLimit)
+		{
+			stop = true;
+		}
+		else if (numIterILS >= params.ILS_MaxIteration)
+		{
+			stop = true;
+		}
 	}
 
 	// ----------------------------------------------------------------------------------------------------------
@@ -160,7 +214,7 @@ bool ILS_SIRP_Deterministic::run()
 
 	cout << "Best Objective Function Value: " << std::setprecision(1) << std::fixed << result_incumbent.objValue_Total << endl;
 
-	auto currentTime_ILS = std::chrono::high_resolution_clock::now();
+	currentTime_ILS = std::chrono::high_resolution_clock::now();
 	elapsedTime_ILS = std::chrono::duration_cast<std::chrono::duration<double>>(currentTime_ILS - startTime_ILS).count();
 	cout << "Total TIME ILS (Second Echelon): " << std::setprecision(3) << std::fixed << elapsedTime_ILS << endl;
 	result_incumbent.totalCPUTime = elapsedTime_ILS;

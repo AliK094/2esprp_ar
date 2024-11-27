@@ -13,10 +13,16 @@ void SolutionManager::saveSolution(const SolutionFirstEchelon &solFE, const Solu
     {
         cout << "Saving solution for " << params.problemType << " with " << params.solutionAlgorithm << "..." << endl;
         // Construct the directory path
-        directory = "../Results/Solutions/" + params.problemType + "/" + params.solutionAlgorithm + "/" + params.probabilityFunction + "/S" + std::to_string(params.numScenarios);
+        directory = "../Results/Solutions/" + params.problemType + "/" + params.solutionAlgorithm + "/" + 
+                                            params.probabilityFunction + "/S" + std::to_string(params.numScenarios) + 
+                                            "/UR" + std::to_string(static_cast<int>(params.uncertaintyRange * 100)) + "%" + 
+                                            "/PC" + std::to_string(static_cast<int>(params.unmetDemandPenaltyCoeff));
 
         // Construct the filename
-        filename = "Sol_" + params.problemType + "_" + params.solutionAlgorithm + "_" + params.probabilityFunction + "_" + params.instance + "_S" + std::to_string(params.numScenarios) + "_UR" + std::to_string(static_cast<int>(params.uncertaintyRange * 100)) + "%" + "_PC" + std::to_string(static_cast<int>(params.unmetDemandPenaltyCoeff)) + ".txt";
+        filename = "Sol_" + params.problemType + "_" + params.solutionAlgorithm + "_" + 
+                            params.probabilityFunction + "_" + params.instance + "_S" + std::to_string(params.numScenarios) + 
+                            "_UR" + std::to_string(static_cast<int>(params.uncertaintyRange * 100)) + "%" + 
+                            "_PC" + std::to_string(static_cast<int>(params.unmetDemandPenaltyCoeff)) + ".txt";
     }
     else
     {
@@ -343,7 +349,7 @@ bool SolutionManager::checkFeasibility()
     {
         cout << "Check Feasibility for " << params.problemType << " and solutionAlgorithm: " << params.solutionAlgorithm << "..." << endl;
         // Construct the directory path
-        directory = "../Results/Solutions/" + params.problemType + "/" + params.solutionAlgorithm + "/" + params.probabilityFunction + "/S" + std::to_string(params.numScenarios);
+        directory = "../Results/Solutions/" + params.problemType + "/" + params.solutionAlgorithm + "/" + params.probabilityFunction + "/S" + std::to_string(params.numScenarios) + "/UR" + std::to_string(static_cast<int>(params.uncertaintyRange * 100)) + "%" + "/PC" + std::to_string(static_cast<int>(params.unmetDemandPenaltyCoeff));
 
         // Construct the filename
         filename = "Sol_" + params.problemType + "_" + params.solutionAlgorithm + "_" + params.probabilityFunction + "_" + params.instance + "_S" + std::to_string(params.numScenarios) + "_UR" + std::to_string(static_cast<int>(params.uncertaintyRange * 100)) + "%" + "_PC" + std::to_string(static_cast<int>(params.unmetDemandPenaltyCoeff)) + ".txt";
@@ -426,12 +432,14 @@ void SolutionManager::saveResultSummary(const SolutionFirstEchelon &solFE, const
         return;
     }
 
-    string directory;
-    string filename;
+    string directory, filename;
     if (params.solutionAlgorithm == "Hybrid-ILS" || params.solutionAlgorithm == "BC")
     {
         // Construct the directory path
-        directory = "../Results/Summary/" + params.problemType + "/" + params.solutionAlgorithm;
+        directory = "../Results/Summary/" + params.problemType + "/" + params.solutionAlgorithm + "/" +
+                    params.probabilityFunction + "/S" + std::to_string(params.numScenarios) + "/UR" +
+                    std::to_string(static_cast<int>(params.uncertaintyRange * 100)) + "%" +
+                    "/PC" + std::to_string(static_cast<int>(params.unmetDemandPenaltyCoeff));
         filename = "Sol_" + params.problemType + "_" + params.solutionAlgorithm + "_" + params.probabilityFunction + ".csv";
     }
     else
@@ -451,83 +459,80 @@ void SolutionManager::saveResultSummary(const SolutionFirstEchelon &solFE, const
     string fullPath = directory + "/" + filename;
 
     // Check if the file exists
-    std::ifstream fileCheck(fullPath);
-    bool fileExists = fileCheck.is_open();
-    fileCheck.close();
-    if (!fileExists)
+    // Open the file
+    std::ofstream outFile(fullPath, std::ios_base::app); // Open for appending
+    if (!outFile.is_open())
     {
-        std::ofstream outFile(fullPath);
-        if (outFile.is_open())
-        {
-            if (params.solutionAlgorithm == "Hybrid-ILS")
-            {
-                outFile << "Instance,NumWarehouses,NumCustomers,NumPeriods,NumScenarios,NumVehicles_Plant,NumVehicles_Warehouse,"
-                           "UnmetDemandPenaltyCoeff,ProbabilityFunction,UncertaintyRange,ObjectiveValue_FirstEchelon,"
-                           "ObjectiveValue_SecondEchelon,ObjectiveValue_Total,TotalCPUTime,"
-                           "SetupCost,ProductionCost,HoldingCostPlant,TransportationCostPlantToWarehouse,"
-                           "Avg_HoldingCostWarehouse,Avg_HoldingCostCustomer,Avg_ShortageCost,"
-                           "Avg_TransportationCostWarehouseToCustomer\n";
-                outFile.close();
-            }
-            else if (params.solutionAlgorithm == "BC")
-            {
-                outFile << "Instance,NumWarehouses,NumCustomers,NumPeriods,NumScenarios,NumVehicles_Plant,NumVehicles_Warehouse,"
-                           "UnmetDemandPenaltyCoeff,ProbabilityFunction,UncertaintyRange,ObjectiveValue_FirstEchelon,"
-                           "ObjectiveValue_SecondEchelon,ObjectiveValue_Total,TotalCPUTime,Status,LowerBound,OptimalityGap,"
-                           "SetupCost,ProductionCost,HoldingCostPlant,TransportationCostPlantToWarehouse,"
-                           "Avg_HoldingCostWarehouse,Avg_HoldingCostCustomer,Avg_ShortageCost,"
-                           "Avg_TransportationCostWarehouseToCustomer\n";
-                outFile.close();
-            }
-            cout << "File created: " << fullPath << endl;
-        }
-        else
-        {
-            cerr << "Failed to create the file." << endl;
-        }
+        cerr << "Error opening file: " << fullPath << endl;
+        return;
     }
 
-    // Save the summary of the results
-    std::ofstream file_summary;
-    file_summary.open(fullPath, std::ios::out | std::ios::app);
+    // Check if the file is empty (to write headers)
+    std::ifstream checkFile(fullPath);
+    bool fileIsEmpty = (checkFile.peek() == std::ifstream::traits_type::eof());
+    checkFile.close();
 
-    if (file_summary.is_open())
+    // If the file does not exist, create it and write the header
+    if (fileIsEmpty)
+    {
+        if (params.solutionAlgorithm == "Hybrid-ILS")
+        {
+            outFile << "Instance,NumWarehouses,NumCustomers,NumPeriods,NumScenarios,NumVehicles_Plant,NumVehicles_Warehouse,"
+                       "UnmetDemandPenaltyCoeff,ProbabilityFunction,UncertaintyRange,ObjectiveValue_FirstEchelon,"
+                       "ObjectiveValue_SecondEchelon,ObjectiveValue_Total,TotalCPUTime,"
+                       "SetupCost,ProductionCost,HoldingCostPlant,TransportationCostPlantToWarehouse,"
+                       "Avg_HoldingCostWarehouse,Avg_HoldingCostCustomer,Avg_ShortageCost,"
+                       "Avg_TransportationCostWarehouseToCustomer\n";
+        }
+        else if (params.solutionAlgorithm == "BC")
+        {
+            outFile << "Instance,NumWarehouses,NumCustomers,NumPeriods,NumScenarios,NumVehicles_Plant,NumVehicles_Warehouse,"
+                       "UnmetDemandPenaltyCoeff,ProbabilityFunction,UncertaintyRange,ObjectiveValue_FirstEchelon,"
+                       "ObjectiveValue_SecondEchelon,ObjectiveValue_Total,TotalCPUTime,Status,LowerBound,OptimalityGap,"
+                       "SetupCost,ProductionCost,HoldingCostPlant,TransportationCostPlantToWarehouse,"
+                       "Avg_HoldingCostWarehouse,Avg_HoldingCostCustomer,Avg_ShortageCost,"
+                       "Avg_TransportationCostWarehouseToCustomer\n";
+        }
+        cout << "File created: " << fullPath << endl;
+    }
+
+    if (outFile.is_open())
     {
         // Write Parameters
-        file_summary << params.instance.c_str() << ",";
-        file_summary << params.numWarehouses << ",";
-        file_summary << params.numCustomers << ",";
-        file_summary << params.numPeriods << ",";
-        file_summary << params.numScenarios << ",";
-        file_summary << params.numVehicles_Plant << ",";
-        file_summary << params.numVehicles_Warehouse << ",";
-        file_summary << params.unmetDemandPenaltyCoeff << ",";
-        file_summary << params.probabilityFunction << ",";
-        file_summary << params.uncertaintyRange * 100 << "%,";
+        outFile << params.instance.c_str() << ",";
+        outFile << params.numWarehouses << ",";
+        outFile << params.numCustomers << ",";
+        outFile << params.numPeriods << ",";
+        outFile << params.numScenarios << ",";
+        outFile << params.numVehicles_Plant << ",";
+        outFile << params.numVehicles_Warehouse << ",";
+        outFile << params.unmetDemandPenaltyCoeff << ",";
+        outFile << params.probabilityFunction << ",";
+        outFile << params.uncertaintyRange * 100 << "%,";
 
-        file_summary << std::fixed << std::setprecision(1) << result.objValue_firstEchelon << ",";
-        file_summary << std::fixed << std::setprecision(1) << result.objValue_secondEchelon << ",";
-        file_summary << std::fixed << std::setprecision(1) << result.objValue_Total << ",";
-        file_summary << std::fixed << std::setprecision(3) << result.totalCPUTime << ",";
+        outFile << std::fixed << std::setprecision(1) << result.objValue_firstEchelon << ",";
+        outFile << std::fixed << std::setprecision(1) << result.objValue_secondEchelon << ",";
+        outFile << std::fixed << std::setprecision(1) << result.objValue_Total << ",";
+        outFile << std::fixed << std::setprecision(3) << result.totalCPUTime << ",";
 
         if (params.solutionAlgorithm == "BC")
         {
-            file_summary << result.status << ",";
-            file_summary << std::fixed << std::setprecision(1) << result.lowerBound << ",";
-            file_summary << std::fixed << std::setprecision(2) << result.optimalityGap << "%,";
+            outFile << result.status << ",";
+            outFile << std::fixed << std::setprecision(1) << result.lowerBound << ",";
+            outFile << std::fixed << std::setprecision(2) << result.optimalityGap << "%,";
         }
 
-        file_summary << std::fixed << std::setprecision(1) << solFE.setupCost << ",";
-        file_summary << std::fixed << std::setprecision(1) << solFE.productionCost << ",";
-        file_summary << std::fixed << std::setprecision(1) << solFE.holdingCostPlant << ",";
-        file_summary << std::fixed << std::setprecision(1) << solFE.transportationCostPlantToWarehouse << ",";
+        outFile << std::fixed << std::setprecision(1) << solFE.setupCost << ",";
+        outFile << std::fixed << std::setprecision(1) << solFE.productionCost << ",";
+        outFile << std::fixed << std::setprecision(1) << solFE.holdingCostPlant << ",";
+        outFile << std::fixed << std::setprecision(1) << solFE.transportationCostPlantToWarehouse << ",";
 
-        file_summary << std::fixed << std::setprecision(1) << solSE.holdingCostWarehouse_Avg << ",";
-        file_summary << std::fixed << std::setprecision(1) << solSE.holdingCostCustomer_Avg << ",";
-        file_summary << std::fixed << std::setprecision(1) << solSE.costOfUnmetDemand_Avg << ",";
-        file_summary << std::fixed << std::setprecision(1) << solSE.transportationCostWarehouseToCustomer_Avg << endl;
+        outFile << std::fixed << std::setprecision(1) << solSE.holdingCostWarehouse_Avg << ",";
+        outFile << std::fixed << std::setprecision(1) << solSE.holdingCostCustomer_Avg << ",";
+        outFile << std::fixed << std::setprecision(1) << solSE.costOfUnmetDemand_Avg << ",";
+        outFile << std::fixed << std::setprecision(1) << solSE.transportationCostWarehouseToCustomer_Avg << endl;
 
-        file_summary.close();
+        outFile.close();
         cout << "results summary appended successfully." << endl;
     }
     else
@@ -553,7 +558,7 @@ void SolutionManager::saveSolution_Deterministic(const SolutionFirstEchelon &sol
         if (params.problemType == "EV")
         {
             // Construct the directory path
-            directory = "../Results/Solutions/S2EPRP-AR/SolEvaluation/" + params.problemType + "/" + solAlg + "/" + params.probabilityFunction + "/S" + std::to_string(params.numScenarios);
+            directory = "../Results/Solutions/S2EPRP-AR/SolEvaluation/" + params.problemType + "/" + solAlg + "/" + params.probabilityFunction + "/S" + std::to_string(params.numScenarios) + "/UR" + std::to_string(static_cast<int>(params.uncertaintyRange * 100)) + "%" + "/PC" + std::to_string(static_cast<int>(params.unmetDemandPenaltyCoeff));
 
             // Construct the filename
             filename = "Sol_S2EPRP-AR_" + params.problemType + "_" + solAlg + "_" + params.probabilityFunction + "_" + params.instance + "_S" + std::to_string(params.numScenarios) + "_UR" + std::to_string(static_cast<int>(params.uncertaintyRange * 100)) + "%" + "_PC" + std::to_string(static_cast<int>(params.unmetDemandPenaltyCoeff)) + ".txt";
@@ -575,7 +580,7 @@ void SolutionManager::saveSolution_Deterministic(const SolutionFirstEchelon &sol
         else if (params.problemType == "2EPRP" || params.problemType == "2EPRPCS")
         {
             // Construct the directory path
-            directory = "../Results/Solutions/" + params.problemType + "/" + solAlg;
+            directory = "../Results/Solutions/" + params.problemType + "/Preliminary_Test06" + "/" + solAlg;
 
             // Construct the filename
             filename = "Sol_" + params.problemType + "_" + solAlg + "_" + params.instance + ".txt";
@@ -910,7 +915,7 @@ bool SolutionManager::checkFeasibility_Deterministic(string solAlg)
     cout << "Checking feasibility for " << params.problemType << " and Solution Algorithm " << solAlg << "..." << endl;
     if (params.problemType == "EV")
     {
-        directory = "../Results/Solutions/S2EPRP-AR/SolEvaluation/" + params.problemType + "/" + solAlg + "/" + params.probabilityFunction + "/S" + std::to_string(params.numScenarios);
+        directory = "../Results/Solutions/S2EPRP-AR/SolEvaluation/" + params.problemType + "/" + solAlg + "/" + params.probabilityFunction + "/S" + std::to_string(params.numScenarios) + "/UR" + std::to_string(static_cast<int>(params.uncertaintyRange * 100)) + "%" + "/PC" + std::to_string(static_cast<int>(params.unmetDemandPenaltyCoeff));
 
         // Construct the filename
         filename = "Sol_S2EPRP-AR_" + params.problemType + "_" + solAlg + "_" + params.probabilityFunction + "_" + params.instance + "_S" + std::to_string(params.numScenarios) + "_UR" + std::to_string(static_cast<int>(params.uncertaintyRange * 100)) + "%" + "_PC" + std::to_string(static_cast<int>(params.unmetDemandPenaltyCoeff)) + ".txt";
@@ -924,7 +929,7 @@ bool SolutionManager::checkFeasibility_Deterministic(string solAlg)
     }
     else if (params.problemType == "2EPRP" || params.problemType == "2EPRPCS")
     {
-        directory = "../Results/Solutions/" + params.problemType + "/" + solAlg;
+        directory = "../Results/Solutions/" + params.problemType + "/Preliminary_Test06" + "/" + solAlg;
 
         // Construct the filename
         filename = "Sol_" + params.problemType + "_" + solAlg + "_" + params.instance + ".txt";
@@ -1002,13 +1007,16 @@ void SolutionManager::saveResultSummary_Deterministic(const SolutionFirstEchelon
                                                       const Result result,
                                                       string solAlg)
 {
-    string directory;
-    string filename;
+    string directory, filename;
     cout << "Save Solution Summary for " << params.problemType << " and Solution Algorithm " << solAlg << "..." << endl;
+
     if (params.problemType == "EV")
     {
         // Construct the directory path
-        directory = "../Results/Summary/S2EPRP-AR/SolEvaluation/" + params.problemType + "/" + solAlg + "/" + params.probabilityFunction + "/S" + std::to_string(params.numScenarios) + "/UR" + std::to_string(static_cast<int>(params.uncertaintyRange * 100)) + "%" + "/" + params.instance + "/PC" + std::to_string(static_cast<int>(params.unmetDemandPenaltyCoeff));
+        directory = "../Results/Summary/S2EPRP-AR/SolEvaluation/" + params.problemType + "/" + solAlg + "/" +
+                    params.probabilityFunction + "/S" + std::to_string(params.numScenarios) + "/UR" +
+                    std::to_string(static_cast<int>(params.uncertaintyRange * 100)) + "%" + "/" +
+                    params.instance + "/PC" + std::to_string(static_cast<int>(params.unmetDemandPenaltyCoeff));
         filename = "Sol_" + params.problemType + "_" + solAlg + "_" + params.instance + ".csv";
     }
     else if (params.problemType == "WS" || params.problemType == "EEV")
@@ -1019,12 +1027,15 @@ void SolutionManager::saveResultSummary_Deterministic(const SolutionFirstEchelon
             exit(1);
         }
 
-        directory = "../Results/Summary/S2EPRP-AR/SolEvaluation/" + params.problemType + "/" + solAlg + "/" + params.probabilityFunction + "/S" + std::to_string(params.numScenarios) + "/UR" + std::to_string(static_cast<int>(params.uncertaintyRange * 100)) + "%" + "/" + params.instance + "/PC" + std::to_string(static_cast<int>(params.unmetDemandPenaltyCoeff));
+        directory = "../Results/Summary/S2EPRP-AR/SolEvaluation/" + params.problemType + "/" + solAlg + "/" +
+                    params.probabilityFunction + "/S" + std::to_string(params.numScenarios) + "/UR" +
+                    std::to_string(static_cast<int>(params.uncertaintyRange * 100)) + "%" + "/" +
+                    params.instance + "/PC" + std::to_string(static_cast<int>(params.unmetDemandPenaltyCoeff));
         filename = "Sol_" + params.problemType + "_" + solAlg + "_" + params.instance + "_S" + std::to_string(params.numScenarios) + ".csv";
     }
     else if (params.problemType == "2EPRP" || params.problemType == "2EPRPCS")
     {
-        directory = "../Results/Summary/" + params.problemType + "/" + solAlg;
+        directory = "../Results/Summary/" + params.problemType + "/Preliminary_Test06" + "/" + solAlg;
         filename = "Sol_" + params.problemType + "_" + solAlg + ".csv";
     }
     else
@@ -1044,177 +1055,241 @@ void SolutionManager::saveResultSummary_Deterministic(const SolutionFirstEchelon
     string fullPath = directory + "/" + filename;
 
     // Check if the file exists
-    std::ifstream fileCheck(fullPath);
-    bool fileExists = fileCheck.is_open();
-    fileCheck.close();
+    // Open the file
+    std::ofstream outFile(fullPath, std::ios_base::app); // Open for appending
+    if (!outFile.is_open())
+    {
+        cerr << "Error opening file: " << fullPath << endl;
+        return;
+    }
+
+    // Check if the file is empty (to write headers)
+    std::ifstream checkFile(fullPath);
+    bool fileIsEmpty = (checkFile.peek() == std::ifstream::traits_type::eof());
+    checkFile.close();
 
     // If the file does not exist, create it and write the header
-    if (!fileExists)
+    if (fileIsEmpty)
     {
-        std::ofstream outFile(fullPath);
-        if (outFile.is_open())
+        if (solAlg == "Hybrid-ILS")
         {
-            if (solAlg == "Hybrid-ILS")
+            if (params.problemType == "EV")
             {
-                if (params.problemType == "EV")
-                {
-                    outFile << "Instance,NumWarehouses,NumCustomers,NumPeriods,NumScenarios,NumVehicles_Plant,NumVehicles_Warehouse,"
-                            "UnmetDemandPenaltyCoeff,ProbabilityFunction,UncertaintyRange,ObjectiveValue_FirstEchelon,"
-                            "ObjectiveValue_SecondEchelon,ObjectiveValue_Total,TotalCPUTime,"
-                            "SetupCost,ProductionCost,HoldingCostPlant,TransportationCostPlantToWarehouse,"
-                            "HoldingCostWarehouse,HoldingCostCustomer,CostOfUnmetDemand,"
-                            "TransportationCostWarehouseToCustomer\n";
-                    outFile.close();
-                }
-                if (params.problemType == "EEV" || params.problemType == "WS")
-                {
-                    cout << "params.scenarioIndex: " << params.scenarioIndex + 1 << endl;
-                    outFile << "Instance,scenarioIndex,NumWarehouses,NumCustomers,NumPeriods,NumScenarios,NumVehicles_Plant,NumVehicles_Warehouse,"
-                            "UnmetDemandPenaltyCoeff,ProbabilityFunction,UncertaintyRange,ObjectiveValue_FirstEchelon,"
-                            "ObjectiveValue_SecondEchelon,ObjectiveValue_Total,TotalCPUTime,"
-                            "SetupCost,ProductionCost,HoldingCostPlant,TransportationCostPlantToWarehouse,"
-                            "HoldingCostWarehouse,HoldingCostCustomer,CostOfUnmetDemand,"
-                            "TransportationCostWarehouseToCustomer\n";
-                    outFile.close();
-                }
-                else if (params.problemType == "2EPRP")
-                {
-                    outFile << "Instance,NumWarehouses,NumCustomers,NumPeriods,NumVehicles_Plant,NumVehicles_Warehouse,"
-                            "ObjectiveValue_FirstEchelon,ObjectiveValue_SecondEchelon,ObjectiveValue_Total,TotalCPUTime,"
-                            "SetupCost,ProductionCost,HoldingCostPlant,TransportationCostPlantToWarehouse,"
-                            "HoldingCostWarehouse,HoldingCostCustomer,TransportationCostWarehouseToCustomer\n";
-                    outFile.close();
-                }
-                else if (params.problemType == "2EPRPCS")
-                {
-                    outFile << "Instance,NumWarehouses,NumCustomers,NumPeriods,NumVehicles_Plant,NumVehicles_Warehouse,"
-                            "ObjectiveValue_FirstEchelon,ObjectiveValue_SecondEchelon,ObjectiveValue_Total,TotalCPUTime,"
-                            "SetupCost,ProductionCost,HoldingCostPlant,TransportationCostPlantToWarehouse,"
-                            "HandlingCostSatelites,HoldingCostCustomer,TransportationCostWarehouseToCustomer\n";
-                    outFile.close();
-                }
+                outFile << "Instance,NumWarehouses,NumCustomers,NumPeriods,NumScenarios,NumVehicles_Plant,NumVehicles_Warehouse,"
+                           "UnmetDemandPenaltyCoeff,ProbabilityFunction,UncertaintyRange,ObjectiveValue_FirstEchelon,"
+                           "ObjectiveValue_SecondEchelon,ObjectiveValue_Total,TotalCPUTime,"
+                           "SetupCost,ProductionCost,HoldingCostPlant,TransportationCostPlantToWarehouse,"
+                           "HoldingCostWarehouse,HoldingCostCustomer,CostOfUnmetDemand,"
+                           "TransportationCostWarehouseToCustomer\n";
             }
-            else if (solAlg == "BC")
+            if (params.problemType == "EEV" || params.problemType == "WS")
             {
-                if (params.problemType == "EV")
-                {
-                    outFile << "Instance,NumWarehouses,NumCustomers,NumPeriods,NumScenarios,NumVehicles_Plant,NumVehicles_Warehouse,"
-                            "UnmetDemandPenaltyCoeff,ProbabilityFunction,UncertaintyRange,ObjectiveValue_FirstEchelon,"
-                            "ObjectiveValue_SecondEchelon,ObjectiveValue_Total,TotalCPUTime,Status,LowerBound,OptimalityGap,"
-                            "SetupCost,ProductionCost,HoldingCostPlant,TransportationCostPlantToWarehouse,"
-                            "HoldingCostWarehouse,HoldingCostCustomer,CostOfUnmetDemand,"
-                            "TransportationCostWarehouseToCustomer\n";
-                    outFile.close();
-                }
-                if (params.problemType == "EEV" || params.problemType == "WS")
-                {
-                    cout << "params.scenarioIndex: " << params.scenarioIndex + 1 << endl;
-                    outFile << "Instance,scenarioIndex,NumWarehouses,NumCustomers,NumPeriods,NumScenarios,NumVehicles_Plant,NumVehicles_Warehouse,"
-                            "UnmetDemandPenaltyCoeff,ProbabilityFunction,UncertaintyRange,ObjectiveValue_FirstEchelon,"
-                            "ObjectiveValue_SecondEchelon,ObjectiveValue_Total,TotalCPUTime,Status,LowerBound,OptimalityGap,"
-                            "SetupCost,ProductionCost,HoldingCostPlant,TransportationCostPlantToWarehouse,"
-                            "HoldingCostWarehouse,HoldingCostCustomer,CostOfUnmetDemand,"
-                            "TransportationCostWarehouseToCustomer\n";
-                    outFile.close();
-                }
-                else if (params.problemType == "2EPRP")
-                {
-                    outFile << "Instance,NumWarehouses,NumCustomers,NumPeriods,NumVehicles_Plant,NumVehicles_Warehouse,"
-                            "ObjectiveValue_FirstEchelon,ObjectiveValue_SecondEchelon,ObjectiveValue_Total,TotalCPUTime,Status,LowerBound,OptimalityGap,"
-                            "SetupCost,ProductionCost,HoldingCostPlant,TransportationCostPlantToWarehouse,"
-                            "HoldingCostWarehouse,HoldingCostCustomer,TransportationCostWarehouseToCustomer\n";
-                    outFile.close();
-                }
-                else if (params.problemType == "2EPRPCS")
-                {
-                    outFile << "Instance,NumWarehouses,NumCustomers,NumPeriods,NumVehicles_Plant,NumVehicles_Warehouse,"
-                            "ObjectiveValue_FirstEchelon,ObjectiveValue_SecondEchelon,ObjectiveValue_Total,TotalCPUTime,Status,LowerBound,OptimalityGap,"
-                            "SetupCost,ProductionCost,HoldingCostPlant,TransportationCostPlantToWarehouse,"
-                            "HandlingCostSatelites,HoldingCostCustomer,TransportationCostWarehouseToCustomer\n";
-                    outFile.close();
-                }
+                cout << "params.scenarioIndex: " << params.scenarioIndex + 1 << endl;
+                outFile << "Instance,scenarioIndex,NumWarehouses,NumCustomers,NumPeriods,NumScenarios,NumVehicles_Plant,NumVehicles_Warehouse,"
+                           "UnmetDemandPenaltyCoeff,ProbabilityFunction,UncertaintyRange,ObjectiveValue_FirstEchelon,"
+                           "ObjectiveValue_SecondEchelon,ObjectiveValue_Total,TotalCPUTime,"
+                           "SetupCost,ProductionCost,HoldingCostPlant,TransportationCostPlantToWarehouse,"
+                           "HoldingCostWarehouse,HoldingCostCustomer,CostOfUnmetDemand,"
+                           "TransportationCostWarehouseToCustomer\n";
             }
-            else 
+            else if (params.problemType == "2EPRP")
             {
-                cout << "Invalid params.solutionAlgorithm" << endl;
-                exit(1);
+                outFile << "Instance,NumWarehouses,NumCustomers,NumPeriods,NumVehicles_Plant,NumVehicles_Warehouse,"
+                           "ObjectiveValue_FirstEchelon,ObjectiveValue_SecondEchelon,ObjectiveValue_Total,TotalCPUTime,"
+                           "SetupCost,ProductionCost,HoldingCostPlant,TransportationCostPlantToWarehouse,"
+                           "HoldingCostWarehouse,HoldingCostCustomer,TransportationCostWarehouseToCustomer\n";
             }
-            std::cout << "File created and header added: " << fullPath << std::endl;
+            else if (params.problemType == "2EPRPCS")
+            {
+                outFile << "Instance,NumWarehouses,NumCustomers,NumPeriods,NumVehicles_Plant,NumVehicles_Warehouse,"
+                           "ObjectiveValue_FirstEchelon,ObjectiveValue_SecondEchelon,ObjectiveValue_Total,TotalCPUTime,"
+                           "SetupCost,ProductionCost,HoldingCostPlant,TransportationCostPlantToWarehouse,"
+                           "HandlingCostSatelites,HoldingCostCustomer,TransportationCostWarehouseToCustomer\n";
+            }
+        }
+        else if (solAlg == "BC")
+        {
+            if (params.problemType == "EV")
+            {
+                outFile << "Instance,NumWarehouses,NumCustomers,NumPeriods,NumScenarios,NumVehicles_Plant,NumVehicles_Warehouse,"
+                           "UnmetDemandPenaltyCoeff,ProbabilityFunction,UncertaintyRange,ObjectiveValue_FirstEchelon,"
+                           "ObjectiveValue_SecondEchelon,ObjectiveValue_Total,TotalCPUTime,Status,LowerBound,OptimalityGap,"
+                           "SetupCost,ProductionCost,HoldingCostPlant,TransportationCostPlantToWarehouse,"
+                           "HoldingCostWarehouse,HoldingCostCustomer,CostOfUnmetDemand,"
+                           "TransportationCostWarehouseToCustomer\n";
+            }
+            if (params.problemType == "EEV" || params.problemType == "WS")
+            {
+                cout << "params.scenarioIndex: " << params.scenarioIndex + 1 << endl;
+                outFile << "Instance,scenarioIndex,NumWarehouses,NumCustomers,NumPeriods,NumScenarios,NumVehicles_Plant,NumVehicles_Warehouse,"
+                           "UnmetDemandPenaltyCoeff,ProbabilityFunction,UncertaintyRange,ObjectiveValue_FirstEchelon,"
+                           "ObjectiveValue_SecondEchelon,ObjectiveValue_Total,TotalCPUTime,Status,LowerBound,OptimalityGap,"
+                           "SetupCost,ProductionCost,HoldingCostPlant,TransportationCostPlantToWarehouse,"
+                           "HoldingCostWarehouse,HoldingCostCustomer,CostOfUnmetDemand,"
+                           "TransportationCostWarehouseToCustomer\n";
+            }
+            else if (params.problemType == "2EPRP")
+            {
+                outFile << "Instance,NumWarehouses,NumCustomers,NumPeriods,NumVehicles_Plant,NumVehicles_Warehouse,"
+                           "ObjectiveValue_FirstEchelon,ObjectiveValue_SecondEchelon,ObjectiveValue_Total,TotalCPUTime,Status,LowerBound,OptimalityGap,"
+                           "SetupCost,ProductionCost,HoldingCostPlant,TransportationCostPlantToWarehouse,"
+                           "HoldingCostWarehouse,HoldingCostCustomer,TransportationCostWarehouseToCustomer\n";
+            }
+            else if (params.problemType == "2EPRPCS")
+            {
+                outFile << "Instance,NumWarehouses,NumCustomers,NumPeriods,NumVehicles_Plant,NumVehicles_Warehouse,"
+                           "ObjectiveValue_FirstEchelon,ObjectiveValue_SecondEchelon,ObjectiveValue_Total,TotalCPUTime,Status,LowerBound,OptimalityGap,"
+                           "SetupCost,ProductionCost,HoldingCostPlant,TransportationCostPlantToWarehouse,"
+                           "HandlingCostSatelites,HoldingCostCustomer,TransportationCostWarehouseToCustomer\n";
+            }
         }
         else
         {
-            std::cerr << "Error creating file: " << fullPath << std::endl;
+            cout << "Invalid Solution Algorithm" << endl;
+            exit(1);
         }
-    }
-    else
-    {
-        std::cout << "File already exists: " << fullPath << std::endl;
+        std::cout << "File created and header added: " << fullPath << std::endl;
     }
 
-    std::ofstream file_summary(fullPath);
-    if (file_summary.is_open())
+    if (outFile.is_open())
     {
         // Write Parameters
-        file_summary << params.instance.c_str() << ",";
+        outFile << params.instance.c_str() << ",";
 
         if (params.problemType == "EEV" || params.problemType == "WS")
         {
-            file_summary << params.scenarioIndex + 1 << ",";
+            outFile << params.scenarioIndex + 1 << ",";
         }
-        file_summary << params.numWarehouses << ",";
-        file_summary << params.numCustomers << ",";
-        file_summary << params.numPeriods << ",";
+        outFile << params.numWarehouses << ",";
+        outFile << params.numCustomers << ",";
+        outFile << params.numPeriods << ",";
         if (params.problemType == "EV" || params.problemType == "EEV" || params.problemType == "WS")
         {
-            file_summary << params.numScenarios << ",";
+            outFile << params.numScenarios << ",";
         }
-        file_summary << params.numVehicles_Plant << ",";
-        file_summary << params.numVehicles_Warehouse << ",";
+        outFile << params.numVehicles_Plant << ",";
+        outFile << params.numVehicles_Warehouse << ",";
         if (params.problemType == "EV" || params.problemType == "EEV" || params.problemType == "WS")
         {
-            file_summary << params.unmetDemandPenaltyCoeff << ",";
-            file_summary << params.probabilityFunction << ",";
-            file_summary << params.uncertaintyRange * 100 << "%,";
+            outFile << params.unmetDemandPenaltyCoeff << ",";
+            outFile << params.probabilityFunction << ",";
+            outFile << params.uncertaintyRange * 100 << "%,";
         }
 
-        file_summary << std::fixed << std::setprecision(1) << result.objValue_firstEchelon << ",";
-        file_summary << std::fixed << std::setprecision(1) << result.objValue_secondEchelon << ",";
-        file_summary << std::fixed << std::setprecision(1) << result.objValue_Total << ",";
-        file_summary << std::fixed << std::setprecision(3) << result.totalCPUTime << ",";
+        outFile << std::fixed << std::setprecision(1) << result.objValue_firstEchelon << ",";
+        outFile << std::fixed << std::setprecision(1) << result.objValue_secondEchelon << ",";
+        outFile << std::fixed << std::setprecision(1) << result.objValue_Total << ",";
+        outFile << std::fixed << std::setprecision(3) << result.totalCPUTime << ",";
 
         if (solAlg == "BC")
         {
-            file_summary << result.status << ",";
-            file_summary << std::fixed << std::setprecision(1) << result.lowerBound << ",";
-            file_summary << std::fixed << std::setprecision(2) << result.optimalityGap << "%,";
+            outFile << result.status << ",";
+            outFile << std::fixed << std::setprecision(1) << result.lowerBound << ",";
+            outFile << std::fixed << std::setprecision(2) << result.optimalityGap << "%,";
         }
 
-        file_summary << std::fixed << std::setprecision(1) << solFE.setupCost << ",";
-        file_summary << std::fixed << std::setprecision(1) << solFE.productionCost << ",";
-        file_summary << std::fixed << std::setprecision(1) << solFE.holdingCostPlant << ",";
-        file_summary << std::fixed << std::setprecision(1) << solFE.transportationCostPlantToWarehouse << ",";
+        outFile << std::fixed << std::setprecision(1) << solFE.setupCost << ",";
+        outFile << std::fixed << std::setprecision(1) << solFE.productionCost << ",";
+        outFile << std::fixed << std::setprecision(1) << solFE.holdingCostPlant << ",";
+        outFile << std::fixed << std::setprecision(1) << solFE.transportationCostPlantToWarehouse << ",";
 
         if (params.problemType == "2EPRPCS")
         {
-            file_summary << std::fixed << std::setprecision(1) << solSE.handlingCostSatellite << ",";
+            outFile << std::fixed << std::setprecision(1) << solSE.handlingCostSatellite << ",";
         }
         else
         {
-            file_summary << std::fixed << std::setprecision(1) << solSE.holdingCostWarehouse << ",";
+            outFile << std::fixed << std::setprecision(1) << solSE.holdingCostWarehouse << ",";
         }
 
-        file_summary << std::fixed << std::setprecision(1) << solSE.holdingCostCustomer << ",";
+        outFile << std::fixed << std::setprecision(1) << solSE.holdingCostCustomer << ",";
         if (params.problemType != "2EPRP" && params.problemType != "2EPRPCS")
         {
-            file_summary << std::fixed << std::setprecision(1) << solSE.costOfUnmetDemand << ",";
+            outFile << std::fixed << std::setprecision(1) << solSE.costOfUnmetDemand << ",";
         }
-        file_summary << std::fixed << std::setprecision(1) << solSE.transportationCostWarehouseToCustomer << endl;
+        outFile << std::fixed << std::setprecision(1) << solSE.transportationCostWarehouseToCustomer << endl;
 
-        file_summary.close();
+        outFile.close();
         cout << "results summary appended successfully." << endl;
     }
     else
     {
         cerr << "Failed to open the file." << endl;
+    }
+}
+
+void SolutionManager::saveOF_Iter_Deterministic(int HHA_iter, int ILS_iter, const Result result, string solAlg)
+{
+    cout << "Save Incumbent For " << params.problemType << " and Solution Algorithm " << solAlg << "..." << endl;
+    string directory = "../Results/OF_Iter/" + params.problemType + "/Preliminary_Test06" + "/" + solAlg;
+    string filename = "Sol_" + params.problemType + "_" + params.instance + ".csv";
+
+    // Create the directory if it doesn't exist
+    if (!fs::exists(directory))
+    {
+        cout << "Directory does not exist. Creating: " << directory << endl;
+        fs::create_directories(directory);
+    }
+
+    // Full path to the file
+    string fullPath = directory + "/" + filename;
+
+    // Check if the file exists
+    // Open the file
+    std::ofstream outFile(fullPath, std::ios_base::app); // Open for appending
+    if (!outFile.is_open())
+    {
+        cerr << "Error opening file: " << fullPath << endl;
+        return;
+    }
+
+    // Check if the file is empty (to write headers)
+    std::ifstream checkFile(fullPath);
+    bool fileIsEmpty = (checkFile.peek() == std::ifstream::traits_type::eof());
+    checkFile.close();
+
+    // If the file does not exist, create it and write the header
+    if (fileIsEmpty)
+    {
+        if (solAlg == "Hybrid-ILS")
+        {
+            outFile << "HHA_iter,ILS_iter,ObjectiveValue_FirstEchelon,ObjectiveValue_SecondEchelon,ObjectiveValue_Total,CPUTime\n";
+        }
+        else if (solAlg == "BC")
+        {
+            outFile << "#,SolutionStatus,ObjectiveValue_FirstEchelon,ObjectiveValue_SecondEchelon,ObjectiveValue_Total,LB,Gap%,CPUTimeTotal\n";
+        }
+        else
+        {
+            cout << "Invalid Solution Algorithm" << endl;
+            exit(1);
+        }
+        std::cout << "File created and header added: " << fullPath << std::endl;
+    }
+
+    if (outFile.is_open())
+    {
+        if (solAlg == "Hybrid-ILS")
+        {
+            // Write Parameters
+            outFile << HHA_iter << ",";
+            outFile << ILS_iter << ",";
+            outFile << std::fixed << std::setprecision(1) << result.objValue_firstEchelon << ",";
+            outFile << std::fixed << std::setprecision(1) << result.objValue_secondEchelon << ",";
+            outFile << std::fixed << std::setprecision(1) << result.objValue_Total << ",";
+            outFile << std::fixed << std::setprecision(3) << result.totalCPUTime << endl;
+        }
+        else if (solAlg == "BC")
+        {
+            // Write Parameters
+            outFile << HHA_iter << ",";
+            outFile << result.status << ",";
+            outFile << std::fixed << std::setprecision(1) << result.objValue_firstEchelon << ",";
+            outFile << std::fixed << std::setprecision(1) << result.objValue_secondEchelon << ",";
+            outFile << std::fixed << std::setprecision(1) << result.objValue_Total << ",";
+            outFile << std::fixed << std::setprecision(1) << result.lowerBound << ",";
+            outFile << std::fixed << std::setprecision(2) << result.optimalityGap << "%,";
+            outFile << std::fixed << std::setprecision(3) << result.totalCPUTime << endl;
+        }
     }
 }

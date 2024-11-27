@@ -15,7 +15,6 @@ void LocalSearch::RVND()
 	// Initialize the operators
 	vector<std::function<bool()>> operators;
 
-	int maxIterRVND = 10;
 	int iter = 0;
 
 	// Uniform distribution for operator selection
@@ -24,8 +23,8 @@ void LocalSearch::RVND()
 	sol_SE_best_scenario = sol_SE_temp_scenario;
 	objVal_best_scenario = objVal_Scenario;
 
-	// We can make it a multistart RVND by applying maxIterRVND times
-	while (iter < maxIterRVND)
+	// We can make it a multistart RVND by applying params.LS_MaxIterRVND times
+	while (iter < params.LS_MaxIterRVND)
 	{
 		// cout << "\nRVND Iteration : " << iter + 1 << endl;
 		operators = setOperators();

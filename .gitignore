@@ -1,8 +1,8 @@
 # Ignore all files in the solution folder
 cplexFiles/*
 
-# But don't ignore the folder itself
-!cplexFiles/.gitignore
+# # But don't ignore the folder itself
+# !cplexFiles/.gitignore
 
 # Ignore instanceGenerator Folder
 instanceGenerator/

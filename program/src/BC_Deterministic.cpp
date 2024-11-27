@@ -133,7 +133,7 @@ void BC_Deterministic::configureCplex(IloCplex &cplex, IloEnv &env)
 {
 	// Set CPLEX Parameters: (DISPLAY LEVEL(0,1,2,3,4), OPTIMALITY GAP, RUN TIME (SECS), THREADS, MEMORY (MB))
 	CplexParameterManager parameterManager(cplex);
-	parameterManager.setParameters(4, 1e-6, 300, 4, 32000);
+	parameterManager.setParameters(4, params.BC_OptimalityGap, params.BC_TimeLimit, params.BC_NumThreads, params.BC_MemoryLimit);
 
 	cplex.setParam(IloCplex::Param::Emphasis::MIP, 2);
 	cplex.setParam(IloCplex::Param::Preprocessing::Presolve, IloFalse);
@@ -160,8 +160,9 @@ void BC_Deterministic::handleCplexStatus(IloCplex &cplex, IloEnv &env, IloModel 
 		result.optimalityGap = cplex.getMIPRelativeGap() * 100;
 		result.lowerBound = cplex.getBestObjValue();
 		cout << "Feasible solution found. Objective Value: " << result.objValue_Total << endl;
-		cout << "LB = " << result.lowerBound;
-		cout << "Optimality Gap (%) = " << result.optimalityGap;
+		cout << "LB = " << result.lowerBound << " ";
+		cout << "Optimality Gap (%) = " << result.optimalityGap << "\n"
+			 << endl;
 	}
 	else if (cplex.getStatus() == IloAlgorithm::Infeasible)
 	{
@@ -295,7 +296,7 @@ void BC_Deterministic::DefineFirstStageVars(IloEnv &env, IloModel &model)
 			{
 				string varName = "q[" + std::to_string(routeInd + 1) + "][" + std::to_string(w + 1) + "][" + std::to_string(t + 1) + "]";
 
-				double upperBound =routeMatrix_FirstEchelon[routeInd][w + 1] * params.storageCapacity_Warehouse[w];
+				double upperBound = routeMatrix_FirstEchelon[routeInd][w + 1] * params.storageCapacity_Warehouse[w];
 
 				q[routeInd][w][t] = IloNumVar(env, 0.0, upperBound, IloNumVar::Float, varName.c_str());
 
@@ -723,7 +724,7 @@ void BC_Deterministic::DefCons_WarehouseVisit_FirstEchelon(IloEnv &env, IloModel
 	for (int t = 0; t < params.numPeriods; ++t)
 	{
 		for (int w = 0; w < params.numWarehouses; ++w)
-			{
+		{
 			for (int routeInd = 0; routeInd < numRoutes_FirstEchelon; ++routeInd)
 			{
 				string constraintName = "WarehouseVisit(" + std::to_string(routeInd + 1) + "," + std::to_string(w + 1) + "," + std::to_string(t + 1) + ")";
@@ -731,8 +732,8 @@ void BC_Deterministic::DefCons_WarehouseVisit_FirstEchelon(IloEnv &env, IloModel
 				IloExpr expr(env);
 
 				expr += q[routeInd][w][t];
-				
-				expr -= o[routeInd][t] * routeMatrix_FirstEchelon[routeInd][w + 1] * params.storageCapacity_Warehouse[w] ;
+
+				expr -= o[routeInd][t] * routeMatrix_FirstEchelon[routeInd][w + 1] * params.storageCapacity_Warehouse[w];
 				IloConstraint warehouseVisitConstraint(expr <= 0);
 				expr.end();
 
@@ -1429,7 +1430,7 @@ void BC_Deterministic::RetrieveSolutions(IloCplex &cplex)
 	adjustRoutesSE(visitedNodes_SecondEchelon, visitedEdges_SecondEchelon);
 }
 
-void BC_Deterministic::checkSplitDeliveries(vector<vector<vector<int>>>& visitedNodes_SecondEchelon)
+void BC_Deterministic::checkSplitDeliveries(vector<vector<vector<int>>> &visitedNodes_SecondEchelon)
 {
 	// Check split deliveries
 	for (int t = 0; t < params.numPeriods; ++t)
@@ -1450,7 +1451,7 @@ void BC_Deterministic::checkSplitDeliveries(vector<vector<vector<int>>>& visited
 	}
 }
 
-void BC_Deterministic::adjustRoutesSE(vector<vector<vector<int>>>& visitedNodes_SecondEchelon, vector<vector<vector<int>>>& visitedEdges_SecondEchelon)
+void BC_Deterministic::adjustRoutesSE(vector<vector<vector<int>>> &visitedNodes_SecondEchelon, vector<vector<vector<int>>> &visitedEdges_SecondEchelon)
 {
 	auto visitEdge_Copy = visitedEdges_SecondEchelon;
 	// find and save the routes for second echelon
@@ -1526,16 +1527,7 @@ void BC_Deterministic::adjustRoutesSE(vector<vector<vector<int>>>& visitedNodes_
 
 void BC_Deterministic::CalculateCostsForEachPart()
 {
-	if (params.problemType == "EEV")
-	{
-		cout << "setupCost = " << sol_FE_EV.setupCost << endl;
-		cout << "productionCost = " << sol_FE_EV.productionCost << endl;
-		cout << "holdingCostPlant = " << sol_FE_EV.holdingCostPlant << endl;
-		cout << "transportationCostPlantToWarehouse = " << sol_FE_EV.transportationCostPlantToWarehouse << endl;
-
-		result.objValue_firstEchelon = sol_FE_EV.setupCost + sol_FE_EV.productionCost + sol_FE_EV.holdingCostPlant + sol_FE_EV.transportationCostPlantToWarehouse;
-	}
-	else
+	if (params.problemType != "EEV")
 	{
 		for (int t = 0; t < params.numPeriods; ++t)
 		{
@@ -1551,13 +1543,12 @@ void BC_Deterministic::CalculateCostsForEachPart()
 				}
 			}
 		}
-		cout << "setupCost = " << solFE.setupCost << endl;
-		cout << "productionCost = " << solFE.productionCost << endl;
-		cout << "holdingCostPlant = " << solFE.holdingCostPlant << endl;
-		cout << "transportationCostPlantToWarehouse = " << solFE.transportationCostPlantToWarehouse << endl;
-
-		result.objValue_firstEchelon = solFE.setupCost + solFE.productionCost + solFE.holdingCostPlant + solFE.transportationCostPlantToWarehouse;
 	}
+	result.objValue_firstEchelon = solFE.setupCost + solFE.productionCost + solFE.holdingCostPlant + solFE.transportationCostPlantToWarehouse;
+	cout << "setupCost = " << solFE.setupCost << endl;
+	cout << "productionCost = " << solFE.productionCost << endl;
+	cout << "holdingCostPlant = " << solFE.holdingCostPlant << endl;
+	cout << "transportationCostPlantToWarehouse = " << solFE.transportationCostPlantToWarehouse << endl;
 
 	if (params.problemType != "2EPRPCS")
 	{
@@ -1593,9 +1584,19 @@ void BC_Deterministic::CalculateCostsForEachPart()
 				solSE.costOfUnmetDemand += params.unmetDemandPenalty[i] * solSE.customerUnmetDemand[i][t];
 			}
 		}
-		cout << "Avg cost of unmet demand : " << solSE.costOfUnmetDemand << endl;
+		cout << "Cost of unmet demand : " << solSE.costOfUnmetDemand << endl;
 		result.objValue_secondEchelon += solSE.costOfUnmetDemand;
 	}
+
+	for (int t = 0; t < params.numPeriods; ++t)
+	{
+		for (int i = 0; i < params.numCustomers; ++i)
+		{
+			solSE.holdingCostCustomer += params.unitHoldingCost_Customer[i] * solSE.customerInventory[i][t];
+		}
+	}
+	cout << "Holding cost customer : " << solSE.holdingCostCustomer << endl;
+	result.objValue_secondEchelon += solSE.holdingCostCustomer;
 
 	for (int w = 0; w < params.numWarehouses; ++w)
 	{
@@ -1618,11 +1619,8 @@ void BC_Deterministic::CalculateCostsForEachPart()
 			}
 		}
 	}
-
-	cout << "Avg holding cost customer : " << solSE.holdingCostCustomer << endl;
-	cout << "Avg transportation cost warehouse to customer : " << solSE.transportationCostWarehouseToCustomer << endl;
-
-	result.objValue_secondEchelon += solSE.holdingCostCustomer + solSE.transportationCostWarehouseToCustomer;
+	cout << "Transportation cost warehouse to customer : " << solSE.transportationCostWarehouseToCustomer << endl;
+	result.objValue_secondEchelon += solSE.transportationCostWarehouseToCustomer;
 
 	result.objValue_Total = result.objValue_firstEchelon + result.objValue_secondEchelon;
 

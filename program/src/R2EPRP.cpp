@@ -101,7 +101,7 @@ void R2EPRP::configureCplex(IloCplex &cplex, IloEnv &env)
 {
 	// Set CPLEX Parameters: (DISPLAY LEVEL(0,1,2,3,4), OPTIMALITY GAP, RUN TIME (SECS), THREADS, MEMORY (MB))
 	CplexParameterManager parameterManager(cplex);
-	parameterManager.setParameters(2, 1e-2, 120, 20, 32000);
+	parameterManager.setParameters(2, params.R2EPRP_OptimalityGap, params.R2EPRP_TimeLimit, params.R2EPRP_NumThreads, params.R2EPRP_MemoryLimit);
 
 	cplex.setParam(IloCplex::Param::Emphasis::MIP, 2);
 	cplex.setParam(IloCplex::Param::Preprocessing::Presolve, IloFalse);
@@ -354,7 +354,7 @@ void R2EPRP::DefineObjectiveFunction(IloEnv &env, IloModel &model)
 			}
 		}
 	}
-	
+
 	if (params.problemType == "2EPRPCS")
 	{
 		for (int w = 0; w < params.numWarehouses; ++w)
@@ -514,7 +514,7 @@ void R2EPRP::DefineConstraints(IloEnv &env, IloModel &model)
 	for (int t = 0; t < params.numPeriods; ++t)
 	{
 		for (int w = 0; w < params.numWarehouses; ++w)
-			{
+		{
 			for (int routeInd = 0; routeInd < numRoutes_FirstEchelon; ++routeInd)
 			{
 				string constraintName = "WarehouseVisit(" + std::to_string(routeInd + 1) + "," + std::to_string(w + 1) + "," + std::to_string(t + 1) + ")";
@@ -522,8 +522,8 @@ void R2EPRP::DefineConstraints(IloEnv &env, IloModel &model)
 				IloExpr expr(env);
 
 				expr += q[routeInd][w][t];
-				
-				expr -= o[routeInd][t] * routeMatrix_FirstEchelon[routeInd][w + 1] * params.storageCapacity_Warehouse[w] ;
+
+				expr -= o[routeInd][t] * routeMatrix_FirstEchelon[routeInd][w + 1] * params.storageCapacity_Warehouse[w];
 				IloConstraint warehouseVisitConstraint(expr <= 0);
 				expr.end();
 

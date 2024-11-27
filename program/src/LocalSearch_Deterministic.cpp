@@ -22,7 +22,6 @@ void LocalSearch_Deterministic::RVND()
 	// Initialize the operators
 	vector<std::function<bool()>> operators;
 
-	int maxIterRVND = 10;
 	int iter = 0;
 
 	// Uniform distribution for operator selection
@@ -32,8 +31,8 @@ void LocalSearch_Deterministic::RVND()
 	sol_SE_best = sol_SE_temp;
 	objVal_best = objVal;
 
-	// We can make it a multistart RVND by applying maxIterRVND times
-	for (int i = 0; i < maxIterRVND; ++i)
+	// We can make it a multistart RVND by applying params.LS_MaxIterRVND times
+	for (int i = 0; i < params.LS_MaxIterRVND; ++i)
 	{
 		// cout << "\nRVND Iteration : " << iter + 1 << endl;
 		operators = setOperators();

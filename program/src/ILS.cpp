@@ -92,17 +92,15 @@ bool ILS_SIRP::run()
 				double best_objValue_Scenario = lpse_scenario.getObjVal_Scenario();
 
 				// Initialize ILS for a specific Scenario
-				const int maxIterILS = 30;
 				int numIterILS = 0;
 				bool stop = false;
-				auto maxTime_ILS_Scenario = 120.0;
-
+				
 				// Start the timer
 				auto startTime_ILS_Scenario = std::chrono::high_resolution_clock::now();
 				auto elapsedTime_ILS_Scenario = 0.0;
 
 				double objValue_Scenario = best_objValue_Scenario;
-				while (!stop && numIterILS < maxIterILS && elapsedTime_ILS_Scenario < maxTime_ILS_Scenario)
+				while (!stop && numIterILS < params.ILS_MaxIteration && elapsedTime_ILS_Scenario < params.ILS_TimeLimit)
 				{
 					ScenarioSolutionSecondEchelon sol_SE_temp_Scenario = sol_SE_incumbent_Scenarios[s];
 

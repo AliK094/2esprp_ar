@@ -18,10 +18,9 @@ bool Perturbation_Deterministic::run()
 	// --------------------------------------------------------------------------------------------------------------------------
 	// Initialize the operators
 	vector<std::function<bool()>> perturbOperators = setPerturbOperators();
-	int max_perturb = 20;
 	int perturbIteration = 0;
 	// --------------------------------------------------------------------------------------------------------------------------
-	while (perturbIteration < max_perturb)
+	while (perturbIteration < params.Perturb_MaxIter)
 	{
 		// cout << "Perturbation_Deterministic...: " << endl;
 		sol_FE_feasible = sol_FE_temp;

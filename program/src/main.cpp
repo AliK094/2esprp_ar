@@ -92,7 +92,7 @@ int main(int argc, char *argv[])
         cerr << "Unable to Set Parameters" << endl;
         return EXIT_FAILURE;
     }
-
+    
     Algorithms alg(params);
 
 	// Helper function to handle success/failure uniformly

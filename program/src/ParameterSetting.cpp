@@ -71,7 +71,7 @@ ParameterSetting::ParameterSetting(int argc, char *argv[])
         std::cerr << "Argument out of range: " << e.what() << std::endl;
         exit(EXIT_FAILURE);
     }
-    
+
     // Initialize other parameters
     numNodes_Total = numWarehouses + numCustomers + 1;
     numNodes_FirstEchelon = numWarehouses + 1;
@@ -90,7 +90,7 @@ ParameterSetting::ParameterSetting(int argc, char *argv[])
     {
         unitHandlingCost_Satellite.resize(numWarehouses, 0);
     }
-    
+
     unitHoldingCost_Warehouse.resize(numWarehouses, 0);
     unitHoldingCost_Customer.resize(numCustomers, 0);
     storageCapacity_Warehouse.resize(numWarehouses, 0);
@@ -127,6 +127,7 @@ ParameterSetting::ParameterSetting(int argc, char *argv[])
     }
 
     initializeIndices();
+    setHyperparameters();
 }
 
 void ParameterSetting::initializeIndices()
@@ -183,6 +184,71 @@ void ParameterSetting::initializeIndices()
     for (int w = 0; w < numWarehouses; ++w)
     {
         std::iota(set_WarehouseVehicles[w].begin(), set_WarehouseVehicles[w].end(), w * numVehicles_Warehouse);
+    }
+}
+
+void ParameterSetting::setHyperparameters()
+{
+    cout << "Set Hyperparameters For The " << problemType << "." << endl;
+    if (problemType == "S2EPRP-AR")
+    {
+        HILS_TimeLimit = 3600.0;
+        HILS_MaxIteration = 50;
+        HILS_MaxNoImprovement = 50;
+        // -----------------------
+        ILS_TimeLimit = 600.0;
+        ILS_MaxIteration = 50;
+        ILS_MaxNoImprovement = 50;
+        // -----------------------
+        LS_MaxIterRVND = 10;
+        // -----------------------
+        Perturb_MaxIter = 10;
+        // -----------------------
+        MWPRP_FE_OptimalityGap = 1e-2;
+        MWPRP_FE_TimeLimit = 300.0;
+        MWPRP_FE_NumThreads = 20;
+        MWPRP_FE_MemoryLimit = 32000.0;
+        // -----------------------
+        RS2EPRP_OptimalityGap = 1e-2;
+        RS2EPRP_TimeLimit = 100.0;
+        RS2EPRP_NumThreads = 20;
+        RS2EPRP_MemoryLimit = 32000.0;
+        // -----------------------
+        BC_OptimalityGap = 1e-6;
+        BC_TimeLimit = 7200.0;
+        BC_NumThreads = 20;
+        BC_MemoryLimit = 32000.0;
+        // -----------------------
+    }
+    else
+    {
+        HILS_TimeLimit = 20000.0;
+        HILS_MaxIteration = 100;
+        HILS_MaxNoImprovement = 10;
+        // -----------------------
+        ILS_TimeLimit = 200.0;
+        ILS_MaxIteration = 20;
+        ILS_MaxNoImprovement = 20;
+        // -----------------------
+        LS_MaxIterRVND = 10;
+        // -----------------------
+        Perturb_MaxIter = 10;
+        // -----------------------
+        MWPRP_FE_OptimalityGap = 1e-2;
+        MWPRP_FE_TimeLimit = 300.0;
+        MWPRP_FE_NumThreads = 20;
+        MWPRP_FE_MemoryLimit = 32000.0;
+        // -----------------------
+        R2EPRP_OptimalityGap = 1e-2;
+        R2EPRP_TimeLimit = 300.0;
+        R2EPRP_NumThreads = 20;
+        R2EPRP_MemoryLimit = 32000.0;
+        // -----------------------
+        BC_OptimalityGap = 1e-6;
+        BC_TimeLimit = 7200.0;
+        BC_NumThreads = 20;
+        BC_MemoryLimit = 32000.0;
+        // -----------------------
     }
 }
 
@@ -259,7 +325,7 @@ bool ParameterSetting::setParameters()
                 storageCapacity_Warehouse[w] = 1e6 * storageCapacity_Warehouse[w];
                 unitHoldingCost_Warehouse[w] = 1e6 * unitHoldingCost_Warehouse[w];
             }
-            unmetDemandPenalty.assign(numCustomers, 1e6 * unitProdCost);            
+            unmetDemandPenalty.assign(numCustomers, 1e6 * unitProdCost);
         }
 
         printParameters();
@@ -742,7 +808,7 @@ void ParameterSetting::assign_customers_to_warehouse()
 {
     try
     {
-         if (problemType == "S2EPRP-AR")
+        if (problemType == "S2EPRP-AR")
         {
             customers_assigned_to_warehouse.resize(numScenarios,
                                                    vector<vector<vector<int>>>(numPeriods,

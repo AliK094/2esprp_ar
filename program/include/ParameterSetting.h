@@ -94,9 +94,18 @@ public:
     vector<double> DelUB_Det;
     vector<double> unitHandlingCost_Satellite;
 
+    // Hyper-parameters
+    double HILS_TimeLimit, ILS_TimeLimit, MWPRP_FE_TimeLimit, R2EPRP_TimeLimit, RS2EPRP_TimeLimit, BC_TimeLimit;
+    int HILS_MaxIteration, ILS_MaxIteration, LS_MaxIterRVND, Perturb_MaxIter;
+    double MWPRP_FE_OptimalityGap, R2EPRP_OptimalityGap, RS2EPRP_OptimalityGap, BC_OptimalityGap;
+    int MWPRP_FE_NumThreads, R2EPRP_NumThreads, RS2EPRP_NumThreads, BC_NumThreads;
+    double MWPRP_FE_MemoryLimit, R2EPRP_MemoryLimit, RS2EPRP_MemoryLimit, BC_MemoryLimit;
+    int HILS_MaxNoImprovement, ILS_MaxNoImprovement;
+
     
 private:
     void initializeIndices();
+    void setHyperparameters();
     bool generateData();
     bool readDataFromFile();
     void read2ESPRPlDatasetInfo(std::ifstream &file);

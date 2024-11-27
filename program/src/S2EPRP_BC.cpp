@@ -104,7 +104,7 @@ void S2EPRP_BC::configureCplex(IloCplex &cplex, IloEnv &env)
 {
 	// Set CPLEX Parameters: (DISPLAY LEVEL(0,1,2,3,4), OPTIMALITY GAP, RUN TIME (SECS), THREADS, MEMORY (MB))
 	CplexParameterManager parameterManager(cplex);
-	parameterManager.setParameters(4, 1e-6, 600, 4, 20000);
+	parameterManager.setParameters(4, params.BC_OptimalityGap, params.BC_TimeLimit, params.BC_NumThreads, params.BC_MemoryLimit);
 
 	cplex.setParam(IloCplex::Param::Emphasis::MIP, 2);
 	cplex.setParam(IloCplex::Param::Preprocessing::Presolve, IloFalse);

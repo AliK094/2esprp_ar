@@ -60,7 +60,10 @@ private:
     // -----------------------
     // Deterministic
     bool solveFirstEchelon_Deterministic(SolutionFirstEchelon &solFE_current);
-    bool runILS_SE_Deterministic(SolutionFirstEchelon &solFE_current,  SolutionSecondEchelon_Deterministic &solSE_current, Result &result_current);
+    bool runILS_SE_Deterministic(SolutionFirstEchelon &solFE_current,  SolutionSecondEchelon_Deterministic &solSE_current, Result &result_current,
+                                 int iter = -1, 
+                                 std::chrono::high_resolution_clock::time_point startTime = std::chrono::high_resolution_clock::time_point{}, 
+                                 bool savePerIterSol = false);
     void update_incumbent_Deterministic(SolutionFirstEchelon &solFE_current, SolutionSecondEchelon_Deterministic &solSE_current, Result &result_current);
     void optimizeUnmetDemandAndRoutes_Deterministic(SolutionSecondEchelon_Deterministic &sol_SE);
     bool solveRestrictedProblemAndFinalize_Deterministic(SolutionFirstEchelon &sol_FE, SolutionSecondEchelon_Deterministic &sol_SE);
