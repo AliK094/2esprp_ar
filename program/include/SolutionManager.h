@@ -11,6 +11,7 @@ public:
     void saveSolution(const SolutionFirstEchelon& solFE, const SolutionSecondEchelon &solSE);
     void saveResultSummary(const SolutionFirstEchelon &solFE, const SolutionSecondEchelon &solSE, const Result result);
     bool checkFeasibility();
+    void saveOF_Iter_Stochastic(int HHA_iter, int ILS_iter, const Result result, string solAlg);
 
     void saveSolution_Deterministic(const SolutionFirstEchelon& solFE, const SolutionSecondEchelon_Deterministic &solSE, string solAlg);
     bool checkFeasibility_Deterministic(string solAlg);

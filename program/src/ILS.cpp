@@ -1,15 +1,23 @@
 #include "ILS.h"
 
-ILS_SIRP::ILS_SIRP(const ParameterSetting &parameters, const SolutionFirstEchelon &sol_FE, const SolutionSecondEchelon &sol_SE)
+ILS_SIRP::ILS_SIRP(const ParameterSetting &parameters,
+				   const SolutionFirstEchelon &sol_FE,
+				   const SolutionSecondEchelon &sol_SE,
+				   int HHA_iter,
+				   std::chrono::high_resolution_clock::time_point startTime_HHA,
+				   bool savePerIterSol)
 	: params(parameters),
 	  sol_FE(sol_FE),
-	  sol_SE(sol_SE)
+	  sol_SE(sol_SE),
+	  HHA_iter(HHA_iter),
+	  startTime_HHA(startTime_HHA),
+	  savePerIterSol(savePerIterSol)
 {
 	// Initialize random seed
 	srand(static_cast<unsigned int>(time(NULL)));
 	// ----------------------------------------------------------------------------------------------------------
 	Tolerance = 1e-6;
-	cout << "\nILS_SIRP..."
+	cout << "\nILS (Stochastic)..."
 		 << endl;
 }
 
@@ -17,6 +25,7 @@ bool ILS_SIRP::run()
 {
 	// Start the timer
 	auto startTime_ILS = std::chrono::high_resolution_clock::now();
+	auto currentTime_ILS = std::chrono::high_resolution_clock::now();
 	auto elapsedTime_ILS = 0.0;
 
 	SolutionFirstEchelon sol_FE_temp = sol_FE;
@@ -65,11 +74,31 @@ bool ILS_SIRP::run()
 	sol_FE_incumbent = sol_FE_temp;
 	sol_SE_incumbent = sol_SE_temp;
 	result_incumbent = result_temp;
-	
-	// Define the number of threads you want to use
-	int numThreads = std::thread::hardware_concurrency(); // Use the number of available CPU cores
-	cout << "\nAvailable CPU cores: " << numThreads << endl;
 
+	// -----------------------------------------------------------------------------------------------------------------
+	// save solution for Hyper Parameter Tuning by saving the OF for each iteration
+	SolutionManager solMgr_HPT(params);
+
+	auto currentTime_HHA = std::chrono::high_resolution_clock::now();
+	double elapsedTime_HHA;
+	Result result_HPT;
+	if (savePerIterSol)
+	{
+		cout << "\nCurrent Solution For HHA Iteration " << HHA_iter << " And ILS Iteration " << 0 << endl;
+		currentTime_HHA = std::chrono::high_resolution_clock::now();
+		elapsedTime_HHA = std::chrono::duration_cast<std::chrono::duration<double>>(currentTime_HHA - startTime_HHA).count();
+		cout << "Computation Time (Hybrid-ILS) = " << elapsedTime_HHA << " seconds" << endl;
+		result_HPT.objValue_firstEchelon = sol_FE_incumbent.setupCost + sol_FE_incumbent.productionCost +
+										   sol_FE_incumbent.holdingCostPlant + sol_FE_incumbent.transportationCostPlantToWarehouse;
+		result_HPT.objValue_secondEchelon = sol_SE_incumbent.holdingCostWarehouse_Avg + sol_SE_incumbent.holdingCostCustomer_Avg +
+											sol_SE_incumbent.transportationCostWarehouseToCustomer_Avg + sol_SE_incumbent.costOfUnmetDemand_Avg;
+		result_HPT.objValue_Total = result_HPT.objValue_firstEchelon + result_HPT.objValue_secondEchelon;
+		cout << "Objective Value = " << result_HPT.objValue_Total << endl;
+		
+		result_HPT.totalCPUTime = elapsedTime_HHA;
+		solMgr_HPT.saveOF_Iter_Stochastic(HHA_iter, 0, result_HPT, "Hybrid-ILS");
+	}
+	// -----------------------------------------------------------------------------------------------------------------
 	vector<ScenarioSolutionSecondEchelon> sol_SE_incumbent_Scenarios(params.numScenarios);
 	for (int s = 0; s < params.numScenarios; ++s)
 	{
@@ -79,29 +108,35 @@ bool ILS_SIRP::run()
 	}
 
 	cout << "\nRun ILS..." << endl;
-	std::atomic<bool> stopProcessing(false); 
+
+	// Define the number of threads you want to use
+	int numThreads = std::thread::hardware_concurrency(); // Use the number of available CPU cores
+	cout << "\nAvailable CPU cores: " << numThreads << endl;
+
+	std::atomic<bool> stopProcessing(false);
 	vector<std::thread> threads;
-	for (int s = 0; s < params.numScenarios; ++s) {
-		threads.emplace_back([&, s]() {
-			// Check if processing should continue
-			if (!stopProcessing) {
-				// ScenarioSolutionSecondEchelon sol_SE_incumbent_Scenario;
 
-				LP_SE_Scenario lpse_scenario(params, sol_FE_incumbent, sol_SE_incumbent_Scenarios[s], s);		
-				string status = lpse_scenario.solve();
-				double best_objValue_Scenario = lpse_scenario.getObjVal_Scenario();
+	// Initialize ILS for a specific Scenario
+	int numIterILS = 0;
+	bool stop = false;
 
-				// Initialize ILS for a specific Scenario
-				int numIterILS = 0;
-				bool stop = false;
-				
-				// Start the timer
-				auto startTime_ILS_Scenario = std::chrono::high_resolution_clock::now();
-				auto elapsedTime_ILS_Scenario = 0.0;
-
-				double objValue_Scenario = best_objValue_Scenario;
-				while (!stop && numIterILS < params.ILS_MaxIteration && elapsedTime_ILS_Scenario < params.ILS_TimeLimit)
+	while (!stop)
+	{
+		for (int s = 0; s < params.numScenarios; ++s)
+		{
+			threads.emplace_back([&, s]()
+								 {
+				// Check if processing should continue
+				if (!stopProcessing) 
 				{
+					// ScenarioSolutionSecondEchelon sol_SE_incumbent_Scenario;
+					LP_SE_Scenario lpse_scenario(params, sol_FE_incumbent, sol_SE_incumbent_Scenarios[s], s);		
+					string status = lpse_scenario.solve();
+					double best_objValue_Scenario = lpse_scenario.getObjVal_Scenario();
+					
+					double objValue_Scenario = best_objValue_Scenario;
+					// while (!stop && numIterILS < params.ILS_MaxIteration && elapsedTime_ILS_Scenario < params.ILS_TimeLimit)
+					// {
 					ScenarioSolutionSecondEchelon sol_SE_temp_Scenario = sol_SE_incumbent_Scenarios[s];
 
 					// cout << "\nIteration (ILS) for Scenario " << s + 1 << " Iteration : " << numIterILS + 1 << endl;
@@ -136,21 +171,71 @@ bool ILS_SIRP::run()
 
 						// cout << "New incumbent solution found for Scenario " << s + 1 << " Iteration : " << numIterILS + 1 << endl;
 					}
+				} });
+		}
 
-					numIterILS++;
-
-					auto currentTime_ILS_Scenario = std::chrono::high_resolution_clock::now();
-					elapsedTime_ILS_Scenario = std::chrono::duration_cast<std::chrono::duration<double>>(currentTime_ILS_Scenario - startTime_ILS_Scenario).count();
-				}
+		// Join all the threads to wait for them to finish
+		for (std::thread &t : threads)
+		{
+			if (t.joinable())
+			{
+				t.join();
 			}
-		});
-	}
+		}
 
-	// Join all the threads to wait for them to finish
-	for (std::thread& t : threads) {
-		if (t.joinable()) {
-            t.join();
-        }
+		for (int s = 0; s < params.numScenarios; ++s)
+		{
+			sol_SE_temp.routesWarehouseToCustomer[s] = sol_SE_incumbent_Scenarios[s].routesWarehouseToCustomer_Scenario;
+			sol_SE_temp.customerAssignmentToWarehouse[s] = sol_SE_incumbent_Scenarios[s].customerAssignmentToWarehouse_Scenario;
+		}
+
+		if (!solveLP(sol_FE_temp, sol_SE_temp, result_temp))
+		{
+			cerr << "Failed to solve LP" << endl;
+			return false;
+		}
+
+		if (!checkSolutionFeasiblity(sol_FE_temp, sol_SE_temp))
+		{
+			cerr << "Solution is not feasible" << endl;
+			return false;
+		}
+
+		if (result_temp.objValue_Total < result_incumbent.objValue_Total - 1e-2)
+		{
+			sol_FE_incumbent = sol_FE_temp;
+			sol_SE_incumbent = sol_SE_temp;
+			result_incumbent = result_temp;
+		}
+
+		currentTime_ILS = std::chrono::high_resolution_clock::now();
+		elapsedTime_ILS = std::chrono::duration_cast<std::chrono::duration<double>>(currentTime_ILS - startTime_ILS).count();
+
+		// -----------------------------------------------------------------------------------------------------------------
+		if (savePerIterSol)
+		{
+			cout << "\nCurrent Solution For HHA Iteration " << HHA_iter << " And ILS Iteration " << numIterILS + 1 << endl;
+			currentTime_HHA = std::chrono::high_resolution_clock::now();
+			elapsedTime_HHA = std::chrono::duration_cast<std::chrono::duration<double>>(currentTime_HHA - startTime_HHA).count();
+			cout << "Computation Time (Hybrid-ILS) = " << elapsedTime_HHA << " seconds" << endl;
+			result_HPT.objValue_firstEchelon = sol_FE_incumbent.setupCost + sol_FE_incumbent.productionCost +
+											   sol_FE_incumbent.holdingCostPlant + sol_FE_incumbent.transportationCostPlantToWarehouse;
+			result_HPT.objValue_secondEchelon = sol_SE_incumbent.holdingCostWarehouse_Avg + sol_SE_incumbent.holdingCostCustomer_Avg +
+												sol_SE_incumbent.transportationCostWarehouseToCustomer_Avg + sol_SE_incumbent.costOfUnmetDemand_Avg;
+			result_HPT.objValue_Total = result_HPT.objValue_firstEchelon + result_HPT.objValue_secondEchelon;
+			cout << "Objective Value = " << result_HPT.objValue_Total << endl;
+
+			result_HPT.totalCPUTime = elapsedTime_HHA;
+			solMgr_HPT.saveOF_Iter_Stochastic(HHA_iter, numIterILS + 1, result_HPT, "Hybrid-ILS");
+		}
+		// -----------------------------------------------------------------------------------------------------------------
+
+		numIterILS++;
+
+		if (numIterILS >= params.ILS_MaxIteration || elapsedTime_ILS >= params.ILS_TimeLimit)
+		{
+			stop = true;
+		}
 	}
 
 	// ----------------------------------------------------------------------------------------------------------
@@ -168,10 +253,10 @@ bool ILS_SIRP::run()
 		cerr << "Failed to solve LP" << endl;
 		return false;
 	}
-	
+
 	if (!checkSolutionFeasiblity(sol_FE_temp, sol_SE_temp))
 	{
-		cerr << "Initial solution is not feasible" << endl;
+		cerr << "Solution is not feasible" << endl;
 		return false;
 	}
 
@@ -185,7 +270,7 @@ bool ILS_SIRP::run()
 	// Print the best objective function value
 	cout << "Best Objective Function Value: " << std::setprecision(1) << std::fixed << result_incumbent.objValue_Total << endl;
 
-	auto currentTime_ILS = std::chrono::high_resolution_clock::now();
+	currentTime_ILS = std::chrono::high_resolution_clock::now();
 	elapsedTime_ILS = std::chrono::duration_cast<std::chrono::duration<double>>(currentTime_ILS - startTime_ILS).count();
 	cout << "Total TIME ILS (Second Echelon): " << std::setprecision(3) << std::fixed << elapsedTime_ILS << endl;
 	result_incumbent.totalCPUTime = elapsedTime_ILS;

@@ -72,6 +72,7 @@ private:
     void DefineWarmStartSolution(IloEnv &env, IloCplex &cplex);
     void DisplayVariables();
     void CalculateCostsForEachPart();
+    void DisplayCostsForEachPart();
 
     void DisplayProductionSetupVars();
     void DisplayProductionQuantVars();

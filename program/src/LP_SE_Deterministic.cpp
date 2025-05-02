@@ -34,10 +34,36 @@ LP_SE_Deterministic::LP_SE_Deterministic(const ParameterSetting &parameters,
 						{
 							warehouse_delivery[w][k][t] += sol_FE.deliveryQuantityToWarehouse[w][t];
 						}
+
+						// cout << "warehouse_delivery[" << w + 1 << "][" << t + 1 << "][" << k + 1 << "] = " << warehouse_delivery[w][k][t] << endl;
 					}
 				}
 			}
 		}
+
+		// for (int w = 0; w < params.numWarehouses; ++w)
+		// {
+		// 	for (int t = 0; t < params.numPeriods; ++t)
+		// 	{
+		// 		for (int k = 0; k < params.numVehicles_Warehouse; ++k)
+		// 		{
+		// 			vector<int> &route = sol_SE.routesWarehouseToCustomer[w][t][k];
+		// 			if (!route.empty())
+		// 			{
+		// 				cout << "route[" << w << "][" << t << "][" << k << "] : [";
+		// 				int previousNode = w;
+		// 				for (int j = 1; j < route.size(); ++j)
+		// 				{
+		// 					int currentNode = route[j];
+		// 					cout << previousNode << " -> ";
+
+		// 					previousNode = currentNode;
+		// 				}
+		// 				cout << previousNode << "]" << endl;
+		// 			}
+		// 		}
+		// 	}
+		// }
 	}
 }
 
@@ -134,6 +160,11 @@ void LP_SE_Deterministic::handleCplexStatus(IloCplex &cplex, IloEnv &env, IloMod
 	if (saveSol)
 	{
 		string directory = "../cplexFiles/solVal/" + params.problemType + "/";
+		if (!fs::exists(directory))
+		{
+			cout << "Directory does not exist. Creating: " << directory << endl;
+			fs::create_directories(directory);
+		}
 		string fileName = generateFileName(directory, ".sol");
 		cplex.writeSolution(fileName.c_str());
 	}
@@ -252,18 +283,15 @@ void LP_SE_Deterministic::DefineSecondStageVars(IloEnv &env, IloModel &model)
 	// Initialize Variable Manager
 	VariableManager varManager(env);
 	// -------------------------------------------------------------------------------------------------------------------------------
-	if (params.problemType != "2EPRPCS")
+	// I_warehouse[w][t] variables (Warehouse w inventory in period t)
+	I_warehouse = varManager.create2D(params.numWarehouses, params.numPeriods);
+	for (int w = 0; w < params.numWarehouses; ++w)
 	{
-		// I_warehouse[w][t] variables (Warehouse w inventory in period t)
-		I_warehouse = varManager.create2D(params.numWarehouses, params.numPeriods);
-		for (int w = 0; w < params.numWarehouses; ++w)
+		for (int t = 0; t < params.numPeriods; ++t)
 		{
-			for (int t = 0; t < params.numPeriods; ++t)
-			{
-				string varName = "I_warehouse[" + std::to_string(w + 1) + "][" + std::to_string(t + 1) + "]";
-				I_warehouse[w][t] = IloNumVar(env, 0.0, params.storageCapacity_Warehouse[w], IloNumVar::Float, varName.c_str());
-				model.add(I_warehouse[w][t]);
-			}
+			string varName = "I_warehouse[" + std::to_string(w + 1) + "][" + std::to_string(t + 1) + "]";
+			I_warehouse[w][t] = IloNumVar(env, 0.0, params.storageCapacity_Warehouse[w], IloNumVar::Float, varName.c_str());
+			model.add(I_warehouse[w][t]);
 		}
 	}
 	// -------------------------------------------------------------------------------------------------------------------------------
@@ -322,17 +350,15 @@ void LP_SE_Deterministic::DefineObjectiveFunction(IloEnv &env, IloModel &model)
 		}
 	}
 
-	if (params.problemType != "2EPRPCS")
+	for (int t = 0; t < params.numPeriods; ++t)
 	{
-		for (int t = 0; t < params.numPeriods; ++t)
+		for (int w = 0; w < params.numWarehouses; ++w)
 		{
-			for (int w = 0; w < params.numWarehouses; ++w)
-			{
-				obj += params.unitHoldingCost_Warehouse[w] * I_warehouse[w][t];
-			}
+			obj += params.unitHoldingCost_Warehouse[w] * I_warehouse[w][t];
 		}
 	}
-	else
+
+	if (params.problemType == "2EPRPCS")
 	{
 		for (int w = 0; w < params.numWarehouses; ++w)
 		{
@@ -372,18 +398,18 @@ void LP_SE_Deterministic::DefineConstraints(IloEnv &env, IloModel &model)
 		DefCons_VehicleCapacity_FirstEchelon(env, model);
 	}
 
-	if (params.problemType == "2EPRPCS")
+	// if (params.problemType == "2EPRPCS")
+	// {
+	// 	DefCons_SatelliteInventoryBalance(env, model);
+	// }
+
+	DefCons_WarehouseInventoryCapacity(env, model);
+	if (params.problemType == "EEV")
 	{
-		DefCons_SatelliteInventoryBalance(env, model);
-	}
-	else if (params.problemType == "EEV")
-	{
-		DefCons_WarehouseInventoryCapacity(env, model);
 		DefCons_WarehouseInventoryBalance_EEV(env, model);
 	}
 	else
 	{
-		DefCons_WarehouseInventoryCapacity(env, model);
 		DefCons_WarehouseInventoryBalance(env, model);
 	}
 
@@ -492,13 +518,6 @@ void LP_SE_Deterministic::DefCons_WarehouseVisit_FirstEchelon(IloEnv &env, IloMo
 			vector<int> route = sol_FE.routesPlantToWarehouse[t][k];
 			if (!route.empty())
 			{
-				// cout << "Route for k = " << k + 1 << ", t = " << t + 1 << ": ";
-				// for (size_t i = 0; i < route.size() - 1; ++i)
-				// {
-				// 	cout << route[i] << " -> ";
-				// }
-				// cout << route.back() << endl;
-
 				for (int w = 0; w < params.numWarehouses; ++w)
 				{
 					int warehouseIndex = w + 1;
@@ -665,7 +684,7 @@ void LP_SE_Deterministic::DefCons_WarehouseInventoryBalance_EEV(IloEnv &env, Ilo
 	{
 		for (int w = 0; w < params.numWarehouses; ++w)
 		{
-			string constraintName = "WarehouseInventoryBalance(" + std::to_string(w + 1) + "," + std::to_string(t + 1) + ")";
+			string constraintName = "WarehouseInventoryBalance_EEV(" + std::to_string(w + 1) + "," + std::to_string(t + 1) + ")";
 
 			IloExpr expr(env);
 			if (t == 0)
@@ -770,7 +789,7 @@ void LP_SE_Deterministic::DefCons_CustomerInventoryBalance(IloEnv &env, IloModel
 				}
 
 				expr -= b_customer[i][t];
-				
+
 				IloConstraint CustomerInventoryBalanceConstraint(expr == params.initialInventory_Customer[i] - params.demand_Deterministic[i][t]);
 				expr.end();
 
@@ -843,7 +862,7 @@ void LP_SE_Deterministic::DefCons_CustomerVisit_SecondEchelon(IloEnv &env, IloMo
 				// 	}
 				// 	cout << route.back() << endl;
 				// }
-				
+
 				for (int i = 0; i < params.numCustomers; ++i)
 				{
 					int customerIndex = i + params.numWarehouses;
@@ -931,20 +950,15 @@ void LP_SE_Deterministic::RetrieveSolutions(IloCplex &cplex)
 		sol_FE_temp.routesPlantToWarehouse = sol_FE.routesPlantToWarehouse;
 	}
 
-	if (params.problemType != "2EPRPCS")
-	{ 
-		sol_SE_temp.warehouseInventory.assign(params.numWarehouses, vector<double>(params.numPeriods, 0.0));
+	sol_SE_temp.warehouseInventory.assign(params.numWarehouses, vector<double>(params.numPeriods, 0.0));
 
-		for (int t = 0; t < params.numPeriods; ++t)
+	for (int t = 0; t < params.numPeriods; ++t)
+	{
+		for (int w = 0; w < params.numWarehouses; ++w)
 		{
-			for (int w = 0; w < params.numWarehouses; ++w)
-			{
-
-				sol_SE_temp.warehouseInventory[w][t] = cplex.getValue(I_warehouse[w][t]);
-			}
+			sol_SE_temp.warehouseInventory[w][t] = cplex.getValue(I_warehouse[w][t]);
 		}
 	}
-
 
 	sol_SE_temp.customerUnmetDemand.assign(params.numCustomers, vector<double>(params.numPeriods, 0.0));
 	for (int t = 0; t < params.numPeriods; ++t)
@@ -996,19 +1010,17 @@ void LP_SE_Deterministic::CalculateCostsForEachPart()
 	}
 	result.objValue_firstEchelon = sol_FE_temp.setupCost + sol_FE_temp.productionCost + sol_FE_temp.holdingCostPlant + sol_FE_temp.transportationCostPlantToWarehouse;
 
-
-	if (params.problemType != "2EPRPCS")
+	for (int t = 0; t < params.numPeriods; ++t)
 	{
-		for (int t = 0; t < params.numPeriods; ++t)
+		for (int w = 0; w < params.numWarehouses; ++w)
 		{
-			for (int w = 0; w < params.numWarehouses; ++w)
-			{
-				sol_SE_temp.holdingCostWarehouse += params.unitHoldingCost_Warehouse[w] * sol_SE_temp.warehouseInventory[w][t];
-			}
+			sol_SE_temp.holdingCostWarehouse += params.unitHoldingCost_Warehouse[w] * sol_SE_temp.warehouseInventory[w][t];
 		}
-		result.objValue_secondEchelon += sol_SE_temp.holdingCostWarehouse;
 	}
-	else {
+	result.objValue_secondEchelon += sol_SE_temp.holdingCostWarehouse;
+
+	if (params.problemType == "2EPRPCS")
+	{
 		for (int t = 0; t < params.numPeriods; ++t)
 		{
 			for (int w = 0; w < params.numWarehouses; ++w)
@@ -1036,14 +1048,18 @@ void LP_SE_Deterministic::CalculateCostsForEachPart()
 		{
 			for (int k = 0; k < params.numVehicles_Warehouse; ++k)
 			{
-				int previousNode = w;
-				for (int j = 1; j < sol_SE_temp.routesWarehouseToCustomer[w][t][k].size(); ++j)
+				vector<int> &route = sol_SE_temp.routesWarehouseToCustomer[w][t][k];
+				if (!route.empty())
 				{
-					int currentNode = sol_SE_temp.routesWarehouseToCustomer[w][t][k][j];
+					int previousNode = w;
+					for (int j = 1; j < sol_SE_temp.routesWarehouseToCustomer[w][t][k].size(); ++j)
+					{
+						int currentNode = sol_SE_temp.routesWarehouseToCustomer[w][t][k][j];
 
-					sol_SE_temp.transportationCostWarehouseToCustomer += params.transportationCost_SecondEchelon[previousNode][currentNode];
+						sol_SE_temp.transportationCostWarehouseToCustomer += params.transportationCost_SecondEchelon[previousNode][currentNode];
 
-					previousNode = currentNode;
+						previousNode = currentNode;
+					}
 				}
 			}
 		}
@@ -1052,6 +1068,8 @@ void LP_SE_Deterministic::CalculateCostsForEachPart()
 	result.objValue_secondEchelon += sol_SE_temp.transportationCostWarehouseToCustomer;
 
 	result.objValue_Total = result.objValue_firstEchelon + result.objValue_secondEchelon;
+	// cout << "Transportation Cost First Echelon : " << sol_FE_temp.transportationCostPlantToWarehouse << endl;
+	// cout << "Transportation Cost Second Echelon : " << sol_SE_temp.transportationCostWarehouseToCustomer << endl;
 }
 
 void LP_SE_Deterministic::DisplayCosts()
@@ -1061,9 +1079,9 @@ void LP_SE_Deterministic::DisplayCosts()
 	cout << "Holding Cost Plant : " << sol_FE_temp.holdingCostPlant << endl;
 	cout << "Transportation Cost Plant to Warehouse : " << sol_FE_temp.transportationCostPlantToWarehouse << endl;
 
-	if (params.problemType != "2EPRPCS")
-		cout << "Holding Cost Warehouse : " << sol_SE_temp.holdingCostWarehouse << endl;
-	else
+	cout << "Holding Cost Warehouse : " << sol_SE_temp.holdingCostWarehouse << endl;
+
+	if (params.problemType == "2EPRPCS")
 		cout << "Handling Cost Satellite : " << sol_SE_temp.handlingCostSatellite << endl;
 
 	cout << "Holding Cost Customer : " << sol_SE_temp.holdingCostCustomer << endl;

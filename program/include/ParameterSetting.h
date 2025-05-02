@@ -26,7 +26,8 @@ public:
     vector<vector<int>> getOptimalRoutes() const;
     vector<double> getRouteCosts() const;
     vector<double> getDualValues_WarehouseInventoryLB() const;
-    SolutionWarmStart readSolutionWarmStart();
+    SolutionWarmStart readSolutionWarmStart_Stoch();
+    bool readSolutionWarmStart_Deter(SolutionWarmStart_Deterministic &sol_WS_Deter);
 
     vector<vector<vector<int>>> getCustomersAssignedToWarehouse_det() const;
     vector<vector<int>> getWarehouseAssignedToCustomer_det() const;

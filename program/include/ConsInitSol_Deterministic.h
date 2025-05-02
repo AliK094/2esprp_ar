@@ -23,12 +23,8 @@ public:
     vector<vector<vector<vector<int>>>> getRoutesWarehouseToCustomer();
 
     double getBestObjValue();
-
-
-    // vector<vector<vector<vector<int>>>> getCustomerAssignmentToWarehouse();
-
+    vector<vector<vector<int>>> getCustomerAssignmentToWarehouse();
     
-
 private:
     ParameterSetting params; // Member variable to hold the ParameterSetting object
     SolutionFirstEchelon solFE_init;
@@ -43,7 +39,7 @@ private:
     vector<vector<double>> unmetDemand_Customers_bestSolution;
     vector<vector<double>> deliveryQuantity_Customers_bestSolution;
     vector<vector<vector<vector<int>>>> routes_bestSolution;
-    
+
     void orderCustomersByUnmetDemandToDeliveryRatio(vector<int> &sorted_customer_costRatio);
     void calculateDecisionVariables(int w, vector<vector<double>> &Inv_Customers, vector<vector<double>> &unmetDemand_Customers, vector<vector<double>> &deliveryQuantity_Customers);
     void defineSetOne(int w, int t, vector<int> &setOne, vector<vector<double>> &Inv_Customers, const vector<vector<double>> &unmetDemand_Customers, vector<double> &tempDeliveryQuantity);
@@ -52,6 +48,8 @@ private:
     int findNextNodeToVisit(int current_node, vector<int> &setOne, vector<double> &tempDeliveryQuantity, double remainingVehicleCapacityWarehouse, double remainingAvailInventoryWarehouse);
     std::pair<int, double> minInsertionCost(const vector<int> &routes, int i);
     double calculateObjFuncValue(int w, const vector<vector<double>> &Inv_Customers, const vector<vector<double>> &unmetDemand_Customers, const vector<vector<vector<int>>> &routesPeriod);
+
+    void update_CATW_EEV();
 };
 
 #endif // CONSINITSOL_Deterministic_H

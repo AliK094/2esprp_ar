@@ -9,6 +9,7 @@
 #include "Perturbation.h"
 #include "LP_SE.h"
 #include "LP_SE_Scenario.h"
+#include "SolutionManager.h"
 #include <functional>
 #include <set>
 #include <unordered_set>
@@ -24,7 +25,11 @@ class ILS_SIRP
 public:
     ILS_SIRP(const ParameterSetting &parameters,
              const SolutionFirstEchelon &sol_FE,
-             const SolutionSecondEchelon &sol_SE = {});
+             const SolutionSecondEchelon &sol_SE = {},
+             int iter = -1,
+             std::chrono::high_resolution_clock::time_point startTime_HHA = std::chrono::high_resolution_clock::time_point{},
+             bool savePerIterSol = false);
+
 
     bool run();
 
@@ -46,6 +51,12 @@ private:
     vector<vector<vector<vector<int>>>> CATW;
 
     double Tolerance;
+
+    // -----------------------------------------------------------------------------------------------
+    int HHA_iter;
+    std::chrono::high_resolution_clock::time_point startTime_HHA;
+	bool savePerIterSol;
+    // -----------------------------------------------------------------------------------------------
 
     bool solveLP(SolutionFirstEchelon &sol_FE_temp, SolutionSecondEchelon &sol_SE_temp, Result &result_temp);
     bool checkSolutionFeasiblity(SolutionFirstEchelon sol_FE_temp, SolutionSecondEchelon sol_SE_temp);

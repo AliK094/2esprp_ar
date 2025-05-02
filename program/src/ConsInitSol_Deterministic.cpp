@@ -18,7 +18,7 @@ ConstructHeuristic_Deterministic::ConstructHeuristic_Deterministic(const Paramet
 		sortedWarehouseByDistance = params.getSortedWarehousesByDistance();
 		orderCustomersByUnmetDemandToDeliveryRatio(sorted_Customers_byPenaltyCostRatio);
 	}
-	else 
+	else
 	{
 		for (int i = 0; i < params.numCustomers; ++i)
 		{
@@ -27,6 +27,10 @@ ConstructHeuristic_Deterministic::ConstructHeuristic_Deterministic(const Paramet
 	}
 
 	CATW = params.getCustomersAssignedToWarehouse_det();
+	if (params.problemType == "EEV")
+	{
+		update_CATW_EEV();
+	}
 
 	bestObjValue = 0.0;
 	Inv_Customers_bestSolution.resize(params.numCustomers, vector<double>(params.numPeriods, 0.0));
@@ -66,27 +70,46 @@ void ConstructHeuristic_Deterministic::calculateDecisionVariables(int w, vector<
 	{
 		for (int i = 0; i < params.numCustomers; ++i)
 		{
-			if (CATW[t][w][i] == 1)
+			Inv_Customers[i][t] = 0.0;
+			unmetDemand_Customers[i][t] = 0.0;
+			if (t == 0)
 			{
-				Inv_Customers[i][t] = 0.0;
-				unmetDemand_Customers[i][t] = 0.0;
-				if (t == 0)
-				{
-					Inv_Customers[i][t] = params.initialInventory_Customer[i];
-				}
-				else
-				{
-					Inv_Customers[i][t] = Inv_Customers[i][t - 1];
-				}
-				Inv_Customers[i][t] -= params.demand_Deterministic[i][t];
-				Inv_Customers[i][t] += deliveryQuantity_Customers[i][t];
-
-				if (Inv_Customers[i][t] < 0)
-				{
-					unmetDemand_Customers[i][t] = -Inv_Customers[i][t];
-					Inv_Customers[i][t] = 0.0;
-				}
+				Inv_Customers[i][t] = params.initialInventory_Customer[i];
 			}
+			else
+			{
+				Inv_Customers[i][t] = Inv_Customers[i][t - 1];
+			}
+			Inv_Customers[i][t] -= params.demand_Deterministic[i][t];
+			Inv_Customers[i][t] += deliveryQuantity_Customers[i][t];
+
+			if (Inv_Customers[i][t] < 0)
+			{
+				unmetDemand_Customers[i][t] = -Inv_Customers[i][t];
+				Inv_Customers[i][t] = 0.0;
+			}
+
+			// if (CATW[t][w][i] == 1)
+			// {
+			// 	Inv_Customers[i][t] = 0.0;
+			// 	unmetDemand_Customers[i][t] = 0.0;
+			// 	if (t == 0)
+			// 	{
+			// 		Inv_Customers[i][t] = params.initialInventory_Customer[i];
+			// 	}
+			// 	else
+			// 	{
+			// 		Inv_Customers[i][t] = Inv_Customers[i][t - 1];
+			// 	}
+			// 	Inv_Customers[i][t] -= params.demand_Deterministic[i][t];
+			// 	Inv_Customers[i][t] += deliveryQuantity_Customers[i][t];
+
+			// 	if (Inv_Customers[i][t] < 0)
+			// 	{
+			// 		unmetDemand_Customers[i][t] = -Inv_Customers[i][t];
+			// 		Inv_Customers[i][t] = 0.0;
+			// 	}
+			// }
 		}
 	}
 }
@@ -96,6 +119,10 @@ void ConstructHeuristic_Deterministic::defineSetOne(int w, int t, vector<int> &s
 	for (int i : sorted_Customers_byPenaltyCostRatio)
 	{
 		int custIndex = i - params.numWarehouses;
+		if (CATW[t][w][custIndex] == 0)
+		{
+			continue;
+		}
 
 		if (unmetDemand_Customers[custIndex][t] > 0)
 		{
@@ -122,6 +149,10 @@ void ConstructHeuristic_Deterministic::defineSetTwo(int w, int t, int look_ahead
 	for (int i : sorted_Customers_byPenaltyCostRatio)
 	{
 		int custIndex = i - params.numWarehouses;
+		if (CATW[t][w][custIndex] == 0)
+		{
+			continue;
+		}
 
 		double unetDemandCustomers_lookAhead = 0.0;
 		for (int l = t + 1; l <= std::min(t + look_ahead, params.numPeriods - 1); ++l)
@@ -453,7 +484,6 @@ bool ConstructHeuristic_Deterministic::Construct_InitialSolution()
 					{
 						defineSetTwo(w, t, look_ahead, setOne, setTwo, Inv_Customers, unmetDemand_Customers, tempDeliveryQuantity);
 					}
-					
 
 					// cout << "setOne Warehouse " << w << " Period " << t << ": [";
 					// for (auto it = setOne.begin(); it != setOne.end(); ++it)
@@ -588,4 +618,61 @@ vector<vector<vector<vector<int>>>> ConstructHeuristic_Deterministic::getRoutesW
 double ConstructHeuristic_Deterministic::getBestObjValue()
 {
 	return bestObjValue;
+}
+
+void ConstructHeuristic_Deterministic::update_CATW_EEV()
+{
+	vector<vector<int>> SWD = params.getSortedWarehousesByDistance();
+	CATW.resize(params.numPeriods, vector<vector<int>>(params.numWarehouses, vector<int>(params.numCustomers, 0)));
+	
+	double adjustmentFactor = 0.9;
+	vector<double> remainingInventoryWarehouse(params.numWarehouses, 0.0);
+	for (int t = 0; t < params.numPeriods; ++t)
+	{
+		vector<double> remainingVehicleCapacityWarehouse(params.numWarehouses, 0.0);
+		for (int w = 0; w < params.numWarehouses; ++w)
+		{
+			remainingInventoryWarehouse[w] += solFE_init.deliveryQuantityToWarehouse[w][t];
+			remainingVehicleCapacityWarehouse[w] = adjustmentFactor * params.numVehicles_Warehouse * params.vehicleCapacity_Warehouse;
+		}
+
+		for (int i = 0; i < params.numCustomers; ++i)
+		{
+			int assigned_ware = -1;
+			for (int wareInd : SWD[i])
+			{
+				if (remainingInventoryWarehouse[wareInd] - params.demand_Deterministic[i][t] >= 0.0 &&
+					remainingVehicleCapacityWarehouse[wareInd] - params.demand_Deterministic[i][t] >= 0.0)
+				{
+					remainingInventoryWarehouse[wareInd] -= params.demand_Deterministic[i][t];
+					remainingVehicleCapacityWarehouse[wareInd] -= params.demand_Deterministic[i][t];
+					assigned_ware = wareInd;
+					break;
+				}
+			}
+
+			if (assigned_ware != -1)
+			{
+				CATW[t][assigned_ware][i] = 1;
+			}
+			else
+			{
+				assigned_ware = SWD[i][0];
+				CATW[t][assigned_ware][i] = 1;
+			}
+
+			for (int w = 0; w < params.numWarehouses; ++w)
+			{
+				if (w != assigned_ware)
+				{
+					CATW[t][w][i] = 0;
+				}
+			}
+		}
+	}
+}
+
+vector<vector<vector<int>>> ConstructHeuristic_Deterministic::getCustomerAssignmentToWarehouse()
+{
+	return CATW;
 }

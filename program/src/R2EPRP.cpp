@@ -70,8 +70,8 @@ bool R2EPRP::Solve()
 			// Retrieve the solution
 			RetrieveSolutions(cplex);
 			// Display the solution
-			DisplayProductionSetupVars();
-			DisplayProductionQuantVars();
+			// DisplayProductionSetupVars();
+			// DisplayProductionQuantVars();
 			// DisplayPlantInventoryVars();
 			// DisplayWarehouseInventoryVars();
 			// DisplayFirstEchelonRouteVars();
@@ -80,9 +80,12 @@ bool R2EPRP::Solve()
 			// DisplayCustomerUnmetDemandVars();
 			// DisplayDeliveryQuantityToCustomersVars();
 			CalculateCostsForEachPart();
+			// DisplayCostsForEachPart();
 		}
 
 		env.end();
+
+		return true;
 	}
 	catch (const IloException &e)
 	{
@@ -94,7 +97,8 @@ bool R2EPRP::Solve()
 		cerr << "Runtime Error: " << e.what() << endl;
 		return false;
 	}
-	return true;
+	return false;
+	// return true;
 }
 
 void R2EPRP::configureCplex(IloCplex &cplex, IloEnv &env)
@@ -121,7 +125,7 @@ void R2EPRP::handleCplexStatus(IloCplex &cplex, IloEnv &env, IloModel &model)
 		result.objValue_Total = cplex.getObjValue();
 		result.optimalityGap = cplex.getMIPRelativeGap() * 100;
 		result.lowerBound = cplex.getBestObjValue();
-		cout << "Optimal solution found. Objective Value = " << result.objValue_Total << endl;
+		// cout << "Optimal solution found. Objective Value = " << result.objValue_Total << endl;
 	}
 	else if (cplex.getStatus() == IloAlgorithm::Feasible)
 	{
@@ -129,21 +133,23 @@ void R2EPRP::handleCplexStatus(IloCplex &cplex, IloEnv &env, IloModel &model)
 		result.objValue_Total = cplex.getObjValue();
 		result.optimalityGap = cplex.getMIPRelativeGap() * 100;
 		result.lowerBound = cplex.getBestObjValue();
-		cout << "Feasible solution found. Objective Value: " << result.objValue_Total << endl;
-		cout << "LB = " << result.lowerBound;
-		cout << "Optimality Gap (%) = " << result.optimalityGap;
+		// cout << "Feasible solution found. Objective Value: " << result.objValue_Total << endl;
+		// cout << "LB = " << result.lowerBound;
+		// cout << "Optimality Gap (%) = " << result.optimalityGap;
 	}
 	else if (cplex.getStatus() == IloAlgorithm::Infeasible)
 	{
 		result.status = "Infeasible";
-		cerr << "Problem is infeasible." << endl;
-		refineConflict(cplex, env, model);
+		// cerr << "Problem is infeasible." << endl;
+		// refineConflict(cplex, env, model);
+		// saveSol = true;
+		// exit(0);
 		throw std::runtime_error("Solver terminated with infeasible solution.");
 	}
 	else
 	{
 		result.status = "Undefined";
-		cerr << "Solver terminated with undefined status." << endl;
+		// cerr << "Solver terminated with undefined status." << endl;
 	}
 
 	if (saveSol)
@@ -246,18 +252,15 @@ void R2EPRP::DefineVariables(IloEnv &env, IloModel &model)
 		model.add(I_plant[t]);
 	}
 	// -------------------------------------------------------------------------------------------------------------------------------
-	if (params.problemType != "2EPRPCS")
+	// I_warehouse[w][t] variables (Warehouse w inventory in period t)
+	I_warehouse = varManager.create2D(params.numWarehouses, params.numPeriods);
+	for (int w = 0; w < params.numWarehouses; ++w)
 	{
-		// I_warehouse[w][t] variables (Warehouse w inventory in period t)
-		I_warehouse = varManager.create2D(params.numWarehouses, params.numPeriods);
-		for (int w = 0; w < params.numWarehouses; ++w)
+		for (int t = 0; t < params.numPeriods; ++t)
 		{
-			for (int t = 0; t < params.numPeriods; ++t)
-			{
-				string varName = "I_warehouse[" + std::to_string(w + 1) + "][" + std::to_string(t + 1) + "]";
-				I_warehouse[w][t] = IloNumVar(env, 0.0, params.storageCapacity_Warehouse[w], IloNumVar::Float, varName.c_str());
-				model.add(I_warehouse[w][t]);
-			}
+			string varName = "I_warehouse[" + std::to_string(w + 1) + "][" + std::to_string(t + 1) + "]";
+			I_warehouse[w][t] = IloNumVar(env, 0.0, params.storageCapacity_Warehouse[w], IloNumVar::Float, varName.c_str());
+			model.add(I_warehouse[w][t]);
 		}
 	}
 	// -------------------------------------------------------------------------------------------------------------------------------
@@ -273,18 +276,15 @@ void R2EPRP::DefineVariables(IloEnv &env, IloModel &model)
 		}
 	}
 	// -------------------------------------------------------------------------------------------------------------------------------
-	if (shortageAllowed)
+	// b_customer[i][t] variables (Customer i unsatisfied demand in period t)
+	b_customer = varManager.create2D(params.numCustomers, params.numPeriods);
+	for (int i = 0; i < params.numCustomers; ++i)
 	{
-		// b_customer[i][t] variables (Customer i unsatisfied demand in period t)
-		b_customer = varManager.create2D(params.numCustomers, params.numPeriods);
-		for (int i = 0; i < params.numCustomers; ++i)
+		for (int t = 0; t < params.numPeriods; ++t)
 		{
-			for (int t = 0; t < params.numPeriods; ++t)
-			{
-				string varName = "b_customer[" + std::to_string(i + 1 + params.numWarehouses) + "][" + std::to_string(t + 1) + "]";
-				b_customer[i][t] = IloNumVar(env, 0.0, params.demand_Deterministic[i][t], IloNumVar::Float, varName.c_str());
-				model.add(b_customer[i][t]);
-			}
+			string varName = "b_customer[" + std::to_string(i + 1 + params.numWarehouses) + "][" + std::to_string(t + 1) + "]";
+			b_customer[i][t] = IloNumVar(env, 0.0, params.demand_Deterministic[i][t], IloNumVar::Float, varName.c_str());
+			model.add(b_customer[i][t]);
 		}
 	}
 	// -------------------------------------------------------------------------------------------------------------------------------
@@ -348,10 +348,7 @@ void R2EPRP::DefineObjectiveFunction(IloEnv &env, IloModel &model)
 		for (int i = 0; i < params.numCustomers; ++i)
 		{
 			obj += params.unitHoldingCost_Customer[i] * I_customer[i][t];
-			if (shortageAllowed)
-			{
-				obj += params.unmetDemandPenalty[i] * b_customer[i][t];
-			}
+			obj += params.unmetDemandPenalty[i] * b_customer[i][t];
 		}
 	}
 
@@ -371,14 +368,12 @@ void R2EPRP::DefineObjectiveFunction(IloEnv &env, IloModel &model)
 			}
 		}
 	}
-	if (params.problemType != "2EPRPCS")
+
+	for (int t = 0; t < params.numPeriods; ++t)
 	{
-		for (int t = 0; t < params.numPeriods; ++t)
+		for (int w = 0; w < params.numWarehouses; ++w)
 		{
-			for (int w = 0; w < params.numWarehouses; ++w)
-			{
-				obj += params.unitHoldingCost_Warehouse[w] * I_warehouse[w][t];
-			}
+			obj += params.unitHoldingCost_Warehouse[w] * I_warehouse[w][t];
 		}
 	}
 	model.add(IloMinimize(env, obj));
@@ -532,114 +527,79 @@ void R2EPRP::DefineConstraints(IloEnv &env, IloModel &model)
 		}
 	}
 	// ---------------------------------------------------------------------------------------------------------------------------
-	if (params.problemType == "2EPRPCS")
-	{
-		/*
-			Satellite Balance Constraints:
-				I sum(r in R) q[w][r][t] == sum(i in N_c) sum(k in K_w) w_customer[i][k][t]	for all w in W, t in T
-		*/
-		for (int t = 0; t < params.numPeriods; ++t)
-		{
-			for (int w = 0; w < params.numWarehouses; ++w)
-			{
-				string constraintName = "SatelliteBalance(" + std::to_string(w + 1) + "," + std::to_string(t + 1) + ")";
 
-				IloExpr expr(env);
+	/*
+		Warehouses Inventory Capacity Constraints:
+			I_warehouse[w][t] <= storageCapacity_warehouse 		for all w in W, t in T
+	*/
+	for (int t = 0; t < params.numPeriods; ++t)
+	{
+		for (int w = 0; w < params.numWarehouses; ++w)
+		{
+			string constraintName = "WarehouseInventoryCapacity(" + std::to_string(w + 1) + "," + std::to_string(t + 1) + ")";
+
+			IloExpr expr(env);
+			expr += I_warehouse[w][t];
+			IloConstraint warehouseInventoryCapacityConstraint(expr <= params.storageCapacity_Warehouse[w]);
+			expr.end();
+
+			model.add(warehouseInventoryCapacityConstraint).setName(constraintName.c_str());
+		}
+	}
+	// ---------------------------------------------------------------------------------------------------------------------------
+	/*
+		Warehouse Inventory Balance Constraints:
+			I[w][t] = I[w][t-1] + sum(r in R) q[w][r][t] - sum(i in N_c) sum(k in K_w) w_customer[i][k][t]	for all w in W, t in T
+	*/
+	for (int t = 0; t < params.numPeriods; ++t)
+	{
+		for (int w = 0; w < params.numWarehouses; ++w)
+		{
+			string constraintName = "WarehouseInventoryBalance(" + std::to_string(w + 1) + "," + std::to_string(t + 1) + ")";
+
+			IloExpr expr(env);
+			if (t == 0)
+			{
+				expr += I_warehouse[w][t];
 
 				for (int routeInd = 0; routeInd < numRoutes_FirstEchelon; ++routeInd)
 				{
-					expr += q[routeInd][w][t];
+					expr -= q[routeInd][w][t];
 				}
 
 				for (int k : params.set_WarehouseVehicles[w])
 				{
 					for (int i = 0; i < params.numCustomers; ++i)
 					{
-						expr -= w_customer[i][k][t];
+						expr += w_customer[i][k][t];
 					}
 				}
-				IloConstraint SatelliteBalanceConstraint(expr == 0.0);
+				IloConstraint WarehouseInventoryBalanceConstraint(expr == params.initialInventory_Warehouse[w]);
 				expr.end();
 
-				model.add(SatelliteBalanceConstraint).setName(constraintName.c_str());
+				model.add(WarehouseInventoryBalanceConstraint).setName(constraintName.c_str());
 			}
-		}
-	}
-	else
-	{
-		/*
-			Warehouses Inventory Capacity Constraints:
-				I_warehouse[w][t] <= storageCapacity_warehouse 		for all w in W, t in T
-		*/
-		for (int t = 0; t < params.numPeriods; ++t)
-		{
-			for (int w = 0; w < params.numWarehouses; ++w)
+			else
 			{
-				string constraintName = "WarehouseInventoryCapacity(" + std::to_string(w + 1) + "," + std::to_string(t + 1) + ")";
-
-				IloExpr expr(env);
 				expr += I_warehouse[w][t];
-				IloConstraint warehouseInventoryCapacityConstraint(expr <= params.storageCapacity_Warehouse[w]);
+				expr -= I_warehouse[w][t - 1];
+
+				for (int routeInd = 0; routeInd < numRoutes_FirstEchelon; ++routeInd)
+				{
+					expr -= q[routeInd][w][t];
+				}
+
+				for (int k : params.set_WarehouseVehicles[w])
+				{
+					for (int i = 0; i < params.numCustomers; ++i)
+					{
+						expr += w_customer[i][k][t];
+					}
+				}
+				IloConstraint WarehouseInventoryBalanceConstraint(expr == 0);
 				expr.end();
 
-				model.add(warehouseInventoryCapacityConstraint).setName(constraintName.c_str());
-			}
-		}
-		// ---------------------------------------------------------------------------------------------------------------------------
-		/*
-			Warehouse Inventory Balance Constraints:
-				I[w][t] = I[w][t-1] + sum(r in R) q[w][r][t] - sum(i in N_c) sum(k in K_w) w_customer[i][k][t]	for all w in W, t in T
-		*/
-		for (int t = 0; t < params.numPeriods; ++t)
-		{
-			for (int w = 0; w < params.numWarehouses; ++w)
-			{
-				string constraintName = "WarehouseInventoryBalance(" + std::to_string(w + 1) + "," + std::to_string(t + 1) + ")";
-
-				IloExpr expr(env);
-				if (t == 0)
-				{
-					expr += I_warehouse[w][t];
-
-					for (int routeInd = 0; routeInd < numRoutes_FirstEchelon; ++routeInd)
-					{
-						expr -= q[routeInd][w][t];
-					}
-
-					for (int k : params.set_WarehouseVehicles[w])
-					{
-						for (int i = 0; i < params.numCustomers; ++i)
-						{
-							expr += w_customer[i][k][t];
-						}
-					}
-					IloConstraint WarehouseInventoryBalanceConstraint(expr == params.initialInventory_Warehouse[w]);
-					expr.end();
-
-					model.add(WarehouseInventoryBalanceConstraint).setName(constraintName.c_str());
-				}
-				else
-				{
-					expr += I_warehouse[w][t];
-					expr -= I_warehouse[w][t - 1];
-
-					for (int routeInd = 0; routeInd < numRoutes_FirstEchelon; ++routeInd)
-					{
-						expr -= q[routeInd][w][t];
-					}
-
-					for (int k : params.set_WarehouseVehicles[w])
-					{
-						for (int i = 0; i < params.numCustomers; ++i)
-						{
-							expr += w_customer[i][k][t];
-						}
-					}
-					IloConstraint WarehouseInventoryBalanceConstraint(expr == 0);
-					expr.end();
-
-					model.add(WarehouseInventoryBalanceConstraint).setName(constraintName.c_str());
-				}
+				model.add(WarehouseInventoryBalanceConstraint).setName(constraintName.c_str());
 			}
 		}
 	}
@@ -663,10 +623,7 @@ void R2EPRP::DefineConstraints(IloEnv &env, IloModel &model)
 					expr -= w_customer[i][k][t];
 				}
 
-				if (shortageAllowed)
-				{
-					expr -= b_customer[i][t];
-				}
+				expr -= b_customer[i][t];
 
 				IloConstraint CustomerInventoryBalanceConstraint(expr == params.initialInventory_Customer[i] - params.demand_Deterministic[i][t]);
 				expr.end();
@@ -682,10 +639,7 @@ void R2EPRP::DefineConstraints(IloEnv &env, IloModel &model)
 					expr -= w_customer[i][k][t];
 				}
 
-				if (shortageAllowed)
-				{
-					expr -= b_customer[i][t];
-				}
+				expr -= b_customer[i][t];
 
 				IloConstraint CustomerInventoryBalanceConstraint(expr == -params.demand_Deterministic[i][t]);
 				expr.end();
@@ -833,15 +787,9 @@ void R2EPRP::RetrieveSolutions(IloCplex &cplex)
 	solFE.productionSetup.assign(params.numPeriods, 0.0);
 	solFE.productionQuantity.assign(params.numPeriods, 0.0);
 	solFE.plantInventory.assign(params.numPeriods, 0.0);
-	if (params.problemType != "2EPRPCS")
-	{
-		solSE.warehouseInventory.assign(params.numWarehouses, vector<double>(params.numPeriods, 0.0));
-	}
+	solSE.warehouseInventory.assign(params.numWarehouses, vector<double>(params.numPeriods, 0.0));
 	solSE.customerInventory.assign(params.numCustomers, vector<double>(params.numPeriods, 0.0));
-	if (shortageAllowed)
-	{
-		solSE.customerUnmetDemand.assign(params.numCustomers, vector<double>(params.numPeriods, 0.0));
-	}
+	solSE.customerUnmetDemand.assign(params.numCustomers, vector<double>(params.numPeriods, 0.0));
 	solFE.deliveryQuantityToWarehouse.assign(params.numWarehouses, vector<double>(params.numPeriods, 0.0));
 	solFE.routesPlantToWarehouse.assign(params.numPeriods, vector<vector<int>>(params.numVehicles_Plant, vector<int>()));
 	solSE.deliveryQuantityToCustomer.assign(params.numCustomers, vector<double>(params.numPeriods, 0.0));
@@ -863,10 +811,7 @@ void R2EPRP::RetrieveSolutions(IloCplex &cplex)
 				solFE.deliveryQuantityToWarehouse[w][t] += cplex.getValue(q[routeInd][w][t]);
 			}
 
-			if (params.problemType != "2EPRPCS")
-			{
-				solSE.warehouseInventory[w][t] = cplex.getValue(I_warehouse[w][t]);
-			}
+			solSE.warehouseInventory[w][t] = cplex.getValue(I_warehouse[w][t]);
 		}
 
 		int vehInd = 0;
@@ -886,10 +831,7 @@ void R2EPRP::RetrieveSolutions(IloCplex &cplex)
 		for (int i = 0; i < params.numCustomers; ++i)
 		{
 			solSE.customerInventory[i][t] = cplex.getValue(I_customer[i][t]);
-			if (shortageAllowed)
-			{
-				solSE.customerUnmetDemand[i][t] = cplex.getValue(b_customer[i][t]);
-			}
+			solSE.customerUnmetDemand[i][t] = cplex.getValue(b_customer[i][t]);
 			for (int k = 0; k < params.numVehicles_SecondEchelon; ++k)
 			{
 				solSE.deliveryQuantityToCustomer[i][t] += cplex.getValue(w_customer[i][k][t]);
@@ -917,6 +859,11 @@ void R2EPRP::CalculateCostsForEachPart()
 			}
 		}
 
+		for (int w = 0; w < params.numWarehouses; ++w)
+		{
+			solSE.holdingCostWarehouse += params.unitHoldingCost_Warehouse[w] * solSE.warehouseInventory[w][t];
+		}
+
 		if (params.problemType == "2EPRPCS")
 		{
 			for (int w = 0; w < params.numWarehouses; ++w)
@@ -924,21 +871,11 @@ void R2EPRP::CalculateCostsForEachPart()
 				solSE.handlingCostSatellite += params.unitHandlingCost_Satellite[w] * solFE.deliveryQuantityToWarehouse[w][t];
 			}
 		}
-		else
-		{
-			for (int w = 0; w < params.numWarehouses; ++w)
-			{
-				solSE.holdingCostWarehouse += params.unitHoldingCost_Warehouse[w] * solSE.warehouseInventory[w][t];
-			}
-		}
 
 		for (int i = 0; i < params.numCustomers; ++i)
 		{
 			solSE.holdingCostCustomer += params.unitHoldingCost_Customer[i] * solSE.customerInventory[i][t];
-			if (shortageAllowed)
-			{
-				solSE.costOfUnmetDemand += params.unmetDemandPenalty[i] * solSE.customerUnmetDemand[i][t];
-			}
+			solSE.costOfUnmetDemand += params.unmetDemandPenalty[i] * solSE.customerUnmetDemand[i][t];
 		}
 	}
 
@@ -962,33 +899,36 @@ void R2EPRP::CalculateCostsForEachPart()
 	}
 
 	result.objValue_firstEchelon = solFE.setupCost + solFE.productionCost + solFE.holdingCostPlant + solFE.transportationCostPlantToWarehouse;
+	
+	result.objValue_secondEchelon += solSE.holdingCostWarehouse;
+	if (params.problemType == "2EPRPCS")
+	{
+		result.objValue_secondEchelon += solSE.handlingCostSatellite;
+	}
+
+	result.objValue_secondEchelon += solSE.costOfUnmetDemand;
+	result.objValue_secondEchelon += solSE.holdingCostCustomer + solSE.transportationCostWarehouseToCustomer;
+
+	result.objValue_Total = result.objValue_firstEchelon + result.objValue_secondEchelon;
+}
+
+void R2EPRP::DisplayCostsForEachPart()
+{
 	cout << "setupCost (R2EPRP) = " << solFE.setupCost << endl;
 	cout << "productionCost (R2EPRP) = " << solFE.productionCost << endl;
 	cout << "holdingCostPlant (R2EPRP) = " << solFE.holdingCostPlant << endl;
 	cout << "transportationCostPlantToWarehouse (R2EPRP) = " << solFE.transportationCostPlantToWarehouse << endl;
 	cout << "objValue_FE (R2EPRP) = " << result.objValue_firstEchelon << endl;
-
+	cout << "holding cost warehouse (R2EPRP) : " << solSE.holdingCostWarehouse << endl;
 	if (params.problemType == "2EPRPCS")
 	{
 		cout << "handling cost satellite (R2EPRP) : " << solSE.handlingCostSatellite << endl;
-		result.objValue_secondEchelon += solSE.handlingCostSatellite;
 	}
-	else
-	{
-		cout << "holding cost warehouse (R2EPRP) : " << solSE.holdingCostWarehouse << endl;
-		result.objValue_secondEchelon += solSE.holdingCostWarehouse;
-	}
-
+	
 	cout << "holding cost customer (R2EPRP) : " << solSE.holdingCostCustomer << endl;
-	if (shortageAllowed)
-	{
-		cout << "cost of unmet demand (R2EPRP) : " << solSE.costOfUnmetDemand << endl;
-		result.objValue_secondEchelon += solSE.costOfUnmetDemand;
-	}
-	cout << "transportation cost warehouse to customer (R2EPRP) : " << solSE.transportationCostWarehouseToCustomer << endl;
-	result.objValue_secondEchelon += solSE.holdingCostCustomer + solSE.transportationCostWarehouseToCustomer;
 
-	result.objValue_Total = result.objValue_firstEchelon + result.objValue_secondEchelon;
+	cout << "cost of unmet demand (R2EPRP) : " << solSE.costOfUnmetDemand << endl;
+	cout << "transportation cost warehouse to customer (R2EPRP) : " << solSE.transportationCostWarehouseToCustomer << endl;
 
 	cout << "Objective value FE : " << result.objValue_firstEchelon << endl;
 	cout << "Objective value (ILS) SE : " << result.objValue_secondEchelon << endl;

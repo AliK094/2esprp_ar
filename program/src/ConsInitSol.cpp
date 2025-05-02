@@ -12,6 +12,20 @@ ConstructHeuristic::ConstructHeuristic(const ParameterSetting &parameters, const
 	sortedWarehouseByDistance = params.getSortedWarehousesByDistance();
 	orderCustomersByUnmetDemandToDeliveryRatio(sorted_Customers_byPenaltyCostRatio);
 	CATW = params.getCustomersAssignedToWarehouse();
+	// for (int s = 0; s < params.numScenarios; ++s)
+	// {
+	// 	for (int t = 0; t < params.numPeriods; ++t)
+	// 	{
+	// 		for (int w = 0; w < params.numWarehouses; ++w)
+	// 		{
+	// 			for (int i = 0; i < params.numCustomers; ++i)
+	// 			{
+	// 				cout << CATW[s][t][w][i] << " ";
+	// 			}
+	// 			cout << endl;
+	// 		}
+	// 	}
+	// }
 
 	bestObjValue = 0.0;
 	Inv_Customers_bestSolution.resize(params.numCustomers, vector<vector<double>>(params.numPeriods, vector<double>(params.numScenarios, 0.0)));
@@ -50,27 +64,26 @@ void ConstructHeuristic::calculateDecisionVariables(int s, int w, vector<vector<
 	{
 		for (int i = 0; i < params.numCustomers; ++i)
 		{
-			if (CATW[s][t][w][i] == 1)
+			// cout << "Customer " << i + params.numWarehouses << " is assigned to warehouse " << w + 1 << " in period " << t + 1 << endl;
+			Inv_Customers[i][t] = 0.0;
+			unmetDemand_Customers[i][t] = 0.0;
+			if (t == 0)
 			{
-				Inv_Customers[i][t] = 0.0;
-				unmetDemand_Customers[i][t] = 0.0;
-				if (t == 0)
-				{
-					Inv_Customers[i][t] = params.initialInventory_Customer[i];
-				}
-				else
-				{
-					Inv_Customers[i][t] = Inv_Customers[i][t - 1];
-				}
-				Inv_Customers[i][t] -= params.demand[i][t][s];
-				Inv_Customers[i][t] += deliveryQuantity_Customers[i][t];
-
-				if (Inv_Customers[i][t] < 0)
-				{
-					unmetDemand_Customers[i][t] = -Inv_Customers[i][t];
-					Inv_Customers[i][t] = 0.0;
-				}
+				Inv_Customers[i][t] = params.initialInventory_Customer[i];
 			}
+			else
+			{
+				Inv_Customers[i][t] = Inv_Customers[i][t - 1];
+			}
+			Inv_Customers[i][t] -= params.demand[i][t][s];
+			Inv_Customers[i][t] += deliveryQuantity_Customers[i][t];
+
+			if (Inv_Customers[i][t] < 0)
+			{
+				unmetDemand_Customers[i][t] = -Inv_Customers[i][t];
+				Inv_Customers[i][t] = 0.0;
+			}
+			// cout << "Unmet demand of customer " << i + params.numWarehouses << " in period " << t + 1 << " is " << unmetDemand_Customers[i][t] << endl;
 		}
 	}
 }
@@ -80,6 +93,10 @@ void ConstructHeuristic::defineSetOne(int s, int w, int t, vector<int> &setOne, 
 	for (int i : sorted_Customers_byPenaltyCostRatio)
 	{
 		int custIndex = i - params.numWarehouses;
+		if (CATW[s][t][w][custIndex] == 0)
+		{
+			continue;
+		}
 
 		if (unmetDemand_Customers[custIndex][t] > 0)
 		{
@@ -106,15 +123,19 @@ void ConstructHeuristic::defineSetTwo(int s, int w, int t, int look_ahead, vecto
 	for (int i : sorted_Customers_byPenaltyCostRatio)
 	{
 		int custIndex = i - params.numWarehouses;
+		if (CATW[s][t][w][custIndex] == 0)
+		{
+			continue;
+		}
 
-		double unetDemandCustomers_lookAhead = 0.0;
+		double unmetDemandCustomers_lookAhead = 0.0;
 		for (int l = t + 1; l <= std::min(t + look_ahead, params.numPeriods - 1); ++l)
 		{
 			// cout << "look ahead demand [" << i << "] = " << unmetDemand_Customers[custIndex][l] << endl;
-			unetDemandCustomers_lookAhead += unmetDemand_Customers[custIndex][l];
+			unmetDemandCustomers_lookAhead += unmetDemand_Customers[custIndex][l];
 		}
 
-		if (unetDemandCustomers_lookAhead > 0)
+		if (unmetDemandCustomers_lookAhead > 0)
 		{
 			// check if customer i is in setOne
 			auto it = std::find(setOne.begin(), setOne.end(), i);
@@ -122,11 +143,11 @@ void ConstructHeuristic::defineSetTwo(int s, int w, int t, int look_ahead, vecto
 			{
 				if (t == 0)
 				{
-					tempDeliveryQuantity[custIndex] = std::min({unetDemandCustomers_lookAhead, params.vehicleCapacity_Warehouse, (params.storageCapacity_Customer[custIndex] - params.initialInventory_Customer[custIndex])});
+					tempDeliveryQuantity[custIndex] = std::min({unmetDemandCustomers_lookAhead, params.vehicleCapacity_Warehouse, (params.storageCapacity_Customer[custIndex] - params.initialInventory_Customer[custIndex])});
 				}
 				else
 				{
-					tempDeliveryQuantity[custIndex] = std::min({unetDemandCustomers_lookAhead, params.vehicleCapacity_Warehouse, (params.storageCapacity_Customer[custIndex] - Inv_Customers[custIndex][t - 1])});
+					tempDeliveryQuantity[custIndex] = std::min({unmetDemandCustomers_lookAhead, params.vehicleCapacity_Warehouse, (params.storageCapacity_Customer[custIndex] - Inv_Customers[custIndex][t - 1])});
 				}
 			}
 			else if (it == setOne.end())
@@ -135,11 +156,11 @@ void ConstructHeuristic::defineSetTwo(int s, int w, int t, int look_ahead, vecto
 
 				if (t == 0)
 				{
-					tempDeliveryQuantity[custIndex] = std::min({unetDemandCustomers_lookAhead + tempDeliveryQuantity[custIndex], params.vehicleCapacity_Warehouse, (params.storageCapacity_Customer[custIndex] - params.initialInventory_Customer[custIndex])});
+					tempDeliveryQuantity[custIndex] = std::min({unmetDemandCustomers_lookAhead + tempDeliveryQuantity[custIndex], params.vehicleCapacity_Warehouse, (params.storageCapacity_Customer[custIndex] - params.initialInventory_Customer[custIndex])});
 				}
 				else
 				{
-					tempDeliveryQuantity[custIndex] = std::min({unetDemandCustomers_lookAhead + tempDeliveryQuantity[custIndex], params.vehicleCapacity_Warehouse, (params.storageCapacity_Customer[custIndex] - Inv_Customers[custIndex][t - 1])});
+					tempDeliveryQuantity[custIndex] = std::min({unmetDemandCustomers_lookAhead + tempDeliveryQuantity[custIndex], params.vehicleCapacity_Warehouse, (params.storageCapacity_Customer[custIndex] - Inv_Customers[custIndex][t - 1])});
 				}
 			}
 		}
@@ -416,6 +437,7 @@ bool ConstructHeuristic::Construct_InitialSolution()
 			
 			for (int w = 0; w < params.numWarehouses; ++w)
 			{
+				// cout << "\n\nConstructing initial solution for scenario " << s + 1 << " and warehouse " << w + 1 << endl;
 				double bestObjValue_ScenarioWarehouse = std::numeric_limits<double>::max();
 
 				int look_ahead = 1;
@@ -478,8 +500,6 @@ bool ConstructHeuristic::Construct_InitialSolution()
 						// 	}
 						// 	cout << "]" << endl;
 						// }
-
-						
 
 						calculateDecisionVariables(s, w, Inv_Customers, unmetDemand_Customers, deliveryQuantity_Customers);
 					}

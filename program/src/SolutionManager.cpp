@@ -13,16 +13,21 @@ void SolutionManager::saveSolution(const SolutionFirstEchelon &solFE, const Solu
     {
         cout << "Saving solution for " << params.problemType << " with " << params.solutionAlgorithm << "..." << endl;
         // Construct the directory path
-        directory = "../Results/Solutions/" + params.problemType + "/" + params.solutionAlgorithm + "/" + 
-                                            params.probabilityFunction + "/S" + std::to_string(params.numScenarios) + 
-                                            "/UR" + std::to_string(static_cast<int>(params.uncertaintyRange * 100)) + "%" + 
-                                            "/PC" + std::to_string(static_cast<int>(params.unmetDemandPenaltyCoeff));
+        // directory = "../Results/Solutions/" + params.problemType + "/Preliminary_Test02" + "/" + params.solutionAlgorithm + "/" +
+        //                                     params.probabilityFunction + "/S" + std::to_string(params.numScenarios) +
+        //                                     "/UR" + std::to_string(static_cast<int>(params.uncertaintyRange * 100)) + "%" +
+        //                                     "/PC" + std::to_string(static_cast<int>(params.unmetDemandPenaltyCoeff));
+
+        directory = "../Results/Solutions/" + params.problemType + "/" + params.solutionAlgorithm + "/" +
+                    params.probabilityFunction + "/S" + std::to_string(params.numScenarios) +
+                    "/UR" + std::to_string(static_cast<int>(params.uncertaintyRange * 100)) + "%" +
+                    "/PC" + std::to_string(static_cast<int>(params.unmetDemandPenaltyCoeff));
 
         // Construct the filename
-        filename = "Sol_" + params.problemType + "_" + params.solutionAlgorithm + "_" + 
-                            params.probabilityFunction + "_" + params.instance + "_S" + std::to_string(params.numScenarios) + 
-                            "_UR" + std::to_string(static_cast<int>(params.uncertaintyRange * 100)) + "%" + 
-                            "_PC" + std::to_string(static_cast<int>(params.unmetDemandPenaltyCoeff)) + ".txt";
+        filename = "Sol_" + params.problemType + "_" + params.solutionAlgorithm + "_" +
+                   params.probabilityFunction + "_" + params.instance + "_S" + std::to_string(params.numScenarios) +
+                   "_UR" + std::to_string(static_cast<int>(params.uncertaintyRange * 100)) + "%" +
+                   "_PC" + std::to_string(static_cast<int>(params.unmetDemandPenaltyCoeff)) + ".txt";
     }
     else
     {
@@ -349,7 +354,12 @@ bool SolutionManager::checkFeasibility()
     {
         cout << "Check Feasibility for " << params.problemType << " and solutionAlgorithm: " << params.solutionAlgorithm << "..." << endl;
         // Construct the directory path
-        directory = "../Results/Solutions/" + params.problemType + "/" + params.solutionAlgorithm + "/" + params.probabilityFunction + "/S" + std::to_string(params.numScenarios) + "/UR" + std::to_string(static_cast<int>(params.uncertaintyRange * 100)) + "%" + "/PC" + std::to_string(static_cast<int>(params.unmetDemandPenaltyCoeff));
+        // directory = "../Results/Solutions/" + params.problemType + "/Preliminary_Test02" + "/" + params.solutionAlgorithm + "/" + params.probabilityFunction + "/S" + std::to_string(params.numScenarios) + "/UR" + std::to_string(static_cast<int>(params.uncertaintyRange * 100)) + "%" + "/PC" + std::to_string(static_cast<int>(params.unmetDemandPenaltyCoeff));
+
+        directory = "../Results/Solutions/" + params.problemType + "/" + params.solutionAlgorithm + "/" +
+                    params.probabilityFunction + "/S" + std::to_string(params.numScenarios) +
+                    "/UR" + std::to_string(static_cast<int>(params.uncertaintyRange * 100)) + "%" +
+                    "/PC" + std::to_string(static_cast<int>(params.unmetDemandPenaltyCoeff));
 
         // Construct the filename
         filename = "Sol_" + params.problemType + "_" + params.solutionAlgorithm + "_" + params.probabilityFunction + "_" + params.instance + "_S" + std::to_string(params.numScenarios) + "_UR" + std::to_string(static_cast<int>(params.uncertaintyRange * 100)) + "%" + "_PC" + std::to_string(static_cast<int>(params.unmetDemandPenaltyCoeff)) + ".txt";
@@ -436,6 +446,10 @@ void SolutionManager::saveResultSummary(const SolutionFirstEchelon &solFE, const
     if (params.solutionAlgorithm == "Hybrid-ILS" || params.solutionAlgorithm == "BC")
     {
         // Construct the directory path
+        // directory = "../Results/Summary/" + params.problemType  + "/Preliminary_Test02" + "/" + params.solutionAlgorithm + "/" +
+        //             params.probabilityFunction + "/S" + std::to_string(params.numScenarios) + "/UR" +
+        //             std::to_string(static_cast<int>(params.uncertaintyRange * 100)) + "%" +
+        //             "/PC" + std::to_string(static_cast<int>(params.unmetDemandPenaltyCoeff));
         directory = "../Results/Summary/" + params.problemType + "/" + params.solutionAlgorithm + "/" +
                     params.probabilityFunction + "/S" + std::to_string(params.numScenarios) + "/UR" +
                     std::to_string(static_cast<int>(params.uncertaintyRange * 100)) + "%" +
@@ -541,6 +555,91 @@ void SolutionManager::saveResultSummary(const SolutionFirstEchelon &solFE, const
     }
 }
 
+void SolutionManager::saveOF_Iter_Stochastic(int HHA_iter, int ILS_iter, const Result result, string solAlg)
+{
+    cout << "Save Incumbent For " << params.problemType << " and Solution Algorithm " << solAlg << "..." << endl;
+    // string directory = "../Results/OF_Iter/" + params.problemType + "/Preliminary_Test02" + "/" + solAlg + "/" + params.probabilityFunction +
+    //                 "/S" + std::to_string(params.numScenarios) + "/UR" +
+    //                 std::to_string(static_cast<int>(params.uncertaintyRange * 100)) + "%" +
+    //                 "/PC" + std::to_string(static_cast<int>(params.unmetDemandPenaltyCoeff));
+
+    string directory = "../Results/OF_Iter/" + params.problemType + "/" + solAlg + "/" + params.probabilityFunction +
+                       "/S" + std::to_string(params.numScenarios) + "/UR" +
+                       std::to_string(static_cast<int>(params.uncertaintyRange * 100)) + "%" +
+                       "/PC" + std::to_string(static_cast<int>(params.unmetDemandPenaltyCoeff));
+
+    string filename = "Sol_" + params.problemType + "_" + params.instance + "_S" + std::to_string(params.numScenarios) + ".csv";
+
+    // Create the directory if it doesn't exist
+    if (!fs::exists(directory))
+    {
+        cout << "Directory does not exist. Creating: " << directory << endl;
+        fs::create_directories(directory);
+    }
+
+    // Full path to the file
+    string fullPath = directory + "/" + filename;
+
+    // Check if the file exists
+    // Open the file
+    std::ofstream outFile(fullPath, std::ios_base::app); // Open for appending
+    if (!outFile.is_open())
+    {
+        cerr << "Error opening file: " << fullPath << endl;
+        return;
+    }
+
+    // Check if the file is empty (to write headers)
+    std::ifstream checkFile(fullPath);
+    bool fileIsEmpty = (checkFile.peek() == std::ifstream::traits_type::eof());
+    checkFile.close();
+
+    // If the file does not exist, create it and write the header
+    if (fileIsEmpty)
+    {
+        if (solAlg == "Hybrid-ILS")
+        {
+            outFile << "HHA_iter,ILS_iter,ObjectiveValue_FirstEchelon,ObjectiveValue_SecondEchelon,ObjectiveValue_Total,CPUTime\n";
+        }
+        else if (solAlg == "BC")
+        {
+            outFile << "#,SolutionStatus,ObjectiveValue_FirstEchelon,ObjectiveValue_SecondEchelon,ObjectiveValue_Total,LB,Gap%,CPUTimeTotal\n";
+        }
+        else
+        {
+            cout << "Invalid Solution Algorithm" << endl;
+            exit(1);
+        }
+        std::cout << "File created and header added: " << fullPath << std::endl;
+    }
+
+    if (outFile.is_open())
+    {
+        if (solAlg == "Hybrid-ILS")
+        {
+            // Write Parameters
+            outFile << HHA_iter << ",";
+            outFile << ILS_iter << ",";
+            outFile << std::fixed << std::setprecision(1) << result.objValue_firstEchelon << ",";
+            outFile << std::fixed << std::setprecision(1) << result.objValue_secondEchelon << ",";
+            outFile << std::fixed << std::setprecision(1) << result.objValue_Total << ",";
+            outFile << std::fixed << std::setprecision(3) << result.totalCPUTime << endl;
+        }
+        else if (solAlg == "BC")
+        {
+            // Write Parameters
+            outFile << HHA_iter << ",";
+            outFile << result.status << ",";
+            outFile << std::fixed << std::setprecision(1) << result.objValue_firstEchelon << ",";
+            outFile << std::fixed << std::setprecision(1) << result.objValue_secondEchelon << ",";
+            outFile << std::fixed << std::setprecision(1) << result.objValue_Total << ",";
+            outFile << std::fixed << std::setprecision(1) << result.lowerBound << ",";
+            outFile << std::fixed << std::setprecision(2) << result.optimalityGap << "%,";
+            outFile << std::fixed << std::setprecision(3) << result.totalCPUTime << endl;
+        }
+    }
+}
+
 void SolutionManager::saveSolution_Deterministic(const SolutionFirstEchelon &solFE, const SolutionSecondEchelon_Deterministic &solSE, string solAlg)
 {
     try
@@ -558,7 +657,7 @@ void SolutionManager::saveSolution_Deterministic(const SolutionFirstEchelon &sol
         if (params.problemType == "EV")
         {
             // Construct the directory path
-            directory = "../Results/Solutions/S2EPRP-AR/SolEvaluation/" + params.problemType + "/" + solAlg + "/" + params.probabilityFunction + "/S" + std::to_string(params.numScenarios) + "/UR" + std::to_string(static_cast<int>(params.uncertaintyRange * 100)) + "%" + "/PC" + std::to_string(static_cast<int>(params.unmetDemandPenaltyCoeff));
+            directory = "../Results/Solutions/S2EPRP-AR/" + params.problemType + "/" + solAlg + "/" + params.probabilityFunction + "/S" + std::to_string(params.numScenarios) + "/UR" + std::to_string(static_cast<int>(params.uncertaintyRange * 100)) + "%" + "/PC" + std::to_string(static_cast<int>(params.unmetDemandPenaltyCoeff));
 
             // Construct the filename
             filename = "Sol_S2EPRP-AR_" + params.problemType + "_" + solAlg + "_" + params.probabilityFunction + "_" + params.instance + "_S" + std::to_string(params.numScenarios) + "_UR" + std::to_string(static_cast<int>(params.uncertaintyRange * 100)) + "%" + "_PC" + std::to_string(static_cast<int>(params.unmetDemandPenaltyCoeff)) + ".txt";
@@ -572,7 +671,7 @@ void SolutionManager::saveSolution_Deterministic(const SolutionFirstEchelon &sol
             }
 
             // Construct the directory path
-            directory = "../Results/Solutions/S2EPRP-AR/SolEvaluation/" + params.problemType + "/" + solAlg + "/" + params.probabilityFunction + "/S" + std::to_string(params.numScenarios) + "/UR" + std::to_string(static_cast<int>(params.uncertaintyRange * 100)) + "%" + "/PC" + std::to_string(static_cast<int>(params.unmetDemandPenaltyCoeff)) + "/" + params.instance;
+            directory = "../Results/Solutions/S2EPRP-AR/" + params.problemType + "/" + solAlg + "/" + params.probabilityFunction + "/S" + std::to_string(params.numScenarios) + "/UR" + std::to_string(static_cast<int>(params.uncertaintyRange * 100)) + "%" + "/PC" + std::to_string(static_cast<int>(params.unmetDemandPenaltyCoeff)) + "/" + params.instance;
 
             // Construct the filename
             filename = "Sol_S2EPRP-AR_" + params.problemType + "_" + solAlg + "_" + params.probabilityFunction + "_" + params.instance + "_s" + std::to_string(params.scenarioIndex) + ".txt";
@@ -580,7 +679,8 @@ void SolutionManager::saveSolution_Deterministic(const SolutionFirstEchelon &sol
         else if (params.problemType == "2EPRP" || params.problemType == "2EPRPCS")
         {
             // Construct the directory path
-            directory = "../Results/Solutions/" + params.problemType + "/Preliminary_Test06" + "/" + solAlg;
+            // directory = "../Results/Solutions/" + params.problemType + "/Preliminary_Test03" + "/" + solAlg;
+            directory = "../Results/Solutions/" + params.problemType + "/" + solAlg;
 
             // Construct the filename
             filename = "Sol_" + params.problemType + "_" + solAlg + "_" + params.instance + ".txt";
@@ -915,21 +1015,22 @@ bool SolutionManager::checkFeasibility_Deterministic(string solAlg)
     cout << "Checking feasibility for " << params.problemType << " and Solution Algorithm " << solAlg << "..." << endl;
     if (params.problemType == "EV")
     {
-        directory = "../Results/Solutions/S2EPRP-AR/SolEvaluation/" + params.problemType + "/" + solAlg + "/" + params.probabilityFunction + "/S" + std::to_string(params.numScenarios) + "/UR" + std::to_string(static_cast<int>(params.uncertaintyRange * 100)) + "%" + "/PC" + std::to_string(static_cast<int>(params.unmetDemandPenaltyCoeff));
+        directory = "../Results/Solutions/S2EPRP-AR/" + params.problemType + "/" + solAlg + "/" + params.probabilityFunction + "/S" + std::to_string(params.numScenarios) + "/UR" + std::to_string(static_cast<int>(params.uncertaintyRange * 100)) + "%" + "/PC" + std::to_string(static_cast<int>(params.unmetDemandPenaltyCoeff));
 
         // Construct the filename
         filename = "Sol_S2EPRP-AR_" + params.problemType + "_" + solAlg + "_" + params.probabilityFunction + "_" + params.instance + "_S" + std::to_string(params.numScenarios) + "_UR" + std::to_string(static_cast<int>(params.uncertaintyRange * 100)) + "%" + "_PC" + std::to_string(static_cast<int>(params.unmetDemandPenaltyCoeff)) + ".txt";
     }
     else if (params.problemType == "WS" || params.problemType == "EEV")
     {
-        directory = "../Results/Solutions/S2EPRP-AR/SolEvaluation/" + params.problemType + "/" + solAlg + "/" + params.probabilityFunction + "/S" + std::to_string(params.numScenarios) + "/UR" + std::to_string(static_cast<int>(params.uncertaintyRange * 100)) + "%" + "/PC" + std::to_string(static_cast<int>(params.unmetDemandPenaltyCoeff)) + "/" + params.instance;
+        directory = "../Results/Solutions/S2EPRP-AR/" + params.problemType + "/" + solAlg + "/" + params.probabilityFunction + "/S" + std::to_string(params.numScenarios) + "/UR" + std::to_string(static_cast<int>(params.uncertaintyRange * 100)) + "%" + "/PC" + std::to_string(static_cast<int>(params.unmetDemandPenaltyCoeff)) + "/" + params.instance;
 
         // Construct the filename
         filename = "Sol_S2EPRP-AR_" + params.problemType + "_" + solAlg + "_" + params.probabilityFunction + "_" + params.instance + "_s" + std::to_string(params.scenarioIndex) + ".txt";
     }
     else if (params.problemType == "2EPRP" || params.problemType == "2EPRPCS")
     {
-        directory = "../Results/Solutions/" + params.problemType + "/Preliminary_Test06" + "/" + solAlg;
+        // directory = "../Results/Solutions/" + params.problemType + "/Preliminary_Test03" + "/" + solAlg;
+        directory = "../Results/Solutions/" + params.problemType + "/" + solAlg;
 
         // Construct the filename
         filename = "Sol_" + params.problemType + "_" + solAlg + "_" + params.instance + ".txt";
@@ -1013,7 +1114,7 @@ void SolutionManager::saveResultSummary_Deterministic(const SolutionFirstEchelon
     if (params.problemType == "EV")
     {
         // Construct the directory path
-        directory = "../Results/Summary/S2EPRP-AR/SolEvaluation/" + params.problemType + "/" + solAlg + "/" +
+        directory = "../Results/Summary/S2EPRP-AR/" + params.problemType + "/" + solAlg + "/" +
                     params.probabilityFunction + "/S" + std::to_string(params.numScenarios) + "/UR" +
                     std::to_string(static_cast<int>(params.uncertaintyRange * 100)) + "%" + "/" +
                     params.instance + "/PC" + std::to_string(static_cast<int>(params.unmetDemandPenaltyCoeff));
@@ -1027,7 +1128,7 @@ void SolutionManager::saveResultSummary_Deterministic(const SolutionFirstEchelon
             exit(1);
         }
 
-        directory = "../Results/Summary/S2EPRP-AR/SolEvaluation/" + params.problemType + "/" + solAlg + "/" +
+        directory = "../Results/Summary/S2EPRP-AR/" + params.problemType + "/" + solAlg + "/" +
                     params.probabilityFunction + "/S" + std::to_string(params.numScenarios) + "/UR" +
                     std::to_string(static_cast<int>(params.uncertaintyRange * 100)) + "%" + "/" +
                     params.instance + "/PC" + std::to_string(static_cast<int>(params.unmetDemandPenaltyCoeff));
@@ -1035,7 +1136,8 @@ void SolutionManager::saveResultSummary_Deterministic(const SolutionFirstEchelon
     }
     else if (params.problemType == "2EPRP" || params.problemType == "2EPRPCS")
     {
-        directory = "../Results/Summary/" + params.problemType + "/Preliminary_Test06" + "/" + solAlg;
+        // directory = "../Results/Summary/" + params.problemType + "/Preliminary_Test03" + "/" + solAlg;
+        directory = "../Results/Summary/" + params.problemType + "/" + solAlg;
         filename = "Sol_" + params.problemType + "_" + solAlg + ".csv";
     }
     else
@@ -1221,7 +1323,8 @@ void SolutionManager::saveResultSummary_Deterministic(const SolutionFirstEchelon
 void SolutionManager::saveOF_Iter_Deterministic(int HHA_iter, int ILS_iter, const Result result, string solAlg)
 {
     cout << "Save Incumbent For " << params.problemType << " and Solution Algorithm " << solAlg << "..." << endl;
-    string directory = "../Results/OF_Iter/" + params.problemType + "/Preliminary_Test06" + "/" + solAlg;
+    // string directory = "../Results/OF_Iter/" + params.problemType + "/Preliminary_Test03" + "/" + solAlg;
+    string directory = "../Results/OF_Iter/" + params.problemType + "/" + solAlg;
     string filename = "Sol_" + params.problemType + "_" + params.instance + ".csv";
 
     // Create the directory if it doesn't exist

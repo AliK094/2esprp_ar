@@ -17,11 +17,9 @@ def feasibilityCheck(file_path, problemType):
             ar = line.split()
             for i in ar:
                 values.append(i)
-                
-    if problemType == 'EV' or problemType == 'WS' or problemType == 'EEV':
-        shortage_allowed = True
-    else:
-        shortage_allowed = False
+    
+    shortage_allowed = problemType in {'EV', 'WS', 'EEV'}      
+    
     # Load Parameters
     index = 0
 
@@ -43,7 +41,7 @@ def feasibilityCheck(file_path, problemType):
         numScenarios = int(values[index])
         index+=1
     
-    if problemType == "WS" or problemType == "EEV":
+    if problemType in {"WS", "EEV"}:
         scenario_Index = int(values[index])
         index+=1
     
@@ -171,8 +169,7 @@ def feasibilityCheck(file_path, problemType):
             for i in range(numCustomers):
                 customerAssignmentToWarehouse[t][w][i] = int(values[index])
                 index += 1
-                            
-                    
+                                     
     objValue = 0.0
     
     totalSetupCost = 0.0

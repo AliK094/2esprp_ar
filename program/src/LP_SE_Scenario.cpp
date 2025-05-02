@@ -91,7 +91,7 @@ string LP_SE_Scenario::handleCplexStatus(IloCplex &cplex, IloEnv &env, IloModel 
 	{
 		status = "Optimal";
 		objValue = cplex.getObjValue();
-		// cout << "Optimal solution found. Objective Value = " << result.objValue_Total << endl;
+		// cout << "Optimal solution found. Objective Value = " << objValue << endl;
 	}
 	else if (cplex.getStatus() == IloAlgorithm::Infeasible)
 	{

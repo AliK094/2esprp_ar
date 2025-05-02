@@ -782,26 +782,26 @@ void LP_SE::CalculateCostsForEachPart()
 	}
 
 	result.objValue_firstEchelon = sol_FE_temp.setupCost + sol_FE_temp.productionCost + sol_FE_temp.holdingCostPlant + sol_FE_temp.transportationCostPlantToWarehouse;
-	cout << "Setup Cost : " << sol_FE_temp.setupCost << endl;
-	cout << "Production Cost : " << sol_FE_temp.productionCost << endl;
-	cout << "Holding Cost Plant : " << sol_FE_temp.holdingCostPlant << endl;
-	cout << "Transportation Cost Plant to Warehouse : " << sol_FE_temp.transportationCostPlantToWarehouse << endl;
+	// cout << "Setup Cost : " << sol_FE_temp.setupCost << endl;
+	// cout << "Production Cost : " << sol_FE_temp.productionCost << endl;
+	// cout << "Holding Cost Plant : " << sol_FE_temp.holdingCostPlant << endl;
+	// cout << "Transportation Cost Plant to Warehouse : " << sol_FE_temp.transportationCostPlantToWarehouse << endl;
 
 	result.objValue_secondEchelon = sol_SE_temp.holdingCostWarehouse_Avg +
 									sol_SE_temp.holdingCostCustomer_Avg +
 									sol_SE_temp.costOfUnmetDemand_Avg +
 									sol_SE_temp.transportationCostWarehouseToCustomer_Avg;
 
-	cout << "Holding Cost Warehouse : " << sol_SE_temp.holdingCostWarehouse_Avg << endl;
-	cout << "Holding Cost Customer : " << sol_SE_temp.holdingCostCustomer_Avg << endl;
-	cout << "Cost of Unmet Demand : " << sol_SE_temp.costOfUnmetDemand_Avg << endl;
-	cout << "Transportation Cost Warehouse to Customer : " << sol_SE_temp.transportationCostWarehouseToCustomer_Avg << endl;
+	// cout << "Holding Cost Warehouse : " << sol_SE_temp.holdingCostWarehouse_Avg << endl;
+	// cout << "Holding Cost Customer : " << sol_SE_temp.holdingCostCustomer_Avg << endl;
+	// cout << "Cost of Unmet Demand : " << sol_SE_temp.costOfUnmetDemand_Avg << endl;
+	// cout << "Transportation Cost Warehouse to Customer : " << sol_SE_temp.transportationCostWarehouseToCustomer_Avg << endl;
 
 	result.objValue_Total = result.objValue_firstEchelon + result.objValue_secondEchelon;
 
-	cout << "\nObjective value FE : " << result.objValue_firstEchelon << endl;
-	cout << "Objective value SE : " << result.objValue_secondEchelon << endl;
-	cout << "Objective value Total : " << result.objValue_Total << endl;
+	// cout << "\nObjective value FE : " << result.objValue_firstEchelon << endl;
+	// cout << "Objective value SE : " << result.objValue_secondEchelon << endl;
+	// cout << "Objective value Total : " << result.objValue_Total << endl;
 }
 
 void LP_SE::DisplayProductionSetupVars()

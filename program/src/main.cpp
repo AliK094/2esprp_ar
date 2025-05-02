@@ -9,17 +9,17 @@ void printUsage(const string &programName, const string &problemType) {
              << "<Number of Vehicles Per each Warehouse> <Number of Scenarios> <Penalty Coefficient (For a Unit of Unmet demand)> "
              << "<Uncertainty Range> <ProbabilityFunction> <instanceName>" << endl;
     } else if (problemType == "EV") {
-        cerr << "Usage: " << programName << " <problemType> <inputFilename> "
+        cerr << "Usage: " << programName << " <problemType> <solutionAlgorithm> <inputFilename> "
              << "<Number of Warehouses> <Number of Customers> <Planning Horizon> <Number of Vehicles at the plant> "
              << "<Number of Vehicles Per each Warehouse> <Number of Scenarios> <Penalty Coefficient (For a Unit of Unmet demand)> "
              << "<Uncertainty Range> <ProbabilityFunction> <instanceName>" << endl;
     } else if (problemType == "EEV" || problemType == "WS") {
-        cerr << "Usage: " << programName << " <problemType> <inputFilename> "
+        cerr << "Usage: " << programName << " <problemType> <solutionAlgorithm> <inputFilename> "
              << "<Number of Warehouses> <Number of Customers> <Planning Horizon> <Number of Vehicles at the plant> "
              << "<Number of Vehicles Per each Warehouse> <Number of Scenarios> <Penalty Coefficient (For a Unit of Unmet demand)> "
              << "<Uncertainty Range> <ProbabilityFunction> <instanceName> <scenarioIndex>" << endl;
     } else if (problemType == "2EPRP" || problemType == "2EPRPCS") {
-        cerr << "Usage: " << programName << " <problemType> <inputFilename> "
+        cerr << "Usage: " << programName << " <problemType> <solutionAlgorithm> <inputFilename> "
              << "<Number of Warehouses> <Number of Customers> <Planning Horizon> <Number of Vehicles at the plant> "
              << "<Number of Vehicles Per each Warehouse> <instanceName>" << endl;
     } else {
@@ -49,28 +49,31 @@ int main(int argc, char *argv[])
         cout << "Algorithm: " << solutionAlgorithm << endl;
 
     } else if (problemType == "EV") {
-        if (argc != 13) {
-            cerr << "Wrong number of arguments" << endl;
-            printUsage(argv[0], problemType);
-            return EXIT_FAILURE;
-        }
-        cout << "\nSolve The Expected Value (EV) Problem for the S2EPRP-AR." << endl;
-
-    } else if (problemType == "EEV" || problemType == "WS") {
         if (argc != 14) {
             cerr << "Wrong number of arguments" << endl;
             printUsage(argv[0], problemType);
             return EXIT_FAILURE;
         }
-        scenarioIndex = std::stoi(argv[13]); // Convert argument to integer
+        cout << "\nSolve The Expected Value (EV) Problem for the S2EPRP-AR." << endl;
+        solutionAlgorithm = argv[2];
+        cout << "Algorithm: " << solutionAlgorithm << endl;
+
+    } else if (problemType == "EEV" || problemType == "WS") {
+        if (argc != 15) {
+            cerr << "Wrong number of arguments" << endl;
+            printUsage(argv[0], problemType);
+            return EXIT_FAILURE;
+        }
+        solutionAlgorithm = argv[2];
+        scenarioIndex = std::stoi(argv[14]); // Convert argument to integer
 
         if (problemType == "EEV")
-            cout << "\nSolve The Expected of the Expected Value (EEV) Problem for the S2EPRP-AR For Scenario " << scenarioIndex + 1 << "." << endl;
+            cout << "\nSolve The Expected of the Expected Value (EEV) Problem for the S2EPRP-AR With " << solutionAlgorithm << " Algorithm For Scenario " << scenarioIndex + 1 << "." << endl;
         else
-            cout << "\nSolve The Wait-and-See (WS) Problem for the S2EPRP-AR For Scenario " << scenarioIndex + 1 << "." << endl;
+            cout << "\nSolve The Wait-and-See (WS) Problem for the S2EPRP-AR With " << solutionAlgorithm << " Algorithm For Scenario " << scenarioIndex + 1 << "." << endl;
 
     } else if (problemType == "2EPRP" || problemType == "2EPRPCS") {
-        if (argc != 9) {
+        if (argc != 10) {
             cerr << "Wrong number of arguments" << endl;
             printUsage(argv[0], problemType);
             return EXIT_FAILURE;
@@ -113,7 +116,7 @@ int main(int argc, char *argv[])
         return runProblem(alg.solve_S2EPRP_BC());
     } 
     else if (problemType == "EV") {
-        return runProblem(alg.solve_EV());
+        return runProblem(alg.solve_2EPRP());
     } 
     else if (problemType == "EEV") {
         if (scenarioIndex < 0 || scenarioIndex >= params.numScenarios) {
@@ -122,7 +125,7 @@ int main(int argc, char *argv[])
             cerr << "Scenario Index: " << scenarioIndex + 1 << endl;
             return EXIT_FAILURE;
         }
-        return runProblem(alg.solve_EEV());
+        return runProblem(alg.solve_2EPRP());
     } 
     else if (problemType == "WS") {
         if (scenarioIndex < 0 || scenarioIndex >= params.numScenarios) {
@@ -131,7 +134,7 @@ int main(int argc, char *argv[])
             cerr << "Scenario Index: " << scenarioIndex << endl;
             return EXIT_FAILURE;
         }
-        return runProblem(alg.solve_WS());
+        return runProblem(alg.solve_2EPRP());
     }
     else if (problemType == "2EPRP" || problemType == "2EPRPCS") {
         return runProblem(alg.solve_2EPRP());

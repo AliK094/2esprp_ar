@@ -1,11 +1,11 @@
 #include "ILS_Deterministic.h"
 
-ILS_SIRP_Deterministic::ILS_SIRP_Deterministic(const ParameterSetting &parameters, 
-	const SolutionFirstEchelon &sol_FE, 
-	const SolutionSecondEchelon_Deterministic &sol_SE_Deterministic,
-	int HHA_iter,
-	std::chrono::high_resolution_clock::time_point startTime_HHA,
-	bool savePerIterSol)
+ILS_SIRP_Deterministic::ILS_SIRP_Deterministic(const ParameterSetting &parameters,
+											   const SolutionFirstEchelon &sol_FE,
+											   const SolutionSecondEchelon_Deterministic &sol_SE_Deterministic,
+											   int HHA_iter,
+											   std::chrono::high_resolution_clock::time_point startTime_HHA,
+											   bool savePerIterSol)
 	: params(parameters),
 	  sol_FE(sol_FE),
 	  sol_SE(sol_SE_Deterministic),
@@ -42,23 +42,36 @@ bool ILS_SIRP_Deterministic::run()
 		/*
 			Construct Initial Solution
 		*/
-		CATW = params.getCustomersAssignedToWarehouse_det();
-		sol_SE_temp.customerAssignmentToWarehouse = CATW;
-
-		cout << "Construct Initial Solution" << endl;
-
-		ConstructHeuristic_Deterministic consHeuristic_det(params, sol_FE_temp);
-		bool status = consHeuristic_det.Construct_InitialSolution();
-		if (!status)
+		if (params.problemType != "EEV")
 		{
-			cerr << "Failed to construct the initial solution" << endl;
-			return false;
+			sol_SE_temp.customerAssignmentToWarehouse = params.getCustomersAssignedToWarehouse_det();
+			CATW = sol_SE_temp.customerAssignmentToWarehouse;
+
+			cout << "Construct Initial Solution" << endl;
+
+			ConstructHeuristic_Deterministic consHeuristic_det(params, sol_FE_temp);
+			bool status = consHeuristic_det.Construct_InitialSolution();
+			if (!status)
+			{
+				cerr << "Failed to construct the initial solution" << endl;
+				return false;
+			}
+
+			sol_SE_temp.customerInventory = consHeuristic_det.getInvCustomers();
+			sol_SE_temp.customerUnmetDemand = consHeuristic_det.getUnmetDemandCustomers();
+			sol_SE_temp.deliveryQuantityToCustomer = consHeuristic_det.getDeliveryQuantityCustomers();
+			sol_SE_temp.routesWarehouseToCustomer = consHeuristic_det.getRoutesWarehouseToCustomer();
 		}
 
-		sol_SE_temp.customerInventory = consHeuristic_det.getInvCustomers();
-		sol_SE_temp.customerUnmetDemand = consHeuristic_det.getUnmetDemandCustomers();
-		sol_SE_temp.deliveryQuantityToCustomer = consHeuristic_det.getDeliveryQuantityCustomers();
-		sol_SE_temp.routesWarehouseToCustomer = consHeuristic_det.getRoutesWarehouseToCustomer();
+		// if (params.problemType == "EEV")
+		// {
+		// 	sol_SE_temp.customerAssignmentToWarehouse = consHeuristic_det.getCustomerAssignmentToWarehouse();
+		// }
+
+		// sol_SE_temp.customerInventory = consHeuristic_det.getInvCustomers();
+		// sol_SE_temp.customerUnmetDemand = consHeuristic_det.getUnmetDemandCustomers();
+		// sol_SE_temp.deliveryQuantityToCustomer = consHeuristic_det.getDeliveryQuantityCustomers();
+		// sol_SE_temp.routesWarehouseToCustomer = consHeuristic_det.getRoutesWarehouseToCustomer();
 	}
 
 	// Initialize the LP solver with current parameters and feasible solution
@@ -74,7 +87,8 @@ bool ILS_SIRP_Deterministic::run()
 		return false;
 	}
 
-	if (params.problemType != "EEV"){
+	if (params.problemType != "EEV")
+	{
 		sol_FE_incumbent = sol_FE_temp;
 	}
 	sol_SE_incumbent = sol_SE_temp;
@@ -91,9 +105,9 @@ bool ILS_SIRP_Deterministic::run()
 		currentTime_HHA = std::chrono::high_resolution_clock::now();
 		elapsedTime_HHA = std::chrono::duration_cast<std::chrono::duration<double>>(currentTime_HHA - startTime_HHA).count();
 		cout << "Computation Time (Hybrid-ILS) = " << elapsedTime_HHA << " seconds" << endl;
-		result_HPT.objValue_firstEchelon = sol_FE_incumbent.setupCost +  sol_FE_incumbent.productionCost + 
-										sol_FE_incumbent.holdingCostPlant + sol_FE_incumbent.transportationCostPlantToWarehouse;
-		result_HPT.objValue_secondEchelon = sol_SE_incumbent.holdingCostWarehouse + sol_SE_incumbent.holdingCostCustomer + 
+		result_HPT.objValue_firstEchelon = sol_FE_incumbent.setupCost + sol_FE_incumbent.productionCost +
+										   sol_FE_incumbent.holdingCostPlant + sol_FE_incumbent.transportationCostPlantToWarehouse;
+		result_HPT.objValue_secondEchelon = sol_SE_incumbent.holdingCostWarehouse + sol_SE_incumbent.holdingCostCustomer +
 											sol_SE_incumbent.transportationCostWarehouseToCustomer + sol_SE_incumbent.costOfUnmetDemand +
 											sol_SE_incumbent.handlingCostSatellite;
 		result_HPT.objValue_Total = result_HPT.objValue_firstEchelon + result_HPT.objValue_secondEchelon;
@@ -107,7 +121,7 @@ bool ILS_SIRP_Deterministic::run()
 	// Initialize ILS for a specific Scenario
 	int numIterILS = 0;
 	bool stop = false;
-	
+
 	double best_objValue = result_incumbent.objValue_Total;
 	double objValue = best_objValue;
 	while (!stop)
@@ -128,8 +142,9 @@ bool ILS_SIRP_Deterministic::run()
 				stop = true;
 				break;
 			}
-			
-			if (params.problemType != "EEV"){
+
+			if (params.problemType != "EEV")
+			{
 				sol_FE_temp = perturb.getSolutionFE();
 			}
 			sol_SE_temp = perturb.getSolutionSE();
@@ -147,7 +162,8 @@ bool ILS_SIRP_Deterministic::run()
 		if (objval_new < best_objValue - 0.01)
 		{
 			best_objValue = objval_new;
-			if (params.problemType != "EEV"){
+			if (params.problemType != "EEV")
+			{
 				sol_FE_incumbent = ls.getSolutionFE();
 			}
 			sol_SE_incumbent = ls.getSolutionSE();
@@ -160,9 +176,9 @@ bool ILS_SIRP_Deterministic::run()
 			currentTime_HHA = std::chrono::high_resolution_clock::now();
 			elapsedTime_HHA = std::chrono::duration_cast<std::chrono::duration<double>>(currentTime_HHA - startTime_HHA).count();
 			cout << "Computation Time (Hybrid-ILS) = " << elapsedTime_HHA << " seconds" << endl;
-			result_HPT.objValue_firstEchelon = sol_FE_incumbent.setupCost +  sol_FE_incumbent.productionCost + 
-											sol_FE_incumbent.holdingCostPlant + sol_FE_incumbent.transportationCostPlantToWarehouse;
-			result_HPT.objValue_secondEchelon = sol_SE_incumbent.holdingCostWarehouse + sol_SE_incumbent.holdingCostCustomer + 
+			result_HPT.objValue_firstEchelon = sol_FE_incumbent.setupCost + sol_FE_incumbent.productionCost +
+											   sol_FE_incumbent.holdingCostPlant + sol_FE_incumbent.transportationCostPlantToWarehouse;
+			result_HPT.objValue_secondEchelon = sol_SE_incumbent.holdingCostWarehouse + sol_SE_incumbent.holdingCostCustomer +
 												sol_SE_incumbent.transportationCostWarehouseToCustomer + sol_SE_incumbent.costOfUnmetDemand +
 												sol_SE_incumbent.handlingCostSatellite;
 			result_HPT.objValue_Total = result_HPT.objValue_firstEchelon + result_HPT.objValue_secondEchelon;
@@ -172,7 +188,6 @@ bool ILS_SIRP_Deterministic::run()
 			solMgr_HPT.saveOF_Iter_Deterministic(HHA_iter, numIterILS + 1, result_HPT, "Hybrid-ILS");
 		}
 		// -----------------------------------------------------------------------------------------------------------------
-
 		numIterILS++;
 
 		currentTime_ILS = std::chrono::high_resolution_clock::now();
@@ -190,7 +205,8 @@ bool ILS_SIRP_Deterministic::run()
 	}
 
 	// ----------------------------------------------------------------------------------------------------------
-	if (params.problemType != "EEV"){
+	if (params.problemType != "EEV")
+	{
 		sol_FE_temp = sol_FE_incumbent;
 	}
 	sol_SE_temp = sol_SE_incumbent;
@@ -200,13 +216,14 @@ bool ILS_SIRP_Deterministic::run()
 		cerr << "Failed to solve LP" << endl;
 		return false;
 	}
-	
+
 	if (!checkSolutionFeasiblity(sol_FE_temp, sol_SE_temp))
 	{
 		cerr << "Solution is not feasible" << endl;
 		return false;
 	}
-	if (params.problemType != "EEV"){
+	if (params.problemType != "EEV")
+	{
 		sol_FE_incumbent = sol_FE_temp;
 	}
 	sol_SE_incumbent = sol_SE_temp;
@@ -297,8 +314,8 @@ bool ILS_SIRP_Deterministic::checkSolutionFeasiblity(SolutionFirstEchelon sol_FE
 				if (sol_SE_temp.warehouseInventory[w][t] > params.storageCapacity_Warehouse[w])
 				{
 					cerr << "Constraint Violated: " << constraintName
-							<< " | Warehouse Inventory = " << sol_SE_temp.warehouseInventory[w][t]
-							<< " exceeds Storage Capacity = " << params.storageCapacity_Warehouse[w] << endl;
+						 << " | Warehouse Inventory = " << sol_SE_temp.warehouseInventory[w][t]
+						 << " exceeds Storage Capacity = " << params.storageCapacity_Warehouse[w] << endl;
 
 					return false;
 				}
@@ -336,8 +353,8 @@ bool ILS_SIRP_Deterministic::checkSolutionFeasiblity(SolutionFirstEchelon sol_FE
 				if (sol_SE_temp.warehouseInventory[w][t] != netInventoryChange)
 				{
 					cerr << "Constraint Violated: " << constraintName
-							<< " | Expected Warehouse Inventory = " << netInventoryChange
-							<< ", Actual Warehouse Inventory = " << sol_SE_temp.warehouseInventory[w][t] << endl;
+						 << " | Expected Warehouse Inventory = " << netInventoryChange
+						 << ", Actual Warehouse Inventory = " << sol_SE_temp.warehouseInventory[w][t] << endl;
 
 					return false;
 				}
@@ -345,7 +362,7 @@ bool ILS_SIRP_Deterministic::checkSolutionFeasiblity(SolutionFirstEchelon sol_FE
 		}
 	}
 	else
-	{	
+	{
 		for (int t = 0; t < params.numPeriods; ++t)
 		{
 			for (int w = 0; w < params.numWarehouses; ++w)
@@ -366,14 +383,13 @@ bool ILS_SIRP_Deterministic::checkSolutionFeasiblity(SolutionFirstEchelon sol_FE
 				if (deliveryQuantityToWarehouse != deliveryQuantityFromWarehouse)
 				{
 					cerr << "Constraint Violated: " << constraintName
-							<< " | Satellite Inbound Qty = " << deliveryQuantityToWarehouse
-							<< ", Satellite Outbound Qty = " << deliveryQuantityFromWarehouse << endl;
+						 << " | Satellite Inbound Qty = " << deliveryQuantityToWarehouse
+						 << ", Satellite Outbound Qty = " << deliveryQuantityFromWarehouse << endl;
 
 					// return false;
 				}
 			}
 		}
-
 	}
 
 	for (int t = 0; t < params.numPeriods; ++t)
@@ -397,8 +413,8 @@ bool ILS_SIRP_Deterministic::checkSolutionFeasiblity(SolutionFirstEchelon sol_FE
 			if (sol_SE_temp.customerInventory[i][t] != expectedInventory)
 			{
 				cerr << "Constraint Violated: " << constraintName
-						<< " | Expected Customer Inventory = " << expectedInventory
-						<< ", Actual Customer Inventory = " << sol_SE_temp.customerInventory[i][t] << endl;
+					 << " | Expected Customer Inventory = " << expectedInventory
+					 << ", Actual Customer Inventory = " << sol_SE_temp.customerInventory[i][t] << endl;
 
 				// return false;
 			}
@@ -418,8 +434,8 @@ bool ILS_SIRP_Deterministic::checkSolutionFeasiblity(SolutionFirstEchelon sol_FE
 			if (sol_SE_temp.customerInventory[i][t] > maxAllowableInventory)
 			{
 				cerr << "Constraint Violated: " << constraintName
-						<< " | Customer Inventory = " << sol_SE_temp.customerInventory[i][t]
-						<< " exceeds Max Allowable Inventory = " << maxAllowableInventory << endl;
+					 << " | Customer Inventory = " << sol_SE_temp.customerInventory[i][t]
+					 << " exceeds Max Allowable Inventory = " << maxAllowableInventory << endl;
 
 				return false;
 			}
@@ -449,8 +465,8 @@ bool ILS_SIRP_Deterministic::checkSolutionFeasiblity(SolutionFirstEchelon sol_FE
 				if (totalDeliveriesByVehicle > params.vehicleCapacity_Warehouse)
 				{
 					cerr << "Constraint Violated: " << constraintName
-							<< " | Total Deliveries by Vehicle = " << totalDeliveriesByVehicle
-							<< " exceeds Vehicle Capacity = " << params.vehicleCapacity_Warehouse << endl;
+						 << " | Total Deliveries by Vehicle = " << totalDeliveriesByVehicle
+						 << " exceeds Vehicle Capacity = " << params.vehicleCapacity_Warehouse << endl;
 
 					return false;
 				}
@@ -481,8 +497,8 @@ bool ILS_SIRP_Deterministic::checkSolutionFeasiblity(SolutionFirstEchelon sol_FE
 					string constraintName = "CustomerVisit(" + std::to_string(i + params.numWarehouses) + "," + std::to_string(t + 1) + ")";
 
 					cerr << "Constraint Violated: " << constraintName
-							<< " | Customer " << i + params.numWarehouses
-							<< " is not visited in the route" << endl;
+						 << " | Customer " << i + params.numWarehouses
+						 << " is not visited in the route" << endl;
 
 					cout << "Delivery Quantity: " << sol_SE_temp.deliveryQuantityToCustomer[i][t] << endl;
 
@@ -496,18 +512,19 @@ bool ILS_SIRP_Deterministic::checkSolutionFeasiblity(SolutionFirstEchelon sol_FE
 }
 
 // Initialize the LP solver with current parameters and feasible solution
-bool ILS_SIRP_Deterministic::solveLP(SolutionFirstEchelon &sol_FE_temp, 
-			SolutionSecondEchelon_Deterministic &sol_SE_temp, 
-			Result &result_temp)
+bool ILS_SIRP_Deterministic::solveLP(SolutionFirstEchelon &sol_FE_temp,
+									 SolutionSecondEchelon_Deterministic &sol_SE_temp,
+									 Result &result_temp)
 {
-	LP_SE_Deterministic lpse_det(params, sol_FE_temp, sol_SE_temp, true);
+	LP_SE_Deterministic lpse_det(params, sol_FE_temp, sol_SE_temp, false, false);
 	string statusLP = lpse_det.solve();
 	if (statusLP != "Optimal")
 	{
 		// cerr << "LP solver failed with status: " << statusLP << endl;
 		return false;
 	}
-	if (params.problemType != "EEV"){
+	if (params.problemType != "EEV")
+	{
 		sol_FE_temp = lpse_det.getSolutionFE();
 	}
 	sol_SE_temp = lpse_det.getSolutionSE();

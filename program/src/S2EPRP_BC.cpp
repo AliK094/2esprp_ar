@@ -104,13 +104,13 @@ void S2EPRP_BC::configureCplex(IloCplex &cplex, IloEnv &env)
 {
 	// Set CPLEX Parameters: (DISPLAY LEVEL(0,1,2,3,4), OPTIMALITY GAP, RUN TIME (SECS), THREADS, MEMORY (MB))
 	CplexParameterManager parameterManager(cplex);
-	parameterManager.setParameters(4, params.BC_OptimalityGap, params.BC_TimeLimit, params.BC_NumThreads, params.BC_MemoryLimit);
+	parameterManager.setParameters(2, params.BC_OptimalityGap, params.BC_TimeLimit, params.BC_NumThreads, params.BC_MemoryLimit);
 
 	cplex.setParam(IloCplex::Param::Emphasis::MIP, 2);
 	cplex.setParam(IloCplex::Param::Preprocessing::Presolve, IloFalse);
 	cplex.setParam(IloCplex::Param::MIP::Strategy::Search, CPX_MIPSEARCH_TRADITIONAL);
 	cplex.setParam(IloCplex::Param::Preprocessing::Reduce, 0);
-	cplex.setParam(IloCplex::Param::MIP::Limits::RepairTries, 1e6);
+	cplex.setParam(IloCplex::Param::MIP::Limits::RepairTries, 1e3);
 	cplex.setParam(IloCplex::Param::Advance, 1);
 }
 
@@ -642,7 +642,7 @@ void S2EPRP_BC::DefineConstraints(IloEnv &env, IloModel &model)
 	for (int t = 0; t < params.numPeriods; ++t)
 	{
 		for (int w = 0; w < params.numWarehouses; ++w)
-			{
+		{
 			for (int routeInd = 0; routeInd < numRoutes_FirstEchelon; ++routeInd)
 			{
 				string constraintName = "WarehouseVisit(" + std::to_string(routeInd + 1) + "," + std::to_string(w + 1) + "," + std::to_string(t + 1) + ")";
@@ -650,8 +650,8 @@ void S2EPRP_BC::DefineConstraints(IloEnv &env, IloModel &model)
 				IloExpr expr(env);
 
 				expr += q[routeInd][w][t];
-				
-				expr -= o[routeInd][t] * routeMatrix_FirstEchelon[routeInd][w + 1] * params.storageCapacity_Warehouse[w] ;
+
+				expr -= o[routeInd][t] * routeMatrix_FirstEchelon[routeInd][w + 1] * params.storageCapacity_Warehouse[w];
 				IloConstraint warehouseVisitConstraint(expr <= 0);
 				expr.end();
 
@@ -966,61 +966,61 @@ void S2EPRP_BC::DefineValidInequalities(IloEnv &env, IloModel &model)
 		x[i][j][k][t][s] <= z[i][k][t][s] for all i in N_w + N_c, j in N_w + N_c, k in K_w, t in T, s in S
 		x[i][j][k][t][s] <= z[j][k][t][s] for all i in N_w + N_c, j in N_w + N_c, k in K_w, t in T, s in S
 	*/
-	// for (int s = 0; s < params.numScenarios; ++s)
-	// {
-	// 	for (int t = 0; t < params.numPeriods; ++t)
-	// 	{
-	// 		for (int w = 0; w < params.numWarehouses; ++w)
-	// 		{
-	// 			for (int k : params.set_WarehouseVehicles[w])
-	// 			{
-	// 				for (int e = 0; e < params.numEdges_SecondEchelon; ++e)
-	// 				{
-	// 					if (params.index_i_SecondEchelon[e] >= params.numWarehouses && params.index_j_SecondEchelon[e] >= params.numWarehouses)
-	// 					{
-	// 						string constraintName = "LogicalInequality_TwoSetOne(" + std::to_string(e) + "," + std::to_string(k + 1) + "," + std::to_string(t + 1) + "," + std::to_string(s + 1) + ")";
+	for (int s = 0; s < params.numScenarios; ++s)
+	{
+		for (int t = 0; t < params.numPeriods; ++t)
+		{
+			for (int w = 0; w < params.numWarehouses; ++w)
+			{
+				for (int k : params.set_WarehouseVehicles[w])
+				{
+					for (int e = 0; e < params.numEdges_SecondEchelon; ++e)
+					{
+						if (params.index_i_SecondEchelon[e] >= params.numWarehouses && params.index_j_SecondEchelon[e] >= params.numWarehouses)
+						{
+							string constraintName = "LogicalInequality_TwoSetOne(" + std::to_string(e) + "," + std::to_string(k + 1) + "," + std::to_string(t + 1) + "," + std::to_string(s + 1) + ")";
 
-	// 						IloExpr expr(env);
-	// 						expr += x[e][k][t][s];
-	// 						expr -= z[params.index_i_SecondEchelon[e]][k][t][s];
-	// 						IloConstraint logicalInequality_TwoSetOne(expr <= 0);
-	// 						expr.end();
+							IloExpr expr(env);
+							expr += x[e][k][t][s];
+							expr -= z[params.index_i_SecondEchelon[e]][k][t][s];
+							IloConstraint logicalInequality_TwoSetOne(expr <= 0);
+							expr.end();
 
-	// 						model.add(logicalInequality_TwoSetOne).setName(constraintName.c_str());
-	// 					}
-	// 				}
-	// 			}
-	// 		}
-	// 	}
-	// }
+							model.add(logicalInequality_TwoSetOne).setName(constraintName.c_str());
+						}
+					}
+				}
+			}
+		}
+	}
 
-	// for (int s = 0; s < params.numScenarios; ++s)
-	// {
-	// 	for (int t = 0; t < params.numPeriods; ++t)
-	// 	{
-	// 		for (int w = 0; w < params.numWarehouses; ++w)
-	// 		{
-	// 			for (int k : params.set_WarehouseVehicles[w])
-	// 			{
-	// 				for (int e = 0; e < params.numEdges_SecondEchelon; ++e)
-	// 				{
-	// 					if (params.index_i_SecondEchelon[e] >= params.numWarehouses && params.index_j_SecondEchelon[e] >= params.numWarehouses)
-	// 					{
-	// 						string constraintName = "LogicalInequality_TwoSetTwo(" + std::to_string(e) + "," + std::to_string(k + 1) + "," + std::to_string(t + 1) + "," + std::to_string(s + 1) + ")";
+	for (int s = 0; s < params.numScenarios; ++s)
+	{
+		for (int t = 0; t < params.numPeriods; ++t)
+		{
+			for (int w = 0; w < params.numWarehouses; ++w)
+			{
+				for (int k : params.set_WarehouseVehicles[w])
+				{
+					for (int e = 0; e < params.numEdges_SecondEchelon; ++e)
+					{
+						if (params.index_i_SecondEchelon[e] >= params.numWarehouses && params.index_j_SecondEchelon[e] >= params.numWarehouses)
+						{
+							string constraintName = "LogicalInequality_TwoSetTwo(" + std::to_string(e) + "," + std::to_string(k + 1) + "," + std::to_string(t + 1) + "," + std::to_string(s + 1) + ")";
 
-	// 						IloExpr expr(env);
-	// 						expr += x[e][k][t][s];
-	// 						expr -= z[params.index_j_SecondEchelon[e]][k][t][s];
-	// 						IloConstraint logicalInequality_TwoSetTwo(expr <= 0);
-	// 						expr.end();
+							IloExpr expr(env);
+							expr += x[e][k][t][s];
+							expr -= z[params.index_j_SecondEchelon[e]][k][t][s];
+							IloConstraint logicalInequality_TwoSetTwo(expr <= 0);
+							expr.end();
 
-	// 						model.add(logicalInequality_TwoSetTwo).setName(constraintName.c_str());
-	// 					}
-	// 				}
-	// 			}
-	// 		}
-	// 	}
-	// }
+							model.add(logicalInequality_TwoSetTwo).setName(constraintName.c_str());
+						}
+					}
+				}
+			}
+		}
+	}
 	// ---------------------------------------------------------------------------------------------------------------------------
 	/*
 		Symmetry Breaking Constraints (#1):
@@ -1066,12 +1066,12 @@ void S2EPRP_BC::DefineValidInequalities(IloEnv &env, IloModel &model)
 				{
 					if (params.set_WarehouseVehicles[w].size() > 1)
 					{
-						for (int j = 0; j < params.numCustomers; ++j)
+						for (int j = params.numWarehouses; j < params.numCustomers + params.numWarehouses; ++j)
 						{
-							string constraintName = "LexicographicConstraint(" + std::to_string(j + 1 + params.numWarehouses) + "," + std::to_string(k + 1) + "," + std::to_string(t + 1) + "," + std::to_string(s + 1) + ")";
+							string constraintName = "LexicographicConstraint(" + std::to_string(j + 1) + "," + std::to_string(k + 1) + "," + std::to_string(t + 1) + "," + std::to_string(s + 1) + ")";
 
 							IloExpr expr(env);
-							for (int i = 0; i <= j; i++)
+							for (int i = params.numWarehouses; i <= j; i++)
 							{
 								expr += pow(2, (j - i)) * z[i][k][t][s];
 								expr -= pow(2, (j - i)) * z[i][k - 1][t][s];
@@ -1397,10 +1397,8 @@ void S2EPRP_BC::CalculateCostsForEachPart()
 	cout << "productionCost (BC) = " << solFE.productionCost << endl;
 	cout << "holdingCostPlant (BC) = " << solFE.holdingCostPlant << endl;
 	cout << "transportationCostPlantToWarehouse (BC) = " << solFE.transportationCostPlantToWarehouse << endl;
-	
 
 	result.objValue_firstEchelon = solFE.setupCost + solFE.productionCost + solFE.holdingCostPlant + solFE.transportationCostPlantToWarehouse;
-	
 
 	cout << "Avg holding cost warehouse (BC) : " << solSE.holdingCostWarehouse_Avg << endl;
 	cout << "Avg holding cost customer (BC) : " << solSE.holdingCostCustomer_Avg << endl;

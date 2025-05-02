@@ -3,6 +3,8 @@
 Algorithms::Algorithms(const ParameterSetting &parameters)
 	: params(parameters)
 {
+	std::random_device rd;
+	rng = std::mt19937(rd());
 }
 
 bool Algorithms::solve_S2EPRP_BC()
@@ -16,7 +18,11 @@ bool Algorithms::solve_S2EPRP_BC()
 	cout << "Start Solving The S2EPRP-AR Using Branch-and-Cut Algorithm." << endl;
 
 	cout << "-------------------------------------------------------------------" << endl;
-	SolutionWarmStart warmStartSolution = params.readSolutionWarmStart();
+	SolutionWarmStart warmStartSolution = params.readSolutionWarmStart_Stoch();
+
+	auto elapsedTime = 0.0;
+	auto currentTime = std::chrono::high_resolution_clock::now();
+	auto startTime = std::chrono::high_resolution_clock::now();
 
 	// Branch and Cut
 	S2EPRP_BC s2eprp_bc(params, warmStartSolution);
@@ -27,6 +33,18 @@ bool Algorithms::solve_S2EPRP_BC()
 	sol_FE_incumbent = s2eprp_bc.getSolutionFE();
 	sol_SE_incumbent = s2eprp_bc.getSolutionSE();
 	result_incumbent = s2eprp_bc.getResult();
+
+	currentTime = std::chrono::high_resolution_clock::now();
+	elapsedTime = std::chrono::duration_cast<std::chrono::duration<double>>(currentTime - startTime).count();
+	cout << "Computation Time (BC) = " << elapsedTime << " seconds" << endl;
+
+	// -----------------------------------------------------------------------------------------------------------------
+	SolutionManager solMgr_OFIter_test(params);
+	Result result_OFIter_test = result_incumbent;
+	cout << "\nSave Sol for Hyper Parameter Tuning (BC): " << endl;
+	result_OFIter_test.totalCPUTime = elapsedTime;
+	solMgr_OFIter_test.saveOF_Iter_Deterministic(1, 0, result_OFIter_test, "BC");
+	// -----------------------------------------------------------------------------------------------------------------
 
 	// Save the solution and check feasibility
 	SolutionManager solMgr_ILS(params);
@@ -60,6 +78,7 @@ bool Algorithms::solve_S2EPRP_HILS()
 	auto startTime = std::chrono::high_resolution_clock::now();
 
 	// -----------------------------------------------------------------------------------------------------------------
+	// Construct the initial solution
 	// Solve the first-echelon problem
 	if (!solveFirstEchelon(sol_FE))
 	{
@@ -67,7 +86,7 @@ bool Algorithms::solve_S2EPRP_HILS()
 	}
 
 	// Run ILS for the second-echelon problem
-	if (!runILSForSecondEchelon(sol_FE, sol_SE, result_temp))
+	if (!runILSForSecondEchelon(sol_FE, sol_SE, result_temp, 0, startTime, true))
 	{
 		return EXIT_FAILURE;
 	}
@@ -75,19 +94,53 @@ bool Algorithms::solve_S2EPRP_HILS()
 	update_incumbent(sol_FE, sol_SE, result_temp);
 	cout << "Initial Phase is finished." << endl;
 	printSolution();
+	// Initial Solution is constructed.
+	// -----------------------------------------------------------------------------------------------------------------
+	double globalBestObjValue = result_incumbent.objValue_Total;
+	double localBestObjValue = result_incumbent.objValue_Total;
+
+	// we check whether the improvement is below 0.01% for more than maxNoImprovement iterations
+	int num_NoImprovement_local = 0;
+	int num_NoImprovement_global = 0;
+	double minImprovementPercentage = 1e-2;
+	double minImprovement = 1e-4;
+	bool stop = false;
 
 	int iter = 0;
-	while (iter < params.HILS_MaxIteration && elapsedTime < params.HILS_TimeLimit)
+	while (!stop)
 	{
 		cout << "-----------------------------------------------------------------" << endl;
 		cout << "Solving The Problem With Hybrid-ILS. Iteration: " << iter + 1 << endl;
 		cout << "-----------------------------------------------------------------" << endl;
 
-		sol_FE = sol_FE_incumbent;
-		sol_SE = sol_SE_incumbent;
+		bool MergeWarehouses = false;
+
+		if (num_NoImprovement_global % 4 == 0 && num_NoImprovement_global >= 12)
+		{
+			sol_FE = sol_FE_incumbent;
+			sol_SE = sol_SE_incumbent;
+			MergeWarehouses = true;
+		}
 
 		cout << "Rearrange customer-warehouse assignment..." << endl;
-		optimizeUnmetDemandAndRoutes(sol_SE);
+		// optimizeUnmetDemandAndRoutes(sol_SE);
+		rearrangeCustomerAssignments(sol_SE);
+		
+		if (num_NoImprovement_local % 4 == 0 && num_NoImprovement_local != 0)
+		{
+			MergeWarehouses = true;
+		}
+
+		bool mergeSuccess = false;
+		if (MergeWarehouses)
+		{
+			cout << "In each scenario, randomly remove a warehouse from a period..." << endl;
+			mergeSuccess = Merge_Warehouses(sol_SE);
+			if (!mergeSuccess)
+			{
+				cout << "Merge failed" << endl;
+			}
+		}
 
 		// Solve the restricted problem and finalize the solution
 		if (!solveRestrictedProblemAndFinalize(sol_FE, sol_SE))
@@ -95,18 +148,66 @@ bool Algorithms::solve_S2EPRP_HILS()
 			return EXIT_FAILURE;
 		}
 
-		if (!runILSForSecondEchelon(sol_FE, sol_SE, result_temp))
+		if (!runILSForSecondEchelon(sol_FE, sol_SE, result_temp, iter + 1, startTime, true))
 		{
 			return EXIT_FAILURE;
 		}
 
-		update_incumbent(sol_FE, sol_SE, result_temp);
-		printSolution();
+		// -----------------------------------------------------------------------------------------------------------------
+		cout << "----------------------------------------------------------------" << endl;
+		double improvement_percentage_global = ((globalBestObjValue - result_temp.objValue_Total) / globalBestObjValue) * 100;
+		cout << "OF Improvement Global: " << improvement_percentage_global << "%" << endl;
+		if (improvement_percentage_global > minImprovementPercentage)
+		{
+			num_NoImprovement_global = 0;
+		}
+		else
+		{
+			num_NoImprovement_global++;
+		}
+		cout << "Number of No Improvement Global: " << num_NoImprovement_global << endl;
+
+		double improvement_percentage_local = ((localBestObjValue - result_temp.objValue_Total) / localBestObjValue) * 100;
+		cout << "OF Improvement Local: " << improvement_percentage_local << "%" << endl;
+		if (improvement_percentage_local > minImprovementPercentage)
+		{
+			num_NoImprovement_local = 0;
+		}
+		else
+		{
+			num_NoImprovement_local++;
+		}
+		cout << "Number of No Improvement Local: " << num_NoImprovement_local << endl;
+		// -----------------------------------------------------------------------------------------------------------------
+		if (mergeSuccess)
+		{
+			localBestObjValue = result_temp.objValue_Total;
+		}
+		else if (result_temp.objValue_Total < (localBestObjValue - minImprovement))
+		{
+			localBestObjValue = result_temp.objValue_Total;
+		}
+
+		if (result_temp.objValue_Total < globalBestObjValue - minImprovement)
+		{
+			update_incumbent(sol_FE, sol_SE, result_temp);
+			printSolution();
+
+			globalBestObjValue = result_temp.objValue_Total;
+		}
+		// -----------------------------------------------------------------------------------------------------------------
 
 		currentTime = std::chrono::high_resolution_clock::now();
 		elapsedTime = std::chrono::duration_cast<std::chrono::duration<double>>(currentTime - startTime).count();
 		cout << "Computation Time (Hybrid-ILS) after iteration: " << iter + 1 << " = " << elapsedTime << " seconds" << endl;
+
 		iter++;
+
+		// check stopping criteria
+		if (iter >= params.HILS_MaxIteration || elapsedTime >= params.HILS_TimeLimit || num_NoImprovement_global >= params.HILS_MaxNoImprovement)
+		{
+			stop = true;
+		}
 	}
 
 	result_incumbent.totalCPUTime = elapsedTime;
@@ -136,10 +237,127 @@ bool Algorithms::solve_S2EPRP_HILS()
 	return true;
 }
 
+bool Algorithms::Merge_Warehouses(SolutionSecondEchelon &sol_SE)
+{
+	int numMerged = 0;
+	for (int s = 0; s < params.numScenarios; ++s)
+	{
+		// Shuffle periods for random selection
+		vector<int> periods(params.numPeriods);
+		for (int t = 0; t < params.numPeriods; ++t)
+			periods[t] = t;
+		std::shuffle(periods.begin(), periods.end(), rng);
+
+		// Iterate through shuffled periods to find a valid one
+		for (int t : periods)
+		{
+			vector<int> activeWarehouses;
+
+			// Identify warehouses with active routes in period t
+			for (int w = 0; w < params.numWarehouses; ++w)
+			{
+				for (int k = 0; k < params.numVehicles_Warehouse; ++k)
+				{
+					if (!sol_SE.routesWarehouseToCustomer[s][w][t][k].empty())
+					{
+						activeWarehouses.push_back(w);
+						break;
+					}
+				}
+			}
+
+			// If there are at least two warehouses with routes, proceed with merging
+			if (activeWarehouses.size() < 2)
+				continue;
+
+			// Randomly select a warehouse to omit
+			std::shuffle(activeWarehouses.begin(), activeWarehouses.end(), rng);
+			int warehouseToOmit = activeWarehouses.front();
+			activeWarehouses.erase(activeWarehouses.begin());
+
+			// Gather all customers from the omitted warehouse's routes
+			std::set<int> customersToReassign;
+			for (int k = 0; k < params.numVehicles_Warehouse; ++k)
+			{
+				vector<int> &route = sol_SE.routesWarehouseToCustomer[s][warehouseToOmit][t][k];
+
+				if (route.empty())
+					continue;
+
+				for (size_t i = 1; i < route.size() - 1; ++i) // Ignore warehouse at start and end
+				{
+					customersToReassign.insert(route[i]);
+				}
+			}
+
+			if (customersToReassign.empty())
+				continue;
+
+			// Reassign customers to other warehouses based on min insertion cost
+			for (int customer : customersToReassign)
+			{
+				int bestVehicle = -1;
+				int bestWarehouse = -1;
+				int bestPosition = -1;
+				double bestCost = std::numeric_limits<double>::max();
+
+				for (int newWarehouse : activeWarehouses)
+				{
+					for (int k = 0; k < params.numVehicles_Warehouse; ++k)
+					{
+						vector<int> &route = sol_SE.routesWarehouseToCustomer[s][newWarehouse][t][k];
+						if (route.empty())
+							continue;
+						
+						std::pair<int, double> minInsertionCostResult = minInsertionCost(route, customer);
+						int insertionPos = minInsertionCostResult.first;
+						double insertionCost = minInsertionCostResult.second;
+
+						if (insertionCost < bestCost)
+						{
+							bestCost = insertionCost;
+							bestPosition = insertionPos;
+							bestWarehouse = newWarehouse;
+							bestVehicle = k;
+						}
+					}
+				}
+
+				// Update assignment if a valid position is found
+				if (bestWarehouse != -1)
+				{
+					vector<int> &route = sol_SE.routesWarehouseToCustomer[s][bestWarehouse][t][bestVehicle];
+
+					if (bestPosition != -1)
+					{
+						route.insert(route.begin() + bestPosition, customer);
+						sol_SE.customerAssignmentToWarehouse[s][t][warehouseToOmit][customer - params.numWarehouses] = 0;
+						sol_SE.customerAssignmentToWarehouse[s][t][bestWarehouse][customer - params.numWarehouses] = 1;
+					}
+				}
+			}
+
+			// Clear the omitted warehouse's routes
+			for (int k = 0; k < params.numVehicles_Warehouse; ++k)
+				sol_SE.routesWarehouseToCustomer[s][warehouseToOmit][t][k].clear();
+
+			numMerged++;
+			break;
+		}
+	}
+
+	cout << "Number of merged occurrences: " << numMerged << endl;
+	if (numMerged == params.numScenarios)
+	{
+		return true;
+	}
+	return true;
+}
+
 bool Algorithms::solveFirstEchelon(SolutionFirstEchelon &solFE)
 {
 	cout << "Solve The First-Echelon Problem" << endl;
-	MWPRP_FE mwprp_fe(params);
+	MWPRP_FE mwprp_fe(params, false, false);
 	if (!mwprp_fe.Solve())
 	{
 		return false;
@@ -148,9 +366,10 @@ bool Algorithms::solveFirstEchelon(SolutionFirstEchelon &solFE)
 	return true;
 }
 
-bool Algorithms::runILSForSecondEchelon(SolutionFirstEchelon &solFE_current, SolutionSecondEchelon &solSE_current, Result &result_current)
+bool Algorithms::runILSForSecondEchelon(SolutionFirstEchelon &solFE_current, SolutionSecondEchelon &solSE_current, Result &result_current,
+										int iter, std::chrono::high_resolution_clock::time_point startTime, bool savePerIterSol)
 {
-	ILS_SIRP ils_SIRP(params, solFE_current, solSE_current);
+	ILS_SIRP ils_SIRP(params, solFE_current, solSE_current, iter, startTime, savePerIterSol);
 	if (!ils_SIRP.run())
 	{
 		return false;
@@ -165,14 +384,11 @@ bool Algorithms::runILSForSecondEchelon(SolutionFirstEchelon &solFE_current, Sol
 
 void Algorithms::update_incumbent(SolutionFirstEchelon &sol_FE, SolutionSecondEchelon &sol_SE, Result &result_temp)
 {
-	if (result_temp.objValue_Total < result_incumbent.objValue_Total)
-	{
-		sol_FE_incumbent = sol_FE;
-		sol_SE_incumbent = sol_SE;
-		result_incumbent = result_temp;
+	sol_FE_incumbent = sol_FE;
+	sol_SE_incumbent = sol_SE;
+	result_incumbent = result_temp;
 
-		cout << "New Incumbent: " << result_incumbent.objValue_Total << endl;
-	}
+	cout << "New Incumbent: " << result_incumbent.objValue_Total << endl;
 
 	for (int t = 0; t < params.numPeriods; t++)
 	{
@@ -185,7 +401,7 @@ void Algorithms::update_incumbent(SolutionFirstEchelon &sol_FE, SolutionSecondEc
 	}
 }
 
-void Algorithms::optimizeUnmetDemandAndRoutes(SolutionSecondEchelon &sol_SE)
+void Algorithms::rearrangeCustomerAssignments(SolutionSecondEchelon &sol_SE)
 {
 	for (int s = 0; s < params.numScenarios; ++s)
 	{
@@ -197,12 +413,26 @@ void Algorithms::optimizeUnmetDemandAndRoutes(SolutionSecondEchelon &sol_SE)
 
 			for (const auto &entry : unmetDemand_Descending)
 			{
+				bool hasUnmetDemand = false;
+
 				int customerIndex = std::get<0>(entry);
 				double unmetDemand = std::get<1>(entry);
 
 				if (unmetDemand > 1e-4)
 				{
+					hasUnmetDemand = true;
 					handleUnmetDemandForCustomer(sol_SE, s, t, customerIndex, unmetDemand);
+				}
+				else
+				{
+					if (std::get<0>(visitedByWarehouse(sol_SE, s, t, customerIndex)) != -1)
+					{
+						int currentWarehouse = std::get<0>(visitedByWarehouse(sol_SE, s, t, customerIndex));
+						int currentVehicle = std::get<1>(visitedByWarehouse(sol_SE, s, t, customerIndex));
+						int currentPosition = std::get<2>(visitedByWarehouse(sol_SE, s, t, customerIndex));
+
+						attemptToInsertCustomerIntoWarehouse(sol_SE, s, t, currentWarehouse, customerIndex, hasUnmetDemand);
+					}
 				}
 			}
 		}
@@ -223,6 +453,38 @@ void Algorithms::sortCustomersByUnmetDemand(SolutionSecondEchelon &sol_SE, vecto
 		 });
 }
 
+std::tuple<int, int, int> Algorithms::visitedByWarehouse(SolutionSecondEchelon &sol_SE, int s, int t, int i)
+{
+	int customerIndex = i + params.numWarehouses;
+
+	// Initialize result to (-1, -1, -1) indicating "not found"
+	std::tuple<int, int, int> result = std::make_tuple(-1, -1, -1);
+
+	// Loop through all warehouses and vehicles
+	for (int w = 0; w < params.numWarehouses; ++w)
+	{
+		for (int k = 0; k < params.numVehicles_Warehouse; ++k)
+		{
+			// Get the route for warehouse `w`, period `t`, and vehicle `k`
+			vector<int> &route = sol_SE.routesWarehouseToCustomer[s][w][t][k];
+
+			// Check if the customer is in the route
+			auto it = std::find(route.begin(), route.end(), customerIndex);
+			if (it != route.end())
+			{
+				// Calculate position in the route
+				int position = std::distance(route.begin(), it);
+
+				// Return warehouse, vehicle, and position
+				return std::make_tuple(w, k, position);
+			}
+		}
+	}
+
+	// Customer not found: return default (-1, -1, -1)
+	return result;
+}
+
 void Algorithms::handleUnmetDemandForCustomer(SolutionSecondEchelon &sol_SE, int s, int t, int customerIndex, double unmetDemand)
 {
 	double unmetDemCost = params.unmetDemandPenalty[customerIndex] * unmetDemand;
@@ -230,7 +492,7 @@ void Algorithms::handleUnmetDemandForCustomer(SolutionSecondEchelon &sol_SE, int
 	// cout << "currentWarehouse for customer " << customerIndex + params.numWarehouses << " = " << currentWarehouse + 1 << endl;
 
 	int wareToInsert = -1;
-	attemptToInsertCustomerIntoWarehouse(sol_SE, s, t, currentWarehouse, customerIndex, unmetDemand, unmetDemCost);
+	attemptToInsertCustomerIntoWarehouse(sol_SE, s, t, currentWarehouse, customerIndex, true);
 
 	// vector<vector<int>> WareToCustSortedByDistance = params.getSortedWarehousesByDistance();
 	// for (int wareToInsert : WareToCustSortedByDistance[customerIndex])
@@ -258,46 +520,111 @@ int Algorithms::findCurrentWarehouse(SolutionSecondEchelon &sol_SE, int s, int t
 	return -1;
 }
 
-void Algorithms::attemptToInsertCustomerIntoWarehouse(SolutionSecondEchelon &sol_SE, int s, int t, int currentWarehouse, int customerIndex, double unmetDemand, double unmetDemCost)
+void Algorithms::attemptToInsertCustomerIntoWarehouse(SolutionSecondEchelon &sol_SE, int s, int t, int currentWarehouse, int customerIndex, bool hasUnmetDemand)
 {
-	// vector<vector<int>> WareToCustSortedByDistance = params.getSortedWarehousesByDistance();
-	int wareToInsert = -1;
-	int routeToInsert = -1;
-	int posToInsert = -1;
-	double tempDeliveryQuantity;
-	double minCostToInsert = std::numeric_limits<double>::max();
-	for (int w = 0; w < params.numWarehouses; ++w)
+	if (hasUnmetDemand)
 	{
-		if (w != currentWarehouse)
+		// vector<vector<int>> WareToCustSortedByDistance = params.getSortedWarehousesByDistance();
+		int wareToInsert = -1;
+		int routeToInsert = -1;
+		int posToInsert = -1;
+		double tempDeliveryQuantity;
+		double minCostToInsert = std::numeric_limits<double>::max();
+		for (int w = 0; w < params.numWarehouses; ++w)
 		{
-			vector<double> remainingVehicleCapacityWarehouse(params.numVehicles_Warehouse, params.vehicleCapacity_Warehouse);
-			double remainingWarehouseCapacity = params.storageCapacity_Warehouse[w];
-
-			updateRemainingCapacities(sol_SE, s, t, w, remainingVehicleCapacityWarehouse, remainingWarehouseCapacity);
-
-			auto maxIt = std::max_element(remainingVehicleCapacityWarehouse.begin(), remainingVehicleCapacityWarehouse.end());
-			if (maxIt != remainingVehicleCapacityWarehouse.end() && *maxIt > 0.0 && remainingWarehouseCapacity > 0.0)
+			if (w != currentWarehouse)
 			{
-				int routeToInsert_temp = -1;
-				int posToInsert_temp = -1;
-				double minCostToInsert_temp = std::numeric_limits<double>::max();
+				vector<double> remainingVehicleCapacityWarehouse(params.numVehicles_Warehouse, params.vehicleCapacity_Warehouse);
+				double remainingWarehouseCapacity = params.storageCapacity_Warehouse[w];
 
-				findBestInsertionPosition(sol_SE, s, t, w, customerIndex, remainingVehicleCapacityWarehouse, remainingWarehouseCapacity, routeToInsert_temp, posToInsert_temp, minCostToInsert_temp);
+				updateRemainingCapacities(sol_SE, s, t, w, remainingVehicleCapacityWarehouse, remainingWarehouseCapacity);
 
-				if ((minCostToInsert_temp < (minCostToInsert - 1e-4)) && routeToInsert != -1)
+				auto maxIt = std::max_element(remainingVehicleCapacityWarehouse.begin(), remainingVehicleCapacityWarehouse.end());
+				if (maxIt != remainingVehicleCapacityWarehouse.end() && *maxIt > 0.0 && remainingWarehouseCapacity > 0.0)
 				{
-					wareToInsert = w;
-					routeToInsert = routeToInsert_temp;
-					posToInsert = posToInsert_temp;
-					minCostToInsert = minCostToInsert_temp;
-					tempDeliveryQuantity = std::min({params.demand[customerIndex][t][s], remainingVehicleCapacityWarehouse[routeToInsert], remainingWarehouseCapacity});
+					int routeToInsert_temp = -1;
+					int posToInsert_temp = -1;
+					double minCostToInsert_temp = std::numeric_limits<double>::max();
+					double deliveryQuantity_temp = std::min({params.demand[customerIndex][t][s], remainingVehicleCapacityWarehouse[routeToInsert], remainingWarehouseCapacity});
+
+					if (remainingWarehouseCapacity >= deliveryQuantity_temp)
+					{
+						findBestInsertionPosition(sol_SE, s, t, w, customerIndex,
+												  remainingVehicleCapacityWarehouse, remainingWarehouseCapacity,
+												  routeToInsert_temp, posToInsert_temp, minCostToInsert_temp, deliveryQuantity_temp);
+
+						if ((minCostToInsert_temp < (minCostToInsert - 1e-4)) && routeToInsert_temp != -1)
+						{
+							wareToInsert = w;
+							routeToInsert = routeToInsert_temp;
+							posToInsert = posToInsert_temp;
+							minCostToInsert = minCostToInsert_temp;
+							tempDeliveryQuantity = deliveryQuantity_temp;
+						}
+					}
 				}
 			}
 		}
+		if (wareToInsert != -1)
+		{
+			applyInsertion(sol_SE, s, t, wareToInsert, currentWarehouse, customerIndex, routeToInsert, posToInsert, tempDeliveryQuantity);
+		}
 	}
-	if (wareToInsert != -1)
+	else
 	{
-		applyInsertion(sol_SE, s, t, wareToInsert, currentWarehouse, customerIndex, routeToInsert, posToInsert, tempDeliveryQuantity);
+		int currentVehicle = std::get<1>(visitedByWarehouse(sol_SE, s, t, customerIndex));
+		int currentPosition = std::get<2>(visitedByWarehouse(sol_SE, s, t, customerIndex));
+
+		int previousNode = sol_SE.routesWarehouseToCustomer[s][currentWarehouse][t][currentVehicle][currentPosition - 1];
+		int nextNode = sol_SE.routesWarehouseToCustomer[s][currentWarehouse][t][currentVehicle][currentPosition + 1];
+
+		double minCostToInsert = params.transportationCost_SecondEchelon[previousNode][customerIndex + params.numWarehouses] + params.transportationCost_SecondEchelon[customerIndex + params.numWarehouses][nextNode] - params.transportationCost_SecondEchelon[previousNode][nextNode];
+
+		int wareToInsert = -1;
+		int routeToInsert = -1;
+		int posToInsert = -1;
+		double tempDeliveryQuantity;
+		for (int w = 0; w < params.numWarehouses; ++w)
+		{
+			if (w != currentWarehouse)
+			{
+				vector<double> remainingVehicleCapacityWarehouse(params.numVehicles_Warehouse, params.vehicleCapacity_Warehouse);
+				double remainingWarehouseCapacity = params.storageCapacity_Warehouse[w];
+
+				updateRemainingCapacities(sol_SE, s, t, w, remainingVehicleCapacityWarehouse, remainingWarehouseCapacity);
+
+				auto maxIt = std::max_element(remainingVehicleCapacityWarehouse.begin(), remainingVehicleCapacityWarehouse.end());
+				if (maxIt != remainingVehicleCapacityWarehouse.end() && *maxIt > 0.0 && remainingWarehouseCapacity > 1e-2)
+				{
+					int routeToInsert_temp = -1;
+					int posToInsert_temp = -1;
+					double minCostToInsert_temp = std::numeric_limits<double>::max();
+					double deliveryQuantity_temp = sol_SE.deliveryQuantityToCustomer[customerIndex][t][s];
+
+					if (remainingWarehouseCapacity >= deliveryQuantity_temp)
+					{
+						findBestInsertionPosition(sol_SE, s, t, w, customerIndex,
+												  remainingVehicleCapacityWarehouse, remainingWarehouseCapacity,
+												  routeToInsert_temp, posToInsert_temp, minCostToInsert_temp, deliveryQuantity_temp);
+
+						if ((minCostToInsert_temp < (minCostToInsert - 1e-4)) && routeToInsert_temp != -1)
+						{
+							// cout << "HERE HERE" << endl;
+							wareToInsert = w;
+							routeToInsert = routeToInsert_temp;
+							posToInsert = posToInsert_temp;
+							minCostToInsert = minCostToInsert_temp;
+							tempDeliveryQuantity = deliveryQuantity_temp;
+						}
+					}
+				}
+			}
+		}
+
+		if (wareToInsert != -1)
+		{
+			applyInsertion(sol_SE, s, t, wareToInsert, currentWarehouse, customerIndex, routeToInsert, posToInsert, tempDeliveryQuantity);
+		}
 	}
 }
 
@@ -316,11 +643,13 @@ void Algorithms::updateRemainingCapacities(SolutionSecondEchelon &sol_SE, int s,
 	}
 }
 
-void Algorithms::findBestInsertionPosition(SolutionSecondEchelon &sol_SE, int s, int t, int wareToInsert, int customerIndex, vector<double> &remainingVehicleCapacityWarehouse, double &remainingWarehouseCapacity, int &routeToInsert, int &posToInsert, double &minCostToInsert)
+void Algorithms::findBestInsertionPosition(SolutionSecondEchelon &sol_SE, int s, int t, int wareToInsert, int customerIndex,
+										   vector<double> &remainingVehicleCapacityWarehouse, double &remainingWarehouseCapacity,
+										   int &routeToInsert, int &posToInsert, double &minCostToInsert, double &deliveruQuantity)
 {
 	for (int r = 0; r < params.numVehicles_Warehouse; ++r)
 	{
-		if (remainingVehicleCapacityWarehouse[r] >= params.demand[customerIndex][t][s] && remainingWarehouseCapacity >= params.demand[customerIndex][t][s])
+		if (remainingVehicleCapacityWarehouse[r] >= deliveruQuantity)
 		{
 			if (sol_SE.routesWarehouseToCustomer[s][wareToInsert][t][r].empty())
 			{
@@ -477,38 +806,38 @@ void Algorithms::organizeSolution()
 		{
 			for (int t = 0; t < params.numPeriods; ++t)
 			{
-				// Step 1: Create a vector to store vehicles and their total delivery quantity
-				vector<std::pair<int, double>> vehicleDeliveryQuantities;
+				// Step 1: Create a vector to store vehicles and their lowest node index
+				vector<std::pair<int, int>> vehicleLowestNodeIndex; // {vehicleIndex, lowestNodeIndex}
 
 				for (int k = 0; k < params.numVehicles_Warehouse; ++k)
 				{
-					double totalDeliveryQuantity = 0.0;
-					// Calculate total delivery quantity for this vehicle across all customers
-					for (int i = 0; i < params.numCustomers; ++i)
+					vector<int> &route = sol_SE_incumbent.routesWarehouseToCustomer[s][w][t][k];
+					if (!route.empty())
 					{
-						int customerIndex = i + params.numWarehouses; // Adjust customer index
-						vector<int> &route = sol_SE_incumbent.routesWarehouseToCustomer[s][w][t][k];
-						if (std::find(route.begin(), route.end(), customerIndex) != route.end())
-						{
-							totalDeliveryQuantity += sol_SE_incumbent.deliveryQuantityToCustomer[i][t][s];
-						}
+						// Find the lowest node index in the route
+						int lowestNodeIndex = *std::min_element(route.begin() + 1, route.end() - 1);
+						vehicleLowestNodeIndex.push_back({k, lowestNodeIndex});
 					}
-					vehicleDeliveryQuantities.push_back({k, totalDeliveryQuantity}); // Store vehicle index and its total delivery
+					else
+					{
+						// If the route is empty, use a high value to push it to the end during sorting
+						vehicleLowestNodeIndex.push_back({k, std::numeric_limits<int>::max()});
+					}
 				}
 
-				// Step 2: Sort vehicles by total delivery quantity (highest quantity first)
-				std::sort(vehicleDeliveryQuantities.begin(), vehicleDeliveryQuantities.end(),
-						  [](const std::pair<int, double> &a, const std::pair<int, double> &b)
+				// Step 2: Sort vehicles based on the lowest node index (ascending order)
+				std::sort(vehicleLowestNodeIndex.begin(), vehicleLowestNodeIndex.end(),
+						  [](const std::pair<int, int> &a, const std::pair<int, int> &b)
 						  {
-							  return a.second > b.second; // Sort in descending order of delivery quantity
+							  return a.second < b.second; // Sort in ascending order of lowest node index
 						  });
 
 				// Step 3: Reorganize the solution based on the sorted vehicle indices
 				vector<vector<int>> sortedRoutes;
-				for (int sorted_k = 0; sorted_k < params.numVehicles_Warehouse; ++sorted_k)
+				for (const auto &vehicle : vehicleLowestNodeIndex)
 				{
-					int original_k = vehicleDeliveryQuantities[sorted_k].first;								 // Get the original vehicle index
-					sortedRoutes.push_back(sol_SE_incumbent.routesWarehouseToCustomer[s][w][t][original_k]); // Copy the sorted route
+					int original_k = vehicle.first; // Get the original vehicle index
+					sortedRoutes.push_back(sol_SE_incumbent.routesWarehouseToCustomer[s][w][t][original_k]);
 				}
 
 				// Step 4: Replace the original routes with the sorted ones
@@ -519,190 +848,141 @@ void Algorithms::organizeSolution()
 			}
 		}
 	}
+
+	// Turn all customers assignment to warehouses if there is no delivery to the customer
+	for (int s = 0; s < params.numScenarios; ++s)
+	{
+		for (int t = 0; t < params.numPeriods; ++t)
+		{
+			for (int w = 0; w < params.numWarehouses; ++w)
+			{
+				for (int i = 0; i < params.numCustomers; ++i)
+				{
+					if (sol_SE_incumbent.customerAssignmentToWarehouse[s][t][w][i] == 1)
+					{
+						bool customerVisited = false;
+						for (int k = 0; k < params.numVehicles_Warehouse; ++k)
+						{
+							int customerIndex = i + params.numWarehouses; // Adjust customer index
+							vector<int> &route = sol_SE_incumbent.routesWarehouseToCustomer[s][w][t][k];
+							if (std::find(route.begin(), route.end(), customerIndex) != route.end())
+							{
+								customerVisited = true;
+								break;
+							}
+						}
+
+						if (customerVisited == false)
+						{
+							sol_SE_incumbent.customerAssignmentToWarehouse[s][t][w][i] = 0;
+						}
+					}
+				}
+			}
+		}
+	}
 }
 
 // --------------------------------------------------------------------------------------
-
 bool Algorithms::solve_2EPRP()
 {
 	auto elapsedTime = 0.0;
-	auto currentTime = std::chrono::high_resolution_clock::now();
 	auto startTime = std::chrono::high_resolution_clock::now();
+	auto currentTime = std::chrono::high_resolution_clock::now();
 
 	cout << "Start Solving The " << params.problemType << endl;
-	cout << "-------------------------------------------------------------------" << endl;
-	solve_Deterministic_HILS();
-
-	cout << "Start Solving The " << params.problemType << " Using Branch-and-Cut" << endl;
-
-	SolutionWarmStart_Deterministic warmStart;
-
-	warmStart.productionSetup_WarmStart = sol_FE_incumbent_Deterministic.productionSetup;
-	warmStart.routesPlantToWarehouse_WarmStart = sol_FE_incumbent_Deterministic.routesPlantToWarehouse;
-	warmStart.routesWarehouseToCustomer_WarmStart = sol_SE_incumbent_Deterministic.routesWarehouseToCustomer;
-	warmStart.customerAssignmentToWarehouse_WarmStart = sol_SE_incumbent_Deterministic.customerAssignmentToWarehouse;
-
-	// Solve the EV problem using the Branch-and-Cut
-	BC_Deterministic ev_bc(params, warmStart);
-	if (!ev_bc.Solve())
+	if (params.problemType == "WS" || params.problemType == "EEV")
 	{
-		return EXIT_FAILURE;
+		cout << "Scenario Index: " << params.scenarioIndex + 1 << endl;
 	}
-	sol_FE_incumbent_Deterministic = ev_bc.getSolutionFE();
-	sol_SE_incumbent_Deterministic = ev_bc.getSolutionSE();
-	result_incumbent_Deterministic = ev_bc.getResult();
+	cout << "-------------------------------------------------------------------" << endl;
+
+	if (params.problemType == "EEV")
+	{
+		// Read the First Echelon Solution From EV
+		SolutionFirstEchelon sol_FE_EV;
+		SolutionSecondEchelon_Deterministic sol_SE_EV;
+		if (!read_SolutionEV(sol_FE_EV, sol_SE_EV))
+			return false;
+
+		if (params.solutionAlgorithm == "Hybrid-ILS")
+		{
+			if(!solve_Deterministic_HILS(sol_FE_EV, sol_SE_EV))
+			{
+				cout << "Error in Solving " << params.problemType << " With " << params.solutionAlgorithm << " Algorithm." << endl;
+				return false;
+			}
+		}
+		else if (params.solutionAlgorithm == "BC")
+		{
+			SolutionWarmStart_Deterministic warmStart;
+			if (!params.readSolutionWarmStart_Deter(warmStart))
+			{
+				cout << "Error in Reading Warm Start Solution for " << params.problemType << endl;
+				cout << "Solve the problem without a warm start." << endl;
+			}
+
+			// Solve the EEV problem using the Branch-and-Cut
+			BC_Deterministic bc_eev(params, warmStart, sol_FE_EV, false, false);
+			if(!bc_eev.Solve())
+			{
+				return EXIT_FAILURE;
+			}
+			sol_SE_incumbent_Deterministic = bc_eev.getSolutionSE();
+			result_incumbent_Deterministic = bc_eev.getResult();
+
+			// Save the solution and check feasibility
+			SolutionManager solMgr(params);
+			solMgr.saveSolution_Deterministic(sol_FE_EV, sol_SE_incumbent_Deterministic, "BC");
+			solMgr.checkFeasibility_Deterministic("BC");
+			solMgr.saveResultSummary_Deterministic(sol_FE_EV, sol_SE_incumbent_Deterministic, result_incumbent_Deterministic, "BC");
+		}
+	}
+	else 
+	{
+		if (params.solutionAlgorithm == "Hybrid-ILS")
+		{
+			if(!solve_Deterministic_HILS())
+			{
+				cout << "Error in Solving " << params.problemType << " With " << params.solutionAlgorithm << " Algorithm." << endl;
+				return false;
+			}
+		}
+		else if (params.solutionAlgorithm == "BC")
+		{
+			SolutionWarmStart_Deterministic warmStart;
+			if (!params.readSolutionWarmStart_Deter(warmStart))
+			{
+				cout << "Error in Reading Warm Start Solution for " << params.problemType << endl;
+				cout << "Solve the problem without a warm start." << endl;
+			}
+
+			// Solve the 2EPRP problem using the Branch-and-Cut
+			BC_Deterministic bc_det(params, warmStart, {}, false, false);
+			if (!bc_det.Solve())
+			{
+				return EXIT_FAILURE;
+			}
+			sol_FE_incumbent_Deterministic = bc_det.getSolutionFE();
+			sol_SE_incumbent_Deterministic = bc_det.getSolutionSE();
+			result_incumbent_Deterministic = bc_det.getResult();
+
+			// Save the solution and check feasibility
+			SolutionManager solMgr(params);
+			solMgr.saveSolution_Deterministic(sol_FE_incumbent_Deterministic, sol_SE_incumbent_Deterministic, "BC");
+			solMgr.checkFeasibility_Deterministic("BC");
+			solMgr.saveResultSummary_Deterministic(sol_FE_incumbent_Deterministic, sol_SE_incumbent_Deterministic, result_incumbent_Deterministic, "BC");
+		}
+	}
 
 	currentTime = std::chrono::high_resolution_clock::now();
 	elapsedTime = std::chrono::duration_cast<std::chrono::duration<double>>(currentTime - startTime).count();
-	cout << "Computation Time (Total of HHA and BC) for " << params.problemType << " = " << elapsedTime << " seconds" << endl;
-
-	// Save the solution and check feasibility
-	SolutionManager solMgr(params);
-	solMgr.saveSolution_Deterministic(sol_FE_incumbent_Deterministic,
-									  sol_SE_incumbent_Deterministic, "BC");
-	solMgr.checkFeasibility_Deterministic("BC");
-	solMgr.saveResultSummary_Deterministic(sol_FE_incumbent_Deterministic,
-										   sol_SE_incumbent_Deterministic,
-										   result_incumbent_Deterministic, "BC");
-
-	// -----------------------------------------------------------------------------------------------------------------
-	SolutionManager solMgr_HPT(params);
-	Result result_HPT = result_incumbent_Deterministic;	
-	cout << "\nSave Sol for Hyper Parameter Tuning (BC): " << endl;
-	result_HPT.totalCPUTime = elapsedTime;
-	solMgr_HPT.saveOF_Iter_Deterministic(1, 0, result_HPT, "BC");
-	// -----------------------------------------------------------------------------------------------------------------
+	cout << "Computation Time (" << params.solutionAlgorithm << ") for " << params.problemType << " = " << elapsedTime << " seconds" << endl;
 
 	return true;
 }
 
-bool Algorithms::solve_EV()
-{
-	auto elapsedTime = 0.0;
-	auto currentTime = std::chrono::high_resolution_clock::now();
-	auto startTime = std::chrono::high_resolution_clock::now();
-
-	cout << "Start Solving The Expected Value (EV) Problem For the S2EPRP." << endl;
-	cout << "-------------------------------------------------------------------" << endl;
-	solve_Deterministic_HILS();
-
-	SolutionWarmStart_Deterministic warmStart;
-
-	warmStart.productionSetup_WarmStart = sol_FE_incumbent_Deterministic.productionSetup;
-	warmStart.routesPlantToWarehouse_WarmStart = sol_FE_incumbent_Deterministic.routesPlantToWarehouse;
-	warmStart.routesWarehouseToCustomer_WarmStart = sol_SE_incumbent_Deterministic.routesWarehouseToCustomer;
-	warmStart.customerAssignmentToWarehouse_WarmStart = sol_SE_incumbent_Deterministic.customerAssignmentToWarehouse;
-
-	// Solve the EV problem using the Branch-and-Cut
-	BC_Deterministic ev_bc(params, warmStart);
-	if (!ev_bc.Solve())
-	{
-		return EXIT_FAILURE;
-	}
-	sol_FE_incumbent_Deterministic = ev_bc.getSolutionFE();
-	sol_SE_incumbent_Deterministic = ev_bc.getSolutionSE();
-	result_incumbent_Deterministic = ev_bc.getResult();
-
-	currentTime = std::chrono::high_resolution_clock::now();
-	elapsedTime = std::chrono::duration_cast<std::chrono::duration<double>>(currentTime - startTime).count();
-	cout << "Computation Time (Total of HHA and BC) for Expected Value Problem (EV) = " << elapsedTime << " seconds" << endl;
-
-	// Save the solution and check feasibility
-	SolutionManager solMgr(params);
-	solMgr.saveSolution_Deterministic(sol_FE_incumbent_Deterministic, sol_SE_incumbent_Deterministic, "BC");
-	solMgr.checkFeasibility_Deterministic("BC");
-	solMgr.saveResultSummary_Deterministic(sol_FE_incumbent_Deterministic, sol_SE_incumbent_Deterministic, result_incumbent_Deterministic, "BC");
-
-	return true;
-}
-
-bool Algorithms::solve_WS()
-{
-	auto elapsedTime = 0.0;
-	auto currentTime = std::chrono::high_resolution_clock::now();
-	auto startTime = std::chrono::high_resolution_clock::now();
-
-	cout << "Start Solving The Wait-and-See (WS) Problem For the S2EPRP." << endl;
-	cout << "Scenario Index: " << params.scenarioIndex + 1 << endl;
-	cout << "-------------------------------------------------------------------" << endl;
-	solve_Deterministic_HILS();
-
-	SolutionWarmStart_Deterministic warmStart;
-
-	warmStart.productionSetup_WarmStart = sol_FE_incumbent_Deterministic.productionSetup;
-	warmStart.routesPlantToWarehouse_WarmStart = sol_FE_incumbent_Deterministic.routesPlantToWarehouse;
-	warmStart.routesWarehouseToCustomer_WarmStart = sol_SE_incumbent_Deterministic.routesWarehouseToCustomer;
-	warmStart.customerAssignmentToWarehouse_WarmStart = sol_SE_incumbent_Deterministic.customerAssignmentToWarehouse;
-
-	// Solve the EV problem using the Branch-and-Cut
-	BC_Deterministic ws_bc(params, warmStart);
-	if (!ws_bc.Solve())
-	{
-		return EXIT_FAILURE;
-	}
-	sol_FE_incumbent_Deterministic = ws_bc.getSolutionFE();
-	sol_SE_incumbent_Deterministic = ws_bc.getSolutionSE();
-	result_incumbent_Deterministic = ws_bc.getResult();
-
-	currentTime = std::chrono::high_resolution_clock::now();
-	elapsedTime = std::chrono::duration_cast<std::chrono::duration<double>>(currentTime - startTime).count();
-	cout << "Computation Time (Total of HHA and BC) for Wait-and-See Problem (WS) = " << elapsedTime << " seconds" << endl;
-
-	// Save the solution and check feasibility
-	SolutionManager solMgr(params);
-	solMgr.saveSolution_Deterministic(sol_FE_incumbent_Deterministic, sol_SE_incumbent_Deterministic, "BC");
-	solMgr.checkFeasibility_Deterministic("BC");
-	solMgr.saveResultSummary_Deterministic(sol_FE_incumbent_Deterministic, sol_SE_incumbent_Deterministic, result_incumbent_Deterministic, "BC");
-
-	return true;
-}
-
-bool Algorithms::solve_EEV()
-{
-	auto elapsedTime = 0.0;
-	auto startTime = std::chrono::high_resolution_clock::now();
-	auto currentTime = std::chrono::high_resolution_clock::now();
-
-	cout << "Start Solving The Expected Value (EEV) Problem For the S2EPRP." << endl;
-	cout << "Scenario Index: " << params.scenarioIndex + 1 << endl;
-	cout << "-------------------------------------------------------------------" << endl;
-	// Read the First Echelon Solution From EV
-	SolutionFirstEchelon sol_FE_EV;
-	if (!read_SolutionFirstEchelon(sol_FE_EV))
-		return false;
-
-	// Solve the EV problem using the HILS
-	solve_Deterministic_HILS(sol_FE_EV);
-
-	SolutionWarmStart_Deterministic warmStart;
-
-	warmStart.routesWarehouseToCustomer_WarmStart = sol_SE_incumbent_Deterministic.routesWarehouseToCustomer;
-	warmStart.customerAssignmentToWarehouse_WarmStart = sol_SE_incumbent_Deterministic.customerAssignmentToWarehouse;
-
-	// Solve the EV problem using the Branch-and-Cut
-	BC_Deterministic ev_eev(params, warmStart, sol_FE_EV);
-	if (!ev_eev.Solve())
-	{
-		return EXIT_FAILURE;
-	}
-	sol_SE_incumbent_Deterministic = ev_eev.getSolutionSE();
-	result_incumbent_Deterministic = ev_eev.getResult();
-
-	currentTime = std::chrono::high_resolution_clock::now();
-	elapsedTime = std::chrono::duration_cast<std::chrono::duration<double>>(currentTime - startTime).count();
-	cout << "Computation Time (Total of HHA and BC) for The Expected Value of Expected Value Problem (EEV) = " << elapsedTime << " seconds" << endl;
-
-	// Save the solution and check feasibility
-	SolutionManager solMgr(params);
-	solMgr.saveSolution_Deterministic(sol_FE_EV, sol_SE_incumbent_Deterministic, "BC");
-	solMgr.checkFeasibility_Deterministic("BC");
-
-	solMgr.saveResultSummary_Deterministic(sol_FE_EV, sol_SE_incumbent_Deterministic, result_incumbent_Deterministic, "BC");
-
-	return true;
-}
-
-bool Algorithms::solve_Deterministic_HILS(const SolutionFirstEchelon &sol_FE_EV)
+bool Algorithms::solve_Deterministic_HILS(const SolutionFirstEchelon &sol_FE_EV, const SolutionSecondEchelon_Deterministic &sol_SE_EV)
 {
 	cout << "Start Solving The Deterministic Two-Echelon Production Routing Problem With Hybrid-ILS For: " << params.problemType << "." << endl;
 	if (params.problemType == "EEV" || params.problemType == "WS")
@@ -722,19 +1002,19 @@ bool Algorithms::solve_Deterministic_HILS(const SolutionFirstEchelon &sol_FE_EV)
 
 	// -----------------------------------------------------------------------------------------------------------------
 
-	if (params.problemType != "EEV")
+	if (params.problemType == "EEV")
+	{
+		sol_FE = sol_FE_EV;
+		sol_SE = sol_SE_EV;
+		sol_FE_incumbent_Deterministic = sol_FE_EV;
+	} 
+	else
 	{
 		// Solve the first-echelon problem
 		if (!solveFirstEchelon_Deterministic(sol_FE))
 		{
 			return EXIT_FAILURE;
 		}
-	}
-
-	if (params.problemType == "EEV")
-	{
-		sol_FE = sol_FE_EV;
-		sol_FE_incumbent_Deterministic = sol_FE_EV;
 	}
 
 	// Run ILS for the second-echelon problem
@@ -747,31 +1027,55 @@ bool Algorithms::solve_Deterministic_HILS(const SolutionFirstEchelon &sol_FE_EV)
 	cout << "Initial Phase is finished." << endl;
 	printSolution_Deterministic();
 
+	double globalBestObjValue = result_incumbent_Deterministic.objValue_Total;
+	double localBestObjValue = result_incumbent_Deterministic.objValue_Total;
 
-	double prev_objValue_Total = result_incumbent_Deterministic.objValue_Total;
 	// we check whether the improvement is below 0.01% for more than maxNoImprovement iterations
-	int num_NoImprovement = 0;
-	double Tolerance = 1e-4;
+	int num_NoImprovement_local = 0;
+	int num_NoImprovement_global = 0;
+	double minImprovementPercentage = 1e-2;
+	double minImprovement = 1e-4;
+	bool stop = false;
 
 	int iter = 0;
-	while (iter < params.HILS_MaxIteration)
+	while (!stop)
 	{
 		cout << "-----------------------------------------------------------------" << endl;
 		cout << "Solving The Deterministic Problem With Hybrid-ILS. Iteration: " << iter + 1 << endl;
 		cout << "-----------------------------------------------------------------" << endl;
 
-		if (params.problemType != "EEV")
+		bool MergeWarehouses = false;
+
+		if (num_NoImprovement_global % 4 == 0 && num_NoImprovement_global >= 10)
 		{
-			sol_FE = sol_FE_incumbent_Deterministic;
+			if (params.problemType != "EEV")
+			{
+				sol_FE = sol_FE_incumbent_Deterministic;
+			}
+			sol_SE = sol_SE_incumbent_Deterministic;
+			MergeWarehouses = true;
 		}
-		sol_SE = sol_SE_incumbent_Deterministic;
 
 		cout << "Rearrange customer-warehouse assignment..." << endl;
-		if (params.problemType == "EEV" || params.problemType == "EV" || params.problemType == "WS")
-		{
-			optimizeUnmetDemandAndRoutes_Deterministic(sol_SE);
-		}
+		rearrangeCustomerAssignments_Deterministic(sol_SE);
+
 		
+		if (num_NoImprovement_local % 4 == 0 && num_NoImprovement_local != 0)
+		{
+			MergeWarehouses = true;	
+		}
+
+		bool mergeSuccess = false;
+		if (MergeWarehouses)
+		{
+			cout << "Randomly remove a warehouse from a period" << endl;
+			mergeSuccess = Merge_Warehouses_Deterministic(sol_SE);
+			if (!mergeSuccess)
+			{
+				cout << "Merge failed" << endl;
+			}
+		}
+
 		if (params.problemType != "EEV")
 		{
 			// Solve the restricted problem and finalize the solution
@@ -786,29 +1090,60 @@ bool Algorithms::solve_Deterministic_HILS(const SolutionFirstEchelon &sol_FE_EV)
 			return EXIT_FAILURE;
 		}
 
-		update_incumbent_Deterministic(sol_FE, sol_SE, result_temp);
-		printSolution_Deterministic();
+		// -----------------------------------------------------------------------------------------------------------------
+		cout << "----------------------------------------------------------------" << endl;
+		double improvement_percentage_global = ((globalBestObjValue - result_temp.objValue_Total) / globalBestObjValue) * 100;
+		cout << "OF Improvement Global: " << improvement_percentage_global << "%" << endl;
+		if (improvement_percentage_global > minImprovementPercentage)
+		{
+			num_NoImprovement_global = 0;
+		}
+		else
+		{
+			num_NoImprovement_global++;
+		}
+		cout << "Number of No Improvement Global: " << num_NoImprovement_global << endl;
+
+		double improvement_percentage_local = ((localBestObjValue - result_temp.objValue_Total) / localBestObjValue) * 100;
+		cout << "OF Improvement Local: " << improvement_percentage_local << "%" << endl;
+		if (improvement_percentage_local > minImprovementPercentage)
+		{
+			num_NoImprovement_local = 0;
+		}
+		else
+		{
+			num_NoImprovement_local++;
+		}
+		cout << "Number of No Improvement Local: " << num_NoImprovement_local << endl;
+		// -----------------------------------------------------------------------------------------------------------------
+		if (mergeSuccess)
+		{
+			localBestObjValue = result_temp.objValue_Total;
+		}
+		else if (result_temp.objValue_Total < (localBestObjValue - minImprovement))
+		{
+			localBestObjValue = result_temp.objValue_Total;
+		}
+
+		if (result_temp.objValue_Total < globalBestObjValue - minImprovement)
+		{
+			update_incumbent_Deterministic(sol_FE, sol_SE, result_temp);
+			printSolution_Deterministic();
+
+			globalBestObjValue = result_temp.objValue_Total;
+		}
+		// -----------------------------------------------------------------------------------------------------------------
 
 		currentTime = std::chrono::high_resolution_clock::now();
 		elapsedTime = std::chrono::duration_cast<std::chrono::duration<double>>(currentTime - startTime).count();
 		cout << "Computation Time (Hybrid-ILS) after iteration: " << iter + 1 << " = " << elapsedTime << " seconds" << endl;
 
-		if (result_incumbent_Deterministic.objValue_Total < prev_objValue_Total - Tolerance)
-		{
-			num_NoImprovement = 0;
-			prev_objValue_Total = result_incumbent_Deterministic.objValue_Total;
-		}
-		else 
-		{
-			num_NoImprovement++;
-		}
-
 		iter++;
 
 		// check stopping criteria
-		if (elapsedTime >= params.HILS_TimeLimit || num_NoImprovement >= params.HILS_MaxNoImprovement)
+		if (iter >= params.HILS_MaxIteration || elapsedTime >= params.HILS_TimeLimit || num_NoImprovement_global >= params.HILS_MaxNoImprovement)
 		{
-			break;
+			stop = true;
 		}
 	}
 
@@ -830,7 +1165,8 @@ bool Algorithms::solve_Deterministic_HILS(const SolutionFirstEchelon &sol_FE_EV)
 										   result_incumbent_Deterministic,
 										   "Hybrid-ILS");
 
-	cout << "\n\n\n\n" << endl;
+	cout << "\n\n\n\n"
+		 << endl;
 
 	return true;
 }
@@ -839,7 +1175,7 @@ bool Algorithms::solveFirstEchelon_Deterministic(SolutionFirstEchelon &solFE)
 {
 	cout << "Solve The First-Echelon Problem For the Deterministic Problem" << endl;
 
-	MWPRP_FE_Deterministic mwprp_fe_det(params, true);
+	MWPRP_FE_Deterministic mwprp_fe_det(params, false, false);
 	if (!mwprp_fe_det.Solve())
 	{
 		return false;
@@ -849,7 +1185,7 @@ bool Algorithms::solveFirstEchelon_Deterministic(SolutionFirstEchelon &solFE)
 }
 
 bool Algorithms::runILS_SE_Deterministic(SolutionFirstEchelon &solFE_current, SolutionSecondEchelon_Deterministic &solSE_current, Result &result_current,
-										int iter, std::chrono::high_resolution_clock::time_point startTime, bool savePerIterSol)
+										 int iter, std::chrono::high_resolution_clock::time_point startTime, bool savePerIterSol)
 {
 	cout << "HHA Iteration: " << iter + 1 << endl;
 	ILS_SIRP_Deterministic ils_SIRP_det(params, solFE_current, solSE_current, iter, startTime, savePerIterSol);
@@ -890,16 +1226,15 @@ bool Algorithms::solveRestrictedProblemAndFinalize_Deterministic(SolutionFirstEc
 
 void Algorithms::update_incumbent_Deterministic(SolutionFirstEchelon &sol_FE, SolutionSecondEchelon_Deterministic &sol_SE, Result &result_temp)
 {
-	if (result_temp.objValue_Total < result_incumbent_Deterministic.objValue_Total)
-	{
-		if (params.problemType != "EEV"){
-			sol_FE_incumbent_Deterministic = sol_FE;
-		}
-		sol_SE_incumbent_Deterministic = sol_SE;
-		result_incumbent_Deterministic = result_temp;
 
-		cout << "New Incumbent: " << result_incumbent_Deterministic.objValue_Total << endl;
+	if (params.problemType != "EEV")
+	{
+		sol_FE_incumbent_Deterministic = sol_FE;
 	}
+	sol_SE_incumbent_Deterministic = sol_SE;
+	result_incumbent_Deterministic = result_temp;
+
+	cout << "\nNew Incumbent: " << result_incumbent_Deterministic.objValue_Total << endl;
 }
 
 void Algorithms::printSolution_Deterministic()
@@ -910,41 +1245,212 @@ void Algorithms::printSolution_Deterministic()
 	cout << "Production Cost : " << sol_FE_incumbent_Deterministic.productionCost << endl;
 	cout << "Holding Cost Plant : " << sol_FE_incumbent_Deterministic.holdingCostPlant << endl;
 	cout << "Transportation Cost Plant to Warehouse : " << sol_FE_incumbent_Deterministic.transportationCostPlantToWarehouse << endl;
+	cout << "Holding Cost Warehouse : " << sol_SE_incumbent_Deterministic.holdingCostWarehouse << endl;
 	if (params.problemType == "2EPRPCS")
 	{
 		cout << "Handling Cost Satellite : " << sol_SE_incumbent_Deterministic.handlingCostSatellite << endl;
 	}
-	else
-	{
-		cout << "Holding Cost Warehouse : " << sol_SE_incumbent_Deterministic.holdingCostWarehouse << endl;
-	}
+
 	cout << "Holding Cost Customer : " << sol_SE_incumbent_Deterministic.holdingCostCustomer << endl;
-	if (params.problemType != "2EPRP" && params.problemType != "2EPRPCS"){
-		cout << "Cost of Unmet Demand : " << sol_SE_incumbent_Deterministic.costOfUnmetDemand << endl;
-	}
+	cout << "Cost of Unmet Demand : " << sol_SE_incumbent_Deterministic.costOfUnmetDemand << endl;
+
 	cout << "Transportation Cost Warehouse to Customer : " << sol_SE_incumbent_Deterministic.transportationCostWarehouseToCustomer << endl;
 
 	cout << "\nObjective value (ILS) Total : " << result_incumbent_Deterministic.objValue_Total << endl;
+
+	// for (int w = 0; w < params.numWarehouses; ++w)
+	// {
+	// 	for (int t = 0; t < params.numPeriods; ++t)
+	// 	{
+	// 		for (int k = 0; k < params.numVehicles_Warehouse; ++k)
+	// 		{
+	// 			vector<int> &route = sol_SE_incumbent_Deterministic.routesWarehouseToCustomer[w][t][k];
+	// 			if (!route.empty())
+	// 			{
+	// 				cout << "route[" << w << "][" << t << "][" << k << "] : [";
+	// 				int previousNode = w;
+	// 				for (int j = 1; j < route.size(); ++j)
+	// 				{
+	// 					int currentNode = route[j];
+
+	// 					// cout << previousNode << " -> " << currentNode << " : " << params.transportationCost_SecondEchelon[previousNode][currentNode] << ", ";
+	// 					cout << previousNode << " -> ";
+
+	// 					previousNode = currentNode;
+	// 				}
+	// 				cout << previousNode << "]" << endl;
+	// 			}
+
+	// 		}
+	// 	}
+	// }
 }
 
-void Algorithms::optimizeUnmetDemandAndRoutes_Deterministic(SolutionSecondEchelon_Deterministic &sol_SE)
+void Algorithms::rearrangeCustomerAssignments_Deterministic(SolutionSecondEchelon_Deterministic &sol_SE)
 {
+	// bool hasUnmetDemand_Overall = false;
 	for (int t = 0; t < params.numPeriods; ++t)
 	{
-		vector<tuple<int, double>> unmetDemand_Descending;
-		sortCustomersByUnmetDemand_Deterministic(sol_SE, unmetDemand_Descending, t);
+		bool hasUnmetDemand = false;
 
-		for (const auto &entry : unmetDemand_Descending)
+		// Check if unmet demand needs to be handled for specific problem types
+		if (!sol_SE.customerUnmetDemand.empty())
 		{
-			int customerIndex = std::get<0>(entry);
-			double unmetDemand = std::get<1>(entry);
+			vector<tuple<int, double>> sortedUnmetDemand;
+			sortCustomersByUnmetDemand_Deterministic(sol_SE, sortedUnmetDemand, t);
 
-			if (unmetDemand > 1e-4)
+			// Check if there is unmet demand above the threshold
+			if (!sortedUnmetDemand.empty() && std::get<1>(sortedUnmetDemand[0]) > 1e-2)
 			{
-				handleUnmetDemandForCustomer_Deterministic(sol_SE, t, customerIndex, unmetDemand);
+				hasUnmetDemand = true;
+				// hasUnmetDemand_Overall = true;
+
+				// Process unmet demand for each customer
+				for (const auto &entry : sortedUnmetDemand)
+				{
+					int customerIndex = std::get<0>(entry);
+					double unmetDemand = std::get<1>(entry);
+
+					if (unmetDemand > 1e-4)
+					{
+						handleUnmetDemandForCustomer_Deterministic(sol_SE, t, customerIndex, unmetDemand);
+					}
+				}
+			}
+		}
+
+		if (!hasUnmetDemand)
+		{
+			for (int i = 0; i < params.numCustomers; ++i)
+			{
+				// tuple : warehouse, vehicle, position
+				if (std::get<0>(visitedByWarehouse_Deterministic(sol_SE, t, i)) != -1)
+				{
+
+					int currentWarehouse = std::get<0>(visitedByWarehouse_Deterministic(sol_SE, t, i));
+					int currentVehicle = std::get<1>(visitedByWarehouse_Deterministic(sol_SE, t, i));
+					int currentPosition = std::get<2>(visitedByWarehouse_Deterministic(sol_SE, t, i));
+
+					attemptToInsertCustomerIntoWarehouse_Deterministic(sol_SE, t, currentWarehouse, i, hasUnmetDemand);
+				}
 			}
 		}
 	}
+
+	// if (!hasUnmetDemand_Overall)
+	// {
+	// cout << "Merge warehouses" << endl;
+	// bool mergeSuccess = Merge_Warehouses_Deterministic(sol_SE);
+	// if (!mergeSuccess)
+	// {
+	// 	cout << "Merge failed" << endl;
+	// }
+	// }
+}
+
+bool Algorithms::Merge_Warehouses_Deterministic(SolutionSecondEchelon_Deterministic &sol_SE)
+{
+	// Shuffle periods for random selection
+	vector<int> periods(params.numPeriods);
+	for (int t = 0; t < params.numPeriods; ++t)
+		periods[t] = t;
+	std::shuffle(periods.begin(), periods.end(), rng);
+
+	// Iterate through shuffled periods to find a valid one
+	for (int t : periods)
+	{
+		vector<int> activeWarehouses;
+
+		// Identify warehouses with active routes in period t
+		for (int w = 0; w < params.numWarehouses; ++w)
+		{
+			for (int k = 0; k < params.numVehicles_Warehouse; ++k)
+			{
+				if (!sol_SE.routesWarehouseToCustomer[w][t][k].empty())
+				{
+					activeWarehouses.push_back(w);
+					break;
+				}
+			}
+		}
+
+		// If there are at least two warehouses with routes, proceed with merging
+		if (activeWarehouses.size() < 2)
+			continue;
+
+		// Randomly select a warehouse to omit
+		std::shuffle(activeWarehouses.begin(), activeWarehouses.end(), rng);
+		int warehouseToOmit = activeWarehouses.front();
+		activeWarehouses.erase(activeWarehouses.begin());
+
+		// Gather all customers from the omitted warehouse's routes
+		std::set<int> customersToReassign;
+		for (int k = 0; k < params.numVehicles_Warehouse; ++k)
+		{
+			vector<int> &route = sol_SE.routesWarehouseToCustomer[warehouseToOmit][t][k];
+			if (route.empty())
+				continue;
+
+			for (size_t i = 1; i < route.size() - 1; ++i) // Ignore warehouse at start and end
+			{
+				customersToReassign.insert(route[i]);
+			}
+		}
+
+		if (customersToReassign.empty())
+			continue;
+
+		// Reassign customers to other warehouses based on min insertion cost
+		for (int customer : customersToReassign)
+		{
+			int bestVehicle = -1;
+			int bestWarehouse = -1;
+			int bestPosition = -1;
+			double bestCost = std::numeric_limits<double>::max();
+
+			for (int newWarehouse : activeWarehouses)
+			{
+				for (int k = 0; k < params.numVehicles_Warehouse; ++k)
+				{
+					vector<int> &route = sol_SE.routesWarehouseToCustomer[newWarehouse][t][k];
+					if (route.empty())
+						continue;
+
+					std::pair<int, double> minInsertionCostResult = minInsertionCost(route, customer);
+					int insertionPos = minInsertionCostResult.first;
+					double insertionCost = minInsertionCostResult.second;
+
+					if (insertionCost < bestCost)
+					{
+						bestCost = insertionCost;
+						bestPosition = insertionPos;
+						bestWarehouse = newWarehouse;
+						bestVehicle = k;
+					}
+				}
+			}
+
+			// Update assignment if a valid position is found
+			if (bestWarehouse != -1)
+			{
+				vector<int> &route = sol_SE.routesWarehouseToCustomer[bestWarehouse][t][bestVehicle];
+
+				if (bestPosition != -1)
+				{
+					route.insert(route.begin() + bestPosition, customer);
+					sol_SE.customerAssignmentToWarehouse[t][warehouseToOmit][customer - params.numWarehouses] = 0;
+					sol_SE.customerAssignmentToWarehouse[t][bestWarehouse][customer - params.numWarehouses] = 1;
+				}
+			}
+		}
+
+		// Clear the omitted warehouse's routes
+		for (int k = 0; k < params.numVehicles_Warehouse; ++k)
+			sol_SE.routesWarehouseToCustomer[warehouseToOmit][t][k].clear();
+
+		return true; // Successfully merged a warehouse
+	}
+	return false; // No valid merge found
 }
 
 void Algorithms::sortCustomersByUnmetDemand_Deterministic(SolutionSecondEchelon_Deterministic &sol_SE, vector<tuple<int, double>> &unmetDemand_Descending, int t)
@@ -967,7 +1473,7 @@ void Algorithms::handleUnmetDemandForCustomer_Deterministic(SolutionSecondEchelo
 	int currentWarehouse = findCurrentWarehouse_Deterministic(sol_SE, t, customerIndex);
 
 	int wareToInsert = -1;
-	attemptToInsertCustomerIntoWarehouse_Deterministic(sol_SE, t, currentWarehouse, customerIndex, unmetDemand, unmetDemCost);
+	attemptToInsertCustomerIntoWarehouse_Deterministic(sol_SE, t, currentWarehouse, customerIndex, true);
 }
 
 int Algorithms::findCurrentWarehouse_Deterministic(SolutionSecondEchelon_Deterministic &sol_SE, int t, int customerIndex)
@@ -982,49 +1488,213 @@ int Algorithms::findCurrentWarehouse_Deterministic(SolutionSecondEchelon_Determi
 	return -1;
 }
 
-void Algorithms::attemptToInsertCustomerIntoWarehouse_Deterministic(SolutionSecondEchelon_Deterministic &sol_SE, int t, int currentWarehouse, int customerIndex,
-																	double unmetDemand, double unmetDemCost)
+std::tuple<int, int, int> Algorithms::visitedByWarehouse_Deterministic(SolutionSecondEchelon_Deterministic &sol_SE, int t, int i)
 {
-	// vector<vector<int>> WareToCustSortedByDistance = params.getSortedWarehousesByDistance();
-	int wareToInsert = -1;
-	int routeToInsert = -1;
-	int posToInsert = -1;
-	double tempDeliveryQuantity;
-	double minCostToInsert = std::numeric_limits<double>::max();
+	int customerIndex = i + params.numWarehouses;
+
+	// Initialize result to (-1, -1, -1) indicating "not found"
+	std::tuple<int, int, int> result = std::make_tuple(-1, -1, -1);
+
+	// Loop through all warehouses and vehicles
 	for (int w = 0; w < params.numWarehouses; ++w)
 	{
-		if (w != currentWarehouse)
+		for (int k = 0; k < params.numVehicles_Warehouse; ++k)
 		{
-			vector<double> remainingVehicleCapacityWarehouse(params.numVehicles_Warehouse, params.vehicleCapacity_Warehouse);
-			double remainingWarehouseCapacity = params.storageCapacity_Warehouse[w];
+			// Get the route for warehouse `w`, period `t`, and vehicle `k`
+			vector<int> &route = sol_SE.routesWarehouseToCustomer[w][t][k];
 
-			updateRemainingCapacities_Deterministic(sol_SE, t, w, remainingVehicleCapacityWarehouse, remainingWarehouseCapacity);
-
-			auto maxIt = std::max_element(remainingVehicleCapacityWarehouse.begin(), remainingVehicleCapacityWarehouse.end());
-			if (maxIt != remainingVehicleCapacityWarehouse.end() && *maxIt > 0.0 && remainingWarehouseCapacity > 0.0)
+			// Check if the customer is in the route
+			auto it = std::find(route.begin(), route.end(), customerIndex);
+			if (it != route.end())
 			{
-				int routeToInsert_temp = -1;
-				int posToInsert_temp = -1;
-				double minCostToInsert_temp = std::numeric_limits<double>::max();
+				// Calculate position in the route
+				int position = std::distance(route.begin(), it);
 
-				findBestInsertionPosition_Deterministic(sol_SE, t, w, customerIndex,
-														remainingVehicleCapacityWarehouse, remainingWarehouseCapacity,
-														routeToInsert_temp, posToInsert_temp, minCostToInsert_temp);
-
-				if ((minCostToInsert_temp < (minCostToInsert - 1e-4)) && routeToInsert != -1)
-				{
-					wareToInsert = w;
-					routeToInsert = routeToInsert_temp;
-					posToInsert = posToInsert_temp;
-					minCostToInsert = minCostToInsert_temp;
-					tempDeliveryQuantity = std::min({params.demand_Deterministic[customerIndex][t], remainingVehicleCapacityWarehouse[routeToInsert], remainingWarehouseCapacity});
-				}
+				// Return warehouse, vehicle, and position
+				return std::make_tuple(w, k, position);
 			}
 		}
 	}
-	if (wareToInsert != -1)
+
+	// Customer not found: return default (-1, -1, -1)
+	return result;
+}
+
+void Algorithms::attemptToInsertCustomerIntoWarehouse_Deterministic(SolutionSecondEchelon_Deterministic &sol_SE, int t, int currentWarehouse, int customerIndex, bool hasUnmetDemand)
+{
+
+	if (hasUnmetDemand)
 	{
-		applyInsertion_Deterministic(sol_SE, t, wareToInsert, currentWarehouse, customerIndex, routeToInsert, posToInsert, tempDeliveryQuantity);
+		// vector<vector<int>> WareToCustSortedByDistance = params.getSortedWarehousesByDistance();
+		int wareToInsert = -1;
+		int routeToInsert = -1;
+		int posToInsert = -1;
+		double tempDeliveryQuantity;
+		double minCostToInsert = std::numeric_limits<double>::max();
+		for (int w = 0; w < params.numWarehouses; ++w)
+		{
+			if (w != currentWarehouse)
+			{
+				vector<double> remainingVehicleCapacityWarehouse(params.numVehicles_Warehouse, params.vehicleCapacity_Warehouse);
+				double remainingWarehouseCapacity = params.storageCapacity_Warehouse[w];
+
+				updateRemainingCapacities_Deterministic(sol_SE, t, w, remainingVehicleCapacityWarehouse, remainingWarehouseCapacity);
+
+				auto maxIt = std::max_element(remainingVehicleCapacityWarehouse.begin(), remainingVehicleCapacityWarehouse.end());
+				if (maxIt != remainingVehicleCapacityWarehouse.end() && *maxIt > 0.0 && remainingWarehouseCapacity > 0.0)
+				{
+					int routeToInsert_temp = -1;
+					int posToInsert_temp = -1;
+					double minCostToInsert_temp = std::numeric_limits<double>::max();
+					double deliveryQuantity_temp = std::min({params.demand_Deterministic[customerIndex][t], remainingVehicleCapacityWarehouse[routeToInsert], remainingWarehouseCapacity});
+
+					if (remainingWarehouseCapacity >= deliveryQuantity_temp)
+					{
+
+						findBestInsertionPosition_Deterministic(sol_SE, t, w, customerIndex,
+																remainingVehicleCapacityWarehouse, remainingWarehouseCapacity,
+																routeToInsert_temp, posToInsert_temp, minCostToInsert_temp, deliveryQuantity_temp);
+
+						if ((minCostToInsert_temp < (minCostToInsert - 1e-4)) && routeToInsert != -1)
+						{
+							wareToInsert = w;
+							routeToInsert = routeToInsert_temp;
+							posToInsert = posToInsert_temp;
+							minCostToInsert = minCostToInsert_temp;
+							tempDeliveryQuantity = deliveryQuantity_temp;
+						}
+					}
+				}
+			}
+		}
+
+		if (wareToInsert != -1)
+		{
+			applyInsertion_Deterministic(sol_SE, t, wareToInsert, currentWarehouse, customerIndex, routeToInsert, posToInsert, tempDeliveryQuantity);
+		}
+	}
+	else
+	{
+		int currentVehicle = std::get<1>(visitedByWarehouse_Deterministic(sol_SE, t, customerIndex));
+		int currentPosition = std::get<2>(visitedByWarehouse_Deterministic(sol_SE, t, customerIndex));
+
+		int previousNode = sol_SE.routesWarehouseToCustomer[currentWarehouse][t][currentVehicle][currentPosition - 1];
+		int nextNode = sol_SE.routesWarehouseToCustomer[currentWarehouse][t][currentVehicle][currentPosition + 1];
+
+		double minCostToInsert = params.transportationCost_SecondEchelon[previousNode][customerIndex + params.numWarehouses] + params.transportationCost_SecondEchelon[customerIndex + params.numWarehouses][nextNode] - params.transportationCost_SecondEchelon[previousNode][nextNode];
+		// cout << "Period : " << t << endl;
+		// cout << "Current Node: " << customerIndex + params.numWarehouses << " and Current Warehouse: " << currentWarehouse << endl;
+		// cout << "Previous Node: " << previousNode << ", Next Node: " << nextNode << ", Min Cost: " << minCostToInsert << endl;
+
+		// vector<int> &route = sol_SE.routesWarehouseToCustomer[currentWarehouse][t][currentVehicle];
+		// if (!route.empty())
+		// {
+		// 	cout << "current route[" << currentWarehouse << "][" << t << "][" << currentVehicle << "] : [";
+		// 	int previousNode = currentWarehouse;
+		// 	for (int j = 1; j < route.size(); ++j)
+		// 	{
+		// 		int currentNode = route[j];
+
+		// 		// cout << previousNode << " -> " << currentNode << " : " << params.transportationCost_SecondEchelon[previousNode][currentNode] << ", ";
+		// 		cout << previousNode << " -> ";
+
+		// 		previousNode = currentNode;
+		// 	}
+		// 	cout << previousNode << "]" << endl;
+		// }
+
+		int wareToInsert = -1;
+		int routeToInsert = -1;
+		int posToInsert = -1;
+		double tempDeliveryQuantity;
+		for (int w = 0; w < params.numWarehouses; ++w)
+		{
+			if (w != currentWarehouse)
+			{
+				vector<double> remainingVehicleCapacityWarehouse(params.numVehicles_Warehouse, params.vehicleCapacity_Warehouse);
+				double remainingWarehouseCapacity = params.storageCapacity_Warehouse[w];
+
+				updateRemainingCapacities_Deterministic(sol_SE, t, w, remainingVehicleCapacityWarehouse, remainingWarehouseCapacity);
+
+				auto maxIt = std::max_element(remainingVehicleCapacityWarehouse.begin(), remainingVehicleCapacityWarehouse.end());
+				if (maxIt != remainingVehicleCapacityWarehouse.end() && *maxIt > 0.0 && remainingWarehouseCapacity > 1e-2)
+				{
+					int routeToInsert_temp = -1;
+					int posToInsert_temp = -1;
+					double minCostToInsert_temp = std::numeric_limits<double>::max();
+					double deliveryQuantity_temp = sol_SE.deliveryQuantityToCustomer[customerIndex][t];
+
+					if (remainingWarehouseCapacity >= deliveryQuantity_temp)
+					{
+						findBestInsertionPosition_Deterministic(sol_SE, t, w, customerIndex,
+																remainingVehicleCapacityWarehouse, remainingWarehouseCapacity,
+																routeToInsert_temp, posToInsert_temp, minCostToInsert_temp, deliveryQuantity_temp);
+
+						// cout << "New Warehouse To Insert: " << w << ", New Route To Insert: " << routeToInsert_temp;
+						// 	cout << ", New Position To Insert: " << posToInsert_temp << ", New Min Cost To Insert: " << minCostToInsert_temp << endl;
+
+						// if (minCostToInsert_temp < (minCostToInsert - 1e-4))
+						// {
+						// 	cout << "previous min cost: " << minCostToInsert << endl;
+						// 	cout << "new min cost: " << minCostToInsert_temp << endl;
+						// }
+
+						if ((minCostToInsert_temp < (minCostToInsert - 1e-4)) && routeToInsert_temp != -1)
+						{
+							// cout << "HERE HERE" << endl;
+							wareToInsert = w;
+							routeToInsert = routeToInsert_temp;
+							posToInsert = posToInsert_temp;
+							minCostToInsert = minCostToInsert_temp;
+							tempDeliveryQuantity = deliveryQuantity_temp;
+							// cout << "New Warehouse To Insert: " << wareToInsert << ", New Route To Insert: " << routeToInsert;
+							// cout << ", New Position To Insert: " << posToInsert << ", New Min Cost To Insert: " << minCostToInsert << endl;
+						}
+					}
+				}
+			}
+		}
+
+		if (wareToInsert != -1)
+		{
+			// cout << "New minCostToInsert = " << minCostToInsert << endl;
+			// cout << "Reallocation For With No Unmet Demand\n" << endl;
+			applyInsertion_Deterministic(sol_SE, t, wareToInsert, currentWarehouse, customerIndex, routeToInsert, posToInsert, tempDeliveryQuantity);
+
+			// vector<int> &route_current = sol_SE.routesWarehouseToCustomer[currentWarehouse][t][currentVehicle];
+			// if (!route_current.empty())
+			// {
+			// 	cout << "current route[" << currentWarehouse << "][" << t << "][" << currentVehicle << "] : [";
+			// 	int previousNode = currentWarehouse;
+			// 	for (int j = 1; j < route_current.size(); ++j)
+			// 	{
+			// 		int currentNode = route_current[j];
+
+			// 		// cout << previousNode << " -> " << currentNode << " : " << params.transportationCost_SecondEchelon[previousNode][currentNode] << ", ";
+			// 		cout << previousNode << " -> ";
+
+			// 		previousNode = currentNode;
+			// 	}
+			// 	cout << previousNode << "]" << endl;
+			// }
+
+			// vector<int> &route_toInsert = sol_SE.routesWarehouseToCustomer[wareToInsert][t][routeToInsert];
+			// if (!route_toInsert.empty())
+			// {
+			// 	cout << "current route[" << wareToInsert << "][" << t << "][" << routeToInsert << "] : [";
+			// 	int previousNode = wareToInsert;
+			// 	for (int j = 1; j < route_toInsert.size(); ++j)
+			// 	{
+			// 		int currentNode = route_toInsert[j];
+
+			// 		// cout << previousNode << " -> " << currentNode << " : " << params.transportationCost_SecondEchelon[previousNode][currentNode] << ", ";
+			// 		cout << previousNode << " -> ";
+
+			// 		previousNode = currentNode;
+			// 	}
+			// 	cout << previousNode << "]" << endl;
+			// }
+		}
 	}
 }
 
@@ -1046,11 +1716,11 @@ void Algorithms::updateRemainingCapacities_Deterministic(SolutionSecondEchelon_D
 
 void Algorithms::findBestInsertionPosition_Deterministic(SolutionSecondEchelon_Deterministic &sol_SE, int t, int wareToInsert, int customerIndex,
 														 vector<double> &remainingVehicleCapacityWarehouse, double &remainingWarehouseCapacity,
-														 int &routeToInsert, int &posToInsert, double &minCostToInsert)
+														 int &routeToInsert, int &posToInsert, double &minCostToInsert, double &deliveryQuantity)
 {
 	for (int r = 0; r < params.numVehicles_Warehouse; ++r)
 	{
-		if (remainingVehicleCapacityWarehouse[r] >= params.demand_Deterministic[customerIndex][t] && remainingWarehouseCapacity >= params.demand_Deterministic[customerIndex][t])
+		if (remainingVehicleCapacityWarehouse[r] >= deliveryQuantity)
 		{
 			if (sol_SE.routesWarehouseToCustomer[wareToInsert][t][r].empty())
 			{
@@ -1124,38 +1794,38 @@ void Algorithms::organizeSolution_Deterministic()
 	{
 		for (int t = 0; t < params.numPeriods; ++t)
 		{
-			// Step 1: Create a vector to store vehicles and their total delivery quantity
-			vector<std::pair<int, double>> vehicleDeliveryQuantities;
+			// Step 1: Create a vector to store vehicles and their lowest node index
+			vector<std::pair<int, int>> vehicleLowestNodeIndex; // {vehicleIndex, lowestNodeIndex}
 
 			for (int k = 0; k < params.numVehicles_Warehouse; ++k)
 			{
-				double totalDeliveryQuantity = 0.0;
-				// Calculate total delivery quantity for this vehicle across all customers
-				for (int i = 0; i < params.numCustomers; ++i)
+				vector<int> &route = sol_SE_incumbent_Deterministic.routesWarehouseToCustomer[w][t][k];
+				if (!route.empty())
 				{
-					int customerIndex = i + params.numWarehouses; // Adjust customer index
-					vector<int> &route = sol_SE_incumbent_Deterministic.routesWarehouseToCustomer[w][t][k];
-					if (std::find(route.begin(), route.end(), customerIndex) != route.end())
-					{
-						totalDeliveryQuantity += sol_SE_incumbent_Deterministic.deliveryQuantityToCustomer[i][t];
-					}
+					// Find the lowest node index in the route
+					int lowestNodeIndex = *std::min_element(route.begin() + 1, route.end() - 1);
+					vehicleLowestNodeIndex.push_back({k, lowestNodeIndex});
 				}
-				vehicleDeliveryQuantities.push_back({k, totalDeliveryQuantity}); // Store vehicle index and its total delivery
+				else
+				{
+					// If the route is empty, use a high value to push it to the end during sorting
+					vehicleLowestNodeIndex.push_back({k, std::numeric_limits<int>::max()});
+				}
 			}
 
-			// Step 2: Sort vehicles by total delivery quantity (highest quantity first)
-			std::sort(vehicleDeliveryQuantities.begin(), vehicleDeliveryQuantities.end(),
-					  [](const std::pair<int, double> &a, const std::pair<int, double> &b)
+			// Step 2: Sort vehicles based on the lowest node index (ascending order)
+			std::sort(vehicleLowestNodeIndex.begin(), vehicleLowestNodeIndex.end(),
+					  [](const std::pair<int, int> &a, const std::pair<int, int> &b)
 					  {
-						  return a.second > b.second; // Sort in descending order of delivery quantity
+						  return a.second < b.second; // Sort in ascending order of lowest node index
 					  });
 
 			// Step 3: Reorganize the solution based on the sorted vehicle indices
 			vector<vector<int>> sortedRoutes;
-			for (int sorted_k = 0; sorted_k < params.numVehicles_Warehouse; ++sorted_k)
+			for (const auto &vehicle : vehicleLowestNodeIndex)
 			{
-				int original_k = vehicleDeliveryQuantities[sorted_k].first;											// Get the original vehicle index
-				sortedRoutes.push_back(sol_SE_incumbent_Deterministic.routesWarehouseToCustomer[w][t][original_k]); // Copy the sorted route
+				int original_k = vehicle.first; // Get the original vehicle index
+				sortedRoutes.push_back(sol_SE_incumbent_Deterministic.routesWarehouseToCustomer[w][t][original_k]);
 			}
 
 			// Step 4: Replace the original routes with the sorted ones
@@ -1187,7 +1857,7 @@ void Algorithms::organizeSolution_Deterministic()
 						}
 					}
 
-					if (customerVisited == false)
+					if (!customerVisited)
 					{
 						sol_SE_incumbent_Deterministic.customerAssignmentToWarehouse[t][w][i] = 0;
 					}
@@ -1197,16 +1867,39 @@ void Algorithms::organizeSolution_Deterministic()
 	}
 }
 
-bool Algorithms::read_SolutionFirstEchelon(SolutionFirstEchelon &sol_FE_EV)
+bool Algorithms::read_SolutionEV(SolutionFirstEchelon &sol_FE_EV, SolutionSecondEchelon_Deterministic &sol_SE_EV)
 {
 	cout << "Reading EV Solution..." << endl;
 	string directory;
 	string filename;
-	directory = "../Results/Solutions/S2EPRP-AR/SolEvaluation/EV/" + params.probabilityFunction + "/S" + std::to_string(params.numScenarios);
+	directory = "../Results/Solutions/S2EPRP-AR/EV/BC/" + params.probabilityFunction + "/S" + std::to_string(params.numScenarios) +
+				"/UR" + std::to_string(static_cast<int>(params.uncertaintyRange * 100)) + "%" +
+				"/PC" + std::to_string(static_cast<int>(params.unmetDemandPenaltyCoeff));
 
 	// Construct the filename
-	filename = "Sol_S2EPRP-AR_EV_" + params.probabilityFunction + "_" + params.instance + "_S" + std::to_string(params.numScenarios) + "_UR" + std::to_string(static_cast<int>(params.uncertaintyRange * 100)) + "%" + "_PC" + std::to_string(static_cast<int>(params.unmetDemandPenaltyCoeff)) + ".txt";
+	filename = "Sol_S2EPRP-AR_EV_BC_" + params.probabilityFunction + "_" + params.instance + "_S" + std::to_string(params.numScenarios) +
+			   "_UR" + std::to_string(static_cast<int>(params.uncertaintyRange * 100)) + "%" +
+			   "_PC" + std::to_string(static_cast<int>(params.unmetDemandPenaltyCoeff)) + ".txt";
 	string solutionFileName = directory + "/" + filename;
+
+	if (!fs::exists(solutionFileName))
+	{
+		cout << "Solution file does not exist for BC, Checking for Hybrid-ILS..." << endl;
+		directory = "../Results/Solutions/S2EPRP-AR/EV/Hybrid-ILS/" + params.probabilityFunction + "/S" + std::to_string(params.numScenarios) +
+					"/UR" + std::to_string(static_cast<int>(params.uncertaintyRange * 100)) + "%" +
+					"/PC" + std::to_string(static_cast<int>(params.unmetDemandPenaltyCoeff));
+
+		filename = "Sol_S2EPRP-AR_EV_Hybrid-ILS_" + params.probabilityFunction + "_" + params.instance + "_S" + std::to_string(params.numScenarios) +
+				   "_UR" + std::to_string(static_cast<int>(params.uncertaintyRange * 100)) + "%" +
+				   "_PC" + std::to_string(static_cast<int>(params.unmetDemandPenaltyCoeff)) + ".txt";
+
+		solutionFileName = directory + "/" + filename;
+		if (!fs::exists(solutionFileName))
+		{
+			cout << "File does not exist for Hybrid-ILS, Checking for ILS..." << endl;
+			exit(1);
+		}
+	}
 
 	std::ifstream file(solutionFileName);
 	if (file.is_open())
@@ -1320,6 +2013,13 @@ bool Algorithms::read_SolutionFirstEchelon(SolutionFirstEchelon &sol_FE_EV)
 		sol_FE_EV.routesPlantToWarehouse.resize(params.numPeriods, vector<vector<int>>(params.numVehicles_Plant, vector<int>()));
 		sol_FE_EV.deliveryQuantityToWarehouse.resize(params.numWarehouses, vector<double>(params.numPeriods));
 
+		sol_SE_EV.customerAssignmentToWarehouse.resize(params.numPeriods, vector<vector<int>>(params.numWarehouses, vector<int>(params.numCustomers)));
+		sol_SE_EV.warehouseInventory.resize(params.numWarehouses, vector<double>(params.numPeriods));
+		sol_SE_EV.customerInventory.resize(params.numCustomers, vector<double>(params.numPeriods));
+		sol_SE_EV.customerUnmetDemand.resize(params.numCustomers, vector<double>(params.numPeriods));
+		sol_SE_EV.routesWarehouseToCustomer.resize(params.numWarehouses, vector<vector<vector<int>>>(params.numPeriods, vector<vector<int>>(params.numVehicles_Warehouse, vector<int>())));
+		sol_SE_EV.deliveryQuantityToCustomer.resize(params.numCustomers, vector<double>(params.numPeriods));
+		
 		// Read Solutions
 		for (int t = 0; t < params.numPeriods; t++)
 		{
@@ -1327,7 +2027,7 @@ bool Algorithms::read_SolutionFirstEchelon(SolutionFirstEchelon &sol_FE_EV)
 			{
 				for (int i = 0; i < params.numCustomers; i++)
 				{
-					file >> doubleValue; // Customer Assignment To Warehouse
+					file >> sol_SE_EV.customerAssignmentToWarehouse[t][w][i]; // Customer Assignment To Warehouse
 				}
 			}
 		}
@@ -1351,7 +2051,7 @@ bool Algorithms::read_SolutionFirstEchelon(SolutionFirstEchelon &sol_FE_EV)
 		{
 			for (int t = 0; t < params.numPeriods; t++)
 			{
-				file >> doubleValue;
+				file >> sol_SE_EV.warehouseInventory[w][t];
 			}
 		}
 
@@ -1359,7 +2059,7 @@ bool Algorithms::read_SolutionFirstEchelon(SolutionFirstEchelon &sol_FE_EV)
 		{
 			for (int t = 0; t < params.numPeriods; t++)
 			{
-				file >> doubleValue;
+				file >> sol_SE_EV.customerInventory[i][t];
 			}
 		}
 
@@ -1367,9 +2067,10 @@ bool Algorithms::read_SolutionFirstEchelon(SolutionFirstEchelon &sol_FE_EV)
 		{
 			for (int t = 0; t < params.numPeriods; t++)
 			{
-				file >> doubleValue;
+				file >> sol_SE_EV.customerUnmetDemand[i][t];
 			}
 		}
+		
 
 		string line_One;
 		while (std::getline(file, line_One))
@@ -1414,7 +2115,7 @@ bool Algorithms::read_SolutionFirstEchelon(SolutionFirstEchelon &sol_FE_EV)
 			if (line_Two == "endRoutesWarehouseToCustomer")
 				break;
 
-			if (line_One.find(':') == string::npos)
+			if (line_Two.find(':') == string::npos)
 				continue;
 
 			std::istringstream iss(line_Two);
@@ -1432,13 +2133,15 @@ bool Algorithms::read_SolutionFirstEchelon(SolutionFirstEchelon &sol_FE_EV)
 			{
 				route.push_back(node);
 			}
+
+			sol_SE_EV.routesWarehouseToCustomer[w_index][t_index][k_index] = route;
 		}
 
 		for (int i = 0; i < params.numCustomers; i++)
 		{
 			for (int t = 0; t < params.numPeriods; t++)
 			{
-				file >> doubleValue;
+				file >> sol_SE_EV.deliveryQuantityToCustomer[i][t];
 			}
 		}
 
@@ -1475,3 +2178,4 @@ bool Algorithms::read_SolutionFirstEchelon(SolutionFirstEchelon &sol_FE_EV)
 		return false;
 	}
 }
+

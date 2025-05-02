@@ -45,6 +45,52 @@ BC_Deterministic::BC_Deterministic(const ParameterSetting &parameters,
 
 	if (params.problemType == "EV" || params.problemType == "EEV" || params.problemType == "WS")
 		shortageAllowed = true;
+
+	// ---------------------------
+	// for (int w = 0; w < params.numWarehouses; ++w)
+	// {
+	// 	for (int t = 0; t < params.numPeriods; ++t)
+	// 	{
+	// 		for (int k = 0; k < params.numVehicles_Warehouse; k++)
+	// 		{
+	// 			int vehicleIndex = k + (w * params.numVehicles_Warehouse);
+	// 			vector<int> &route = warmStart.routesWarehouseToCustomer_WarmStart[w][t][k];
+
+	// 			if (!route.empty())
+	// 			{
+	// 				cout << "Route From Warehouse [" << w << "] period [" << t << "] vehicle [" << k << "] : ";
+	// 			}
+	// 			double totalDeliveryQuantity = 0.0;
+
+	// 			if (route.size() > 3)
+	// 			{
+	// 				int prevNode = w;
+	// 				cout << prevNode << "->";
+	// 				for (size_t i = 1; i < route.size(); ++i)
+	// 				{
+	// 					int currentNode = route[i];
+
+	// 					if (i == route.size() - 1)
+	// 					{
+	// 						cout << currentNode << endl;
+	// 					}
+	// 					else
+	// 					{
+	// 						cout << currentNode << "->";
+	// 					}
+	// 					prevNode = currentNode;
+	// 				}
+	// 			}
+	// 			else if (route.size() == 3)
+	// 			{
+	// 				int prevNode = w;
+	// 				int currentNode = route[1];
+
+	// 				cout << prevNode << "->" << currentNode << "->" << prevNode << endl;
+	// 			}
+	// 		}
+	// 	}
+	// }
 }
 
 bool BC_Deterministic::Solve()
@@ -133,13 +179,13 @@ void BC_Deterministic::configureCplex(IloCplex &cplex, IloEnv &env)
 {
 	// Set CPLEX Parameters: (DISPLAY LEVEL(0,1,2,3,4), OPTIMALITY GAP, RUN TIME (SECS), THREADS, MEMORY (MB))
 	CplexParameterManager parameterManager(cplex);
-	parameterManager.setParameters(4, params.BC_OptimalityGap, params.BC_TimeLimit, params.BC_NumThreads, params.BC_MemoryLimit);
+	parameterManager.setParameters(2, params.BC_OptimalityGap, params.BC_TimeLimit, params.BC_NumThreads, params.BC_MemoryLimit);
 
 	cplex.setParam(IloCplex::Param::Emphasis::MIP, 2);
 	cplex.setParam(IloCplex::Param::Preprocessing::Presolve, IloFalse);
 	cplex.setParam(IloCplex::Param::MIP::Strategy::Search, CPX_MIPSEARCH_TRADITIONAL);
 	cplex.setParam(IloCplex::Param::Preprocessing::Reduce, 0);
-	cplex.setParam(IloCplex::Param::MIP::Limits::RepairTries, 1e6);
+	cplex.setParam(IloCplex::Param::MIP::Limits::RepairTries, 1e3);
 	cplex.setParam(IloCplex::Param::Advance, 1);
 }
 
@@ -160,7 +206,7 @@ void BC_Deterministic::handleCplexStatus(IloCplex &cplex, IloEnv &env, IloModel 
 		result.optimalityGap = cplex.getMIPRelativeGap() * 100;
 		result.lowerBound = cplex.getBestObjValue();
 		cout << "Feasible solution found. Objective Value: " << result.objValue_Total << endl;
-		cout << "LB = " << result.lowerBound << " ";
+		cout << "LB = " << result.lowerBound << endl;
 		cout << "Optimality Gap (%) = " << result.optimalityGap << "\n"
 			 << endl;
 	}
@@ -1281,7 +1327,7 @@ void BC_Deterministic::DefCons_ValidInequalities_Lexicographic(IloEnv &env, IloM
 	// ---------------------------------------------------------------------------------------------------------------------------
 	/*
 		Lexicographic Constraints:
-			sum(i = 1 to j) 2**(j - i) * z[i][k][t] <= sum(i = 1 to j) 2**(j - i) * z[i][k - 1][t] for all j in N_c, k in K_w, t in T
+			sum(i = numWarehouses to j) 2**(j - i) * z[i][k][t] <= sum(i = numWarehouses to j) 2**(j - i) * z[i][k - 1][t] for all j in N_c, k in K_w, t in T
 	*/
 	for (int t = 0; t < params.numPeriods; ++t)
 	{
@@ -1291,12 +1337,12 @@ void BC_Deterministic::DefCons_ValidInequalities_Lexicographic(IloEnv &env, IloM
 			{
 				if (params.set_WarehouseVehicles[w].size() > 1)
 				{
-					for (int j = 0; j < params.numCustomers; ++j)
+					for (int j = params.numWarehouses; j < params.numCustomers + params.numWarehouses; ++j)
 					{
-						string constraintName = "LexicographicConstraint(" + std::to_string(j + 1 + params.numWarehouses) + "," + std::to_string(k + 1) + "," + std::to_string(t + 1) + ")";
+						string constraintName = "LexicographicConstraint(" + std::to_string(j + 1) + "," + std::to_string(k + 1) + "," + std::to_string(t + 1) + ")";
 
 						IloExpr expr(env);
-						for (int i = 0; i <= j; i++)
+						for (int i = params.numWarehouses; i <= j; ++i)
 						{
 							expr += pow(2, (j - i)) * z[i][k][t];
 							expr -= pow(2, (j - i)) * z[i][k - 1][t];
@@ -1544,11 +1590,24 @@ void BC_Deterministic::CalculateCostsForEachPart()
 			}
 		}
 	}
+	else
+	{
+		solFE.setupCost = sol_FE_EV.setupCost;
+		solFE.productionCost = sol_FE_EV.productionCost;
+		solFE.holdingCostPlant = sol_FE_EV.holdingCostPlant;
+		solFE.transportationCostPlantToWarehouse = sol_FE_EV.transportationCostPlantToWarehouse;
+	}
 	result.objValue_firstEchelon = solFE.setupCost + solFE.productionCost + solFE.holdingCostPlant + solFE.transportationCostPlantToWarehouse;
 	cout << "setupCost = " << solFE.setupCost << endl;
 	cout << "productionCost = " << solFE.productionCost << endl;
 	cout << "holdingCostPlant = " << solFE.holdingCostPlant << endl;
 	cout << "transportationCostPlantToWarehouse = " << solFE.transportationCostPlantToWarehouse << endl;
+	if (params.problemType == "EEV")
+	{
+		result.lowerBound += result.objValue_firstEchelon;
+		cout << "EEV LB Updated based on the first echelon solution" << endl;
+		cout << "LB (EEV) = " << result.lowerBound << endl;
+	}
 
 	if (params.problemType != "2EPRPCS")
 	{
@@ -1624,8 +1683,8 @@ void BC_Deterministic::CalculateCostsForEachPart()
 
 	result.objValue_Total = result.objValue_firstEchelon + result.objValue_secondEchelon;
 
-	cout << "objValue_FE = " << result.objValue_firstEchelon << endl;
-	cout << "objValue_FE : " << result.objValue_secondEchelon << endl;
+	cout << "objValue_FE : " << result.objValue_firstEchelon << endl;
+	cout << "objValue_SE : " << result.objValue_secondEchelon << endl;
 	cout << "objValue_Total : " << result.objValue_Total << endl;
 }
 
