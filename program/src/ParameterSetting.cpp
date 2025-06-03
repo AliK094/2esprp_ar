@@ -183,47 +183,108 @@ void ParameterSetting::setHyperparameters()
         MWPRP_FE_OptimalityGap = 1e-4;
         MWPRP_FE_TimeLimit = 300.0;
         MWPRP_FE_NumThreads = 20;
-        MWPRP_FE_MemoryLimit = 32000.0;
+        MWPRP_FE_MemoryLimit = 16000.0;
         // -----------------------
         RS2EPRP_OptimalityGap = 1e-2;
         RS2EPRP_TimeLimit = 120.0;
         RS2EPRP_NumThreads = 20;
-        RS2EPRP_MemoryLimit = 32000.0;
+        RS2EPRP_MemoryLimit = 16000.0;
         // -----------------------
         BC_OptimalityGap = 1e-6;
         BC_TimeLimit = 7200.0;
         BC_NumThreads = 20;
-        BC_MemoryLimit = 32000.0;
+        BC_MemoryLimit = 16000.0;
         // -----------------------
     }
     else
     {
-        HILS_TimeLimit = 3600.0;
-        HILS_MaxIteration = 200;
-        HILS_MaxNoImprovement = 20;
-        // -----------------------
-        ILS_TimeLimit = 150.0;
-        ILS_MaxIteration = 30;
-        ILS_MaxNoImprovement = 10;
-        // -----------------------
-        LS_MaxIterRVND = 10;
-        // -----------------------
-        Perturb_MaxIter = 10;
-        // -----------------------
-        MWPRP_FE_OptimalityGap = 1e-4;
-        MWPRP_FE_TimeLimit = 300.0;
-        MWPRP_FE_NumThreads = 10;
-        MWPRP_FE_MemoryLimit = 32000.0;
-        // -----------------------
-        R2EPRP_OptimalityGap = 1e-2;
-        R2EPRP_TimeLimit = 60.0;
-        R2EPRP_NumThreads = 10;
-        R2EPRP_MemoryLimit = 32000.0;
-        // -----------------------
-        BC_OptimalityGap = 1e-6;
-        BC_TimeLimit = 7200.0;
-        BC_NumThreads = 10;
-        BC_MemoryLimit = 32000.0;
+        if (problemType == "WS")
+        {
+            HILS_TimeLimit = 3600.0;
+            HILS_MaxIteration = 200;
+            HILS_MaxNoImprovement = 20;
+            // -----------------------
+            ILS_TimeLimit = 150.0;
+            ILS_MaxIteration = 30;
+            ILS_MaxNoImprovement = 10;
+            // -----------------------
+            LS_MaxIterRVND = 10;
+            // -----------------------
+            Perturb_MaxIter = 10;
+            // -----------------------
+            MWPRP_FE_OptimalityGap = 1e-4;
+            MWPRP_FE_TimeLimit = 300.0;
+            MWPRP_FE_NumThreads = 1;
+            MWPRP_FE_MemoryLimit = 8000.0;
+            // -----------------------
+            R2EPRP_OptimalityGap = 1e-2;
+            R2EPRP_TimeLimit = 60.0;
+            R2EPRP_NumThreads = 1;
+            R2EPRP_MemoryLimit = 8000.0;
+
+            BC_OptimalityGap = 1e-6;
+            BC_TimeLimit = 7200.0;
+            BC_NumThreads = 1;
+            BC_MemoryLimit = 8000.0;
+        }
+        else if (problemType == "EEV")
+        {
+            HILS_TimeLimit = 3600.0;
+            HILS_MaxIteration = 200;
+            HILS_MaxNoImprovement = 20;
+            // -----------------------
+            ILS_TimeLimit = 150.0;
+            ILS_MaxIteration = 30;
+            ILS_MaxNoImprovement = 10;
+            // -----------------------
+            LS_MaxIterRVND = 10;
+            // -----------------------
+            Perturb_MaxIter = 10;
+            // -----------------------
+            MWPRP_FE_OptimalityGap = 1e-4;
+            MWPRP_FE_TimeLimit = 300.0;
+            MWPRP_FE_NumThreads = 1;
+            MWPRP_FE_MemoryLimit = 8000.0;
+            // -----------------------
+            R2EPRP_OptimalityGap = 1e-2;
+            R2EPRP_TimeLimit = 60.0;
+            R2EPRP_NumThreads = 1;
+            R2EPRP_MemoryLimit = 8000.0;
+
+            BC_OptimalityGap = 1e-6;
+            BC_TimeLimit = 7200.0;
+            BC_NumThreads = 1;
+            BC_MemoryLimit = 8000.0;
+        }
+        else
+        {
+            HILS_TimeLimit = 3600.0;
+            HILS_MaxIteration = 200;
+            HILS_MaxNoImprovement = 20;
+            // -----------------------
+            ILS_TimeLimit = 150.0;
+            ILS_MaxIteration = 30;
+            ILS_MaxNoImprovement = 10;
+            // -----------------------
+            LS_MaxIterRVND = 10;
+            // -----------------------
+            Perturb_MaxIter = 10;
+            // -----------------------
+            MWPRP_FE_OptimalityGap = 1e-4;
+            MWPRP_FE_TimeLimit = 300.0;
+            MWPRP_FE_NumThreads = 10;
+            MWPRP_FE_MemoryLimit = 32000.0;
+            // -----------------------
+            R2EPRP_OptimalityGap = 1e-2;
+            R2EPRP_TimeLimit = 60.0;
+            R2EPRP_NumThreads = 10;
+            R2EPRP_MemoryLimit = 32000.0;
+            
+            BC_OptimalityGap = 1e-6;
+            BC_TimeLimit = 7200.0;
+            BC_NumThreads = 10;
+            BC_MemoryLimit = 32000.0;
+        }
         // -----------------------
         
     }

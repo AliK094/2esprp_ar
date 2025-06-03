@@ -118,7 +118,7 @@ int main(int argc, char *argv[])
     else if (problemType == "EV") {
         return runProblem(alg.solve_2EPRP());
     } 
-    else if (problemType == "EEV") {
+    else if (problemType == "EEV" && (solutionAlgorithm == "Hybrid-ILS" || solutionAlgorithm == "BC")) {
         if (scenarioIndex < 0 || scenarioIndex >= params.numScenarios) {
             cerr << "Scenario index not valid for EEV." << endl;
             cerr << "Number of Scenarios: " << params.numScenarios << endl;
@@ -127,7 +127,7 @@ int main(int argc, char *argv[])
         }
         return runProblem(alg.solve_2EPRP());
     } 
-    else if (problemType == "WS") {
+    else if (problemType == "WS" && (solutionAlgorithm == "Hybrid-ILS" || solutionAlgorithm == "BC")) {
         if (scenarioIndex < 0 || scenarioIndex >= params.numScenarios) {
             cerr << "Scenario index not valid for WS." << endl;
             cerr << "Number of Scenarios: " << params.numScenarios << endl;
@@ -136,7 +136,7 @@ int main(int argc, char *argv[])
         }
         return runProblem(alg.solve_2EPRP());
     }
-    else if (problemType == "2EPRP" || problemType == "2EPRPCS") {
+    else if ((problemType == "2EPRP" || problemType == "2EPRPCS") && (solutionAlgorithm == "Hybrid-ILS" || solutionAlgorithm == "BC")) {
         return runProblem(alg.solve_2EPRP());
     }
     else {

@@ -33,6 +33,10 @@ void LocalSearch_Deterministic::RVND()
 	// int numThreads = std::thread::hardware_concurrency(); // Use the number of available CPU cores
 	// cout << "\nAvailable CPU cores: " << numThreads << endl;
 	int numThreads = 10;
+	if (params.problemType == "EEV" || params.problemType == "WS")
+	{
+		numThreads = 1; // For EEV and WS, we use a single thread
+	}
 
 	std::atomic<bool> stopProcessing(false);
 	vector<std::thread> threads;
